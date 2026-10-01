@@ -81,7 +81,9 @@ import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.Select
 import me.rerere.rikkahub.ui.components.ui.icons.DiscordIcon
+import me.rerere.rikkahub.ui.components.ui.icons.HeartIcon
 import me.rerere.rikkahub.ui.components.ui.icons.TencentQQIcon
+import me.rerere.rikkahub.personal.heartbeat.HeartbeatSettingsActivity
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.Navigator
 import me.rerere.rikkahub.ui.hooks.rememberColorMode
@@ -97,6 +99,7 @@ import org.koin.compose.koinInject
 fun SettingPage(vm: SettingVM = koinViewModel()) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val navController = LocalNavController.current
+    val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
     val filesManager: FilesManager = koinInject()
     val agentRuntimeHomeItem = AgentRuntimeSettingsRoute.settingsHomeItem
@@ -221,6 +224,17 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { Icon(HugeIcons.Package, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_extensions_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_extensions)) },
+                    )
+                    item(
+                        // Heartbeat (ported from jude): standalone ComponentActivity, no nav route.
+                        onClick = {
+                            context.startActivity(
+                                Intent(context, HeartbeatSettingsActivity::class.java)
+                            )
+                        },
+                        leadingContent = { Icon(HeartIcon, null) },
+                        supportingContent = { Text(stringResource(R.string.heartbeat_settings_description)) },
+                        headlineContent = { Text(stringResource(R.string.heartbeat_settings_title)) },
                     )
                 }
             }

@@ -21,6 +21,7 @@ import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.ai.tools.local.BiometricResultBuffer
+import me.rerere.rikkahub.personal.heartbeat.buildHeartbeatScheduleTool
 import me.rerere.rikkahub.data.ai.tools.local.CameraResultBuffer
 import me.rerere.rikkahub.data.ai.tools.local.InteractiveToolStreamer
 import me.rerere.rikkahub.data.ai.tools.local.audioInfoTool
@@ -1213,6 +1214,11 @@ class LocalTools(
             tools.add(keyboardSetCursorTool(keyboardApiClient))
             tools.add(keyboardSelectRangeTool(keyboardApiClient))
         }
+        // Heartbeat (ported from jude): expose the autonomous-wake scheduling tool only when
+        // the calling assistant's heartbeat master switch is enabled in its private
+        // SharedPreferences config store. Gating mirrors jude's LocalBuildIntegration.additionalTools.
+        buildHeartbeatScheduleTool(context, invocationContext.callerAssistantId)
+            ?.let { tools.add(it) }
         // Centralised opt-in to needsApproval. Tool factories themselves don't have to know
         // whether their op is destructive — ToolApprovalDefaults is the single source of
         // truth, and the GenerationHandler / Telegram/in-app prompt path keys off needsApproval.
