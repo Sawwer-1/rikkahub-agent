@@ -20,8 +20,8 @@ android {
         applicationId = "me.rerere.rikkahub"
         minSdk = 26
         targetSdk = 37
-        versionCode = 191
-        versionName = "2.3.1-agent-up244.7"
+        versionCode = 192
+        versionName = "2.3.1-agent-up244.7-jude1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // AGP 9.2 UTP copies PlatformTestStorage output to

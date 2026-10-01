@@ -186,6 +186,7 @@ import me.rerere.rikkahub.subagent.generationMaxSteps
 
 private const val TAG = "ChatService"
 private const val FAST_PATH_TOOL_BUDGET_MS = 30_000L
+private const val STREAMING_UI_UPDATE_INTERVAL_NANOS = 50_000_000L
 
 internal fun backgroundTextGenerationParams(
     model: Model,
@@ -3174,6 +3175,10 @@ class ChatService(
         val authority = runControl?.runtimeCommandAuthority()
         var waitingAuthorityCommitted = false
 
+        // Streaming UI throttle state (ported from jude): scoped to this single generation
+        // run's collect loop, which processes chunks sequentially in one coroutine.
+        var streamingMessageId: Uuid? = null
+        var lastStreamingUiUpdateNanos = 0L
         val generationResult = runCatching {
             // reset suggestions
             updateConversation(conversationId, initialConversation.copy(chatSuggestions = emptyList()))
@@ -3873,8 +3878,58 @@ class ChatService(
                         if (!timingSessionContentReady && timingAssistantMessage != null) {
                             agentTiming?.mark(AgentTimingEventKind.SESSION_STATE_APPLY_STARTED)
                         }
-                        val updatedConversation = getConversationFlow(conversationId).value
-                            .updateCurrentMessages(correlatedMessages)
+                        // Streaming UI throttle (ported from jude): per-chunk full rebuild of
+                        // every node is the hot path while tokens stream. Steady-state chunks
+                        // of the SAME assistant message update only that message's node, at
+                        // most every STREAMING_UI_UPDATE_INTERVAL_NANOS. A new streamed
+                        // message id (round boundary) keeps the full updateCurrentMessages
+                        // pass so cross-message rewrites (response correlation annotations,
+                        // transient tool-result sanitizer) still apply.
+                        val latestChunkMessage = correlatedMessages.lastOrNull()
+                        // Persist immediately when a tool transitions to "execution started
+                        // but no output yet" (the executionStartedAt breadcrumb must reach
+                        // disk for replay) or a FinalAnswerRecovery just started.
+                        val needsImmediatePersist = latestChunkMessage?.parts?.any { p ->
+                            p is UIMessagePart.Tool &&
+                                p.executionStartedAt != null &&
+                                p.output.isEmpty() &&
+                                p.approvalState is ToolApprovalState.Approved
+                        } == true || latestChunkMessage?.annotations?.any { annotation ->
+                            annotation is UIMessageAnnotation.FinalAnswerRecovery &&
+                                annotation.status == FinalAnswerRecoveryStatus.STARTED
+                        } == true
+                        val forceStreamingUiUpdate = chunk.persistenceBarrier ==
+                            GenerationPersistenceBarrier.PENDING_APPROVAL || needsImmediatePersist
+                        val nowNanos = System.nanoTime()
+                        val shouldUpdateStreamingUi = forceStreamingUiUpdate || (
+                            latestChunkMessage != null && (
+                                streamingMessageId != latestChunkMessage.id ||
+                                    nowNanos - lastStreamingUiUpdateNanos >=
+                                    STREAMING_UI_UPDATE_INTERVAL_NANOS
+                                )
+                            )
+                        var updatedConversation: Conversation? = null
+                        if (shouldUpdateStreamingUi) {
+                            updatedConversation = if (latestChunkMessage == null ||
+                                streamingMessageId != latestChunkMessage.id
+                            ) {
+                                getConversationFlow(conversationId).value
+                                    .updateCurrentMessages(correlatedMessages)
+                            } else {
+                                val currentConversation = getConversationFlow(conversationId).value
+                                val nodeIndex = currentConversation.messageNodes.indexOfFirst { node ->
+                                    node.messages.any { it.id == latestChunkMessage.id }
+                                }.takeIf { it >= 0 }
+                                currentConversation.updateMessageAtNodeIndex(
+                                    nodeIndex = nodeIndex,
+                                    message = latestChunkMessage,
+                                )
+                            }
+                            if (latestChunkMessage != null) {
+                                streamingMessageId = latestChunkMessage.id
+                            }
+                            lastStreamingUiUpdateNanos = nowNanos
+                        }
                         if (!applyRunUpdate {
                                 if (chunk.persistenceBarrier ==
                                     GenerationPersistenceBarrier.PENDING_APPROVAL
@@ -3920,7 +3975,9 @@ class ChatService(
                                         .persistedToolExecutionIds(runControl)
                                     if (authority != null) {
                                         authority.checkpointWaiting(
-                                            conversation = updatedConversation,
+                                            conversation = requireNotNull(updatedConversation) {
+                                                "streaming_ui_conversation_missing"
+                                            },
                                             assistantMessageId = owningMessage.id,
                                             approvalMutation = { messageId, revision ->
                                                 pendingOwner?.let { owner ->
@@ -3949,7 +4006,9 @@ class ChatService(
                                         waitingAuthorityCommitted = true
                                     } else if (pendingOwner != null) {
                                         secondUserApprovalLifecycle.persistPendingBarrier(
-                                            conversation = updatedConversation,
+                                            conversation = requireNotNull(updatedConversation) {
+                                                "streaming_ui_conversation_missing"
+                                            },
                                             owner = pendingOwner,
                                             tools = pendingTools,
                                             sourceInvalidationMode = persistenceSourceInvalidationMode,
@@ -3957,7 +4016,7 @@ class ChatService(
                                         )
                                     }
                                 }
-                                updateConversation(conversationId, updatedConversation)
+                                updatedConversation?.let { updateConversation(conversationId, it) }
                             }
                         ) return@collect
                         if (!timingSessionContentReady && timingAssistantMessage != null) {
@@ -3998,21 +4057,13 @@ class ChatService(
                         // interrupted_unknown_outcome). Without this, the marker stays in
                         // memory only and replay can't distinguish "freshly approved,
                         // never tried" from "interrupted mid-execute" �?silent re-run.
-                        val latestMessage = correlatedMessages.lastOrNull()
-                        val needsImmediatePersist = latestMessage?.parts?.any { p ->
-                            p is UIMessagePart.Tool &&
-                                p.executionStartedAt != null &&
-                                p.output.isEmpty() &&
-                                p.approvalState is ToolApprovalState.Approved
-                        } == true || latestMessage?.annotations?.any { annotation ->
-                            annotation is UIMessageAnnotation.FinalAnswerRecovery &&
-                                annotation.status == FinalAnswerRecoveryStatus.STARTED
-                        } == true
                         if (needsImmediatePersist) {
                             applyRunUpdate {
                                 saveConversation(
                                     conversationId = conversationId,
-                                    conversation = updatedConversation,
+                                    conversation = requireNotNull(updatedConversation) {
+                                        "streaming_ui_conversation_missing"
+                                    },
                                     sourceInvalidationMode =
                                         persistenceSourceInvalidationMode,
                                     sourceInvalidationNowMs =
