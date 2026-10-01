@@ -105,6 +105,7 @@ import me.rerere.rikkahub.data.datastore.getChatModelForAssistant
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.personal.heartbeat.HeartbeatUserActivity
 import me.rerere.rikkahub.data.model.AssistantAffectScope
 import me.rerere.rikkahub.data.model.replaceRegexes
 import me.rerere.rikkahub.data.model.toMessageNode
@@ -2088,6 +2089,11 @@ class ChatService(
                     messageNodes = currentConversation.messageNodes + anchoredUserMessage.toMessageNode(),
                 )
             }
+            HeartbeatUserActivity.record(
+                context = context,
+                message = anchoredUserMessage,
+                assistantId = assistant.id.toString(),
+            )
             when (fastPathPlan) {
                 is FastPathCommitPlan.Handled -> {
                     val assistantMessage = UIMessage(
@@ -2164,6 +2170,15 @@ class ChatService(
                     }
                 }
             }
+            getConversationFlow(conversationId).value.currentMessages
+                .lastOrNull { it.role == MessageRole.ASSISTANT }
+                ?.let { lastAssistantMessage ->
+                    HeartbeatUserActivity.recordAssistantMessage(
+                        context = context,
+                        message = lastAssistantMessage,
+                        assistantId = assistant.id.toString(),
+                    )
+                }
             agentTiming?.mark(AgentTimingEventKind.GENERATION_DONE_NOTIFY_STARTED)
             try {
                 _generationDoneFlow.emit(conversationId)
