@@ -37,6 +37,14 @@ jobs:
           # 写入Google Services配置
           echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > app/google-services.json
 
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Gradle Build
         run: |
           chmod +x gradlew
