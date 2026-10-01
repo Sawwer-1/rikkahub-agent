@@ -72,6 +72,8 @@ import me.rerere.rikkahub.quickcapture.QuickCaptureSettings
 import me.rerere.rikkahub.pet.PetOverlaySelection
 import me.rerere.rikkahub.pet.resolvePetOverlaySelection
 import me.rerere.rikkahub.assistant.SecondUserAuthorityConfig
+import me.rerere.usagetracker.UsageReminderConfig
+import me.rerere.usagetracker.UsageReminderState
 
 private const val TAG = "PreferencesStore"
 
@@ -219,6 +221,8 @@ class SettingsStore(
 
         // 统计
         val LAUNCH_COUNT = intPreferencesKey("launch_count")
+        val USAGE_REMINDER_CONFIG = stringPreferencesKey("usage_reminder_config")
+        val USAGE_REMINDER_STATE = stringPreferencesKey("usage_reminder_state")
 
         // 赞助提醒
         val SPONSOR_ALERT_DISMISSED_AT = intPreferencesKey("sponsor_alert_dismissed_at")
@@ -383,6 +387,12 @@ class SettingsStore(
                     JsonInstant.decodeFromString(it)
                 } ?: BackupReminderConfig(),
                 launchCount = preferences[LAUNCH_COUNT] ?: 0,
+                usageReminderConfig = preferences[USAGE_REMINDER_CONFIG]?.let {
+                    JsonInstant.decodeFromString(it)
+                } ?: UsageReminderConfig(),
+                usageReminderState = preferences[USAGE_REMINDER_STATE]?.let {
+                    JsonInstant.decodeFromString(it)
+                } ?: UsageReminderState(),
                 sponsorAlertDismissedAt = preferences[SPONSOR_ALERT_DISMISSED_AT] ?: 0,
             )
         }
@@ -649,6 +659,8 @@ class SettingsStore(
             preferences[AI_LOG_LEVEL] = settings.aiLogLevel.preferenceName
             preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
             preferences[LAUNCH_COUNT] = settings.launchCount
+            preferences[USAGE_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.usageReminderConfig)
+            preferences[USAGE_REMINDER_STATE] = JsonInstant.encodeToString(settings.usageReminderState)
             preferences[SPONSOR_ALERT_DISMISSED_AT] = settings.sponsorAlertDismissedAt
         }
     }
@@ -911,6 +923,8 @@ data class Settings(
     val aiLogLevel: AiLogLevel = AiLogLevel.INFO,
     val backupReminderConfig: BackupReminderConfig = BackupReminderConfig(),
     val launchCount: Int = 0,
+    val usageReminderConfig: UsageReminderConfig = UsageReminderConfig(),
+    val usageReminderState: UsageReminderState = UsageReminderState(),
     val sponsorAlertDismissedAt: Int = 0,
 ) {
     companion object {

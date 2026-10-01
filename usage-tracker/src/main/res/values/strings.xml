@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="usage_tracker_title">Usage Stats</string>
+  <string name="usage_tracker_back">Back</string>
+  <string name="usage_tracker_refresh">Refresh</string>
+  <string name="usage_tracker_permission_title">Usage access permission required</string>
+  <string name="usage_tracker_permission_desc">Once granted, app usage data stored locally on this phone is read directly. Data is read on-device only and never uploaded.</string>
+  <string name="usage_tracker_permission_button">Grant access</string>
+  <string name="usage_tracker_today">Today</string>
+  <string name="usage_tracker_yesterday">Yesterday</string>
+  <string name="usage_tracker_last_7_days">Last 7 days</string>
+  <string name="usage_tracker_overview">Overview</string>
+  <string name="usage_tracker_total_time">Total %1$s</string>
+  <string name="usage_tracker_launches">%1$d launches</string>
+  <string name="usage_tracker_launches_short">%1$d</string>
+  <string name="usage_tracker_item_desc">%1$s\nLast used: %2$s</string>
+  <string name="usage_tracker_empty">No app list or usage records were read.</string>
+  <string name="usage_tracker_never">Never</string>
+</resources>

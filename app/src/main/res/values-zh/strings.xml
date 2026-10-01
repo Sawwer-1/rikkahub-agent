@@ -2835,4 +2835,24 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="moments_refresh_generation_failed">生成过程异常 %1$d 条，已保留重试。</string>
   <string name="moments_refresh_no_visible_comment">已处理但没有文字评论 %1$d 条，可能只有点赞。</string>
   <string name="moments_refresh_vision_model_required">需要识图模型 %1$d 条。</string>
+
+  <!-- 使用情况/使用锁定（自 jude 移植，批④） -->
+  <string name="notification_channel_usage_reminder_monitor">使用提醒监控</string>
+  <string name="notification_channel_usage_limit_reminder">使用超限提醒</string>
+  <string name="usage_reminder_monitor_title">使用提醒运行中</string>
+  <string name="usage_reminder_monitor_desc">正在监控已开启的应用时长限制</string>
+  <string name="usage_reminder_limit_title">%1$s 已超过 %2$d 分钟</string>
+  <string name="usage_reminder_limit_content">%1$s 已使用 %2$s\n%3$s</string>
+  <string name="usage_reminder_ignore_today">今日忽略</string>
+  <string name="usage_lock_overlay_title">已锁定</string>
+  <string name="usage_lock_compact_title">RikkaHub 锁定提醒</string>
+  <string name="usage_lock_overlay_until">解锁时间：%1$s</string>
+  <string name="usage_lock_notification_title">使用时长锁定</string>
+  <string name="usage_lock_notification_content">%1$s\n锁定至 %2$s。请开启悬浮窗权限以显示全屏锁定提示。</string>
+  <string name="usage_reminder_duration_hours">%1$d 小时 %2$d 分钟</string>
+  <string name="usage_reminder_duration_minutes">%1$d 分钟</string>
+  <string name="usage_reminder_duration_less_than_minute">&lt;1 分钟</string>
+  <string name="usage_reminder_duration_zero">0 分钟</string>
+  <string name="setting_page_usage_tracker">使用情况</string>
+  <string name="setting_page_usage_tracker_desc">查看本机全部应用的使用时长和打开次数</string>
 </resources>

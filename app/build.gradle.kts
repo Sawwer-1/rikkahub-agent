@@ -425,6 +425,7 @@ dependencies {
     implementation(project(":common"))
     implementation(project(":material3"))
     implementation(project(":workspace"))
+    implementation(project(":usage-tracker"))
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar", "*.aar"))))
     implementation(kotlin("reflect"))
 

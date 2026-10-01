@@ -84,6 +84,7 @@ import me.rerere.rikkahub.ui.components.ui.icons.DiscordIcon
 import me.rerere.rikkahub.ui.components.ui.icons.HeartIcon
 import me.rerere.rikkahub.ui.components.ui.icons.TencentQQIcon
 import me.rerere.rikkahub.personal.heartbeat.HeartbeatSettingsActivity
+import me.rerere.rikkahub.ui.pages.usage.UsageTrackerActivity
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.Navigator
 import me.rerere.rikkahub.ui.hooks.rememberColorMode
@@ -235,6 +236,17 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { Icon(HeartIcon, null) },
                         supportingContent = { Text(stringResource(R.string.heartbeat_settings_description)) },
                         headlineContent = { Text(stringResource(R.string.heartbeat_settings_title)) },
+                    )
+                    item(
+                        // Usage tracker (ported from jude, batch 4): standalone ComponentActivity, no nav route.
+                        onClick = {
+                            context.startActivity(
+                                Intent(context, UsageTrackerActivity::class.java)
+                            )
+                        },
+                        leadingContent = { Icon(HugeIcons.Clock02, null) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_usage_tracker_desc)) },
+                        headlineContent = { Text(stringResource(R.string.setting_page_usage_tracker)) },
                     )
                 }
             }

@@ -2990,4 +2990,24 @@
   <string name="moments_refresh_generation_failed">Generation failed for %1$d item(s); kept for retry.</string>
   <string name="moments_refresh_no_visible_comment">Processed %1$d item(s) without a text comment; a like only, perhaps.</string>
   <string name="moments_refresh_vision_model_required">A vision model is required for %1$d item(s).</string>
+
+  <!-- Usage tracker / usage lock (ported from jude, batch 4) -->
+  <string name="notification_channel_usage_reminder_monitor">Usage Reminder Monitor</string>
+  <string name="notification_channel_usage_limit_reminder">Usage Limit Reminder</string>
+  <string name="usage_reminder_monitor_title">Usage reminders running</string>
+  <string name="usage_reminder_monitor_desc">Watching enabled app limits</string>
+  <string name="usage_reminder_limit_title">%1$s has exceeded %2$d min</string>
+  <string name="usage_reminder_limit_content">%1$s has been used for %2$s\n%3$s</string>
+  <string name="usage_reminder_ignore_today">Ignore today</string>
+  <string name="usage_lock_overlay_title">Locked</string>
+  <string name="usage_lock_compact_title">RikkaHub lock reminder</string>
+  <string name="usage_lock_overlay_until">Unlocks at %1$s</string>
+  <string name="usage_lock_notification_title">Usage lock active</string>
+  <string name="usage_lock_notification_content">%1$s\nLocked until %2$s. Enable overlay permission to show the full-screen lock.</string>
+  <string name="usage_reminder_duration_hours">%1$d h %2$d min</string>
+  <string name="usage_reminder_duration_minutes">%1$d min</string>
+  <string name="usage_reminder_duration_less_than_minute">&lt;1 min</string>
+  <string name="usage_reminder_duration_zero">0 min</string>
+  <string name="setting_page_usage_tracker">Usage Stats</string>
+  <string name="setting_page_usage_tracker_desc">View screen time and launch counts for all apps on this device</string>
 </resources>
