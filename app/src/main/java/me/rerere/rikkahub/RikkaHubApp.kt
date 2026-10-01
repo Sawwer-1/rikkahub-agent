@@ -124,6 +124,12 @@ class RikkaHubApp : Application() {
                 }
             }
         })
+        // Heartbeat: ensure the notification channel exists and reconcile schedules after
+        // process death (BootReceiver covers device reboot; this covers app upgrade/force-stop).
+        runCatching {
+            me.rerere.rikkahub.personal.heartbeat.HeartbeatNotifications.createChannel(this)
+            me.rerere.rikkahub.personal.heartbeat.HeartbeatScheduler.sync(this)
+        }.onFailure { Log.e(TAG, "heartbeat startup sync failed", it) }
         // Privacy maintenance is content-free and may be armed immediately. Persisted Learning
         // rollout flags, however, are unavailable until DataStore replaces Settings.dummy(). If
         // the flag-gated scheduler samples that dummy value it cancels every drain/recovery chain
