@@ -565,6 +565,39 @@
       </intent-filter>
     </receiver>
 
+    <!-- Heartbeat assistant (ported from jude). SCHEDULE_EXACT_ALARM,
+         FOREGROUND_SERVICE_SPECIAL_USE and RECEIVE_BOOT_COMPLETED permissions are
+         already declared above; nothing extra to merge here. -->
+    <activity
+      android:name=".personal.heartbeat.HeartbeatSettingsActivity"
+      android:exported="false"
+      android:label="@string/heartbeat_settings_title"
+      android:theme="@style/Theme.Rikkahub"
+      android:windowSoftInputMode="adjustResize" />
+
+    <service
+      android:name=".personal.heartbeat.HeartbeatForegroundService"
+      android:exported="false"
+      android:foregroundServiceType="specialUse">
+      <property
+        android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+        android:value="local scheduled personal assistant heartbeat" />
+    </service>
+
+    <receiver
+      android:name=".personal.heartbeat.HeartbeatAlarmReceiver"
+      android:exported="false" />
+
+    <receiver
+      android:name=".personal.heartbeat.HeartbeatBootReceiver"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+      </intent-filter>
+    </receiver>
+
+
     <!-- Phase 12 — geofence transition receiver. Play Services delivers via
          PendingIntent.getBroadcast outside any active component, so this MUST be a
          manifest receiver. Not exported — the only sender is Play Services running in

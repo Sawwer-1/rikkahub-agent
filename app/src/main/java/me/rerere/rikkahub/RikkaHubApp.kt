@@ -14,6 +14,8 @@ import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -110,6 +112,18 @@ class RikkaHubApp : Application() {
             modules(appModule, viewModelModule, dataSourceModule, repositoryModule)
         }
         dependencyGraphStarted = true
+        // Clear stale OkHttp connections when returning to foreground (ported from jude).
+        // Screen-off / Doze can silently kill idle HTTP/2 connections; reusing them makes
+        // requests hang until read timeout. Evict the pool on start so the next request
+        // always uses a fresh connection.
+        ProcessLifecycleOwner.get().lifecycle.addObserver(object : LifecycleEventObserver {
+            override fun onStateChanged(source: LifecycleOwner, event: Lifecycle.Event) {
+                if (event == Lifecycle.Event.ON_START) {
+                    runCatching { get<okhttp3.ConnectionPool>().evictAll() }
+                        .onFailure { Log.e(TAG, "evictAll connections failed", it) }
+                }
+            }
+        })
         // Privacy maintenance is content-free and may be armed immediately. Persisted Learning
         // rollout flags, however, are unavailable until DataStore replaces Settings.dummy(). If
         // the flag-gated scheduler samples that dummy value it cancels every drain/recovery chain

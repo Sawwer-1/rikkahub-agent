@@ -90,6 +90,35 @@ data class Conversation(
         )
     }
 
+    /**
+     * Updates one node while preserving the other nodes untouched.
+     * This is the hot path for streaming assistant responses.
+     */
+    fun updateMessageAtNodeIndex(nodeIndex: Int?, message: UIMessage): Conversation {
+        val newNodes = messageNodes.toMutableList()
+        val resolvedNodeIndex = nodeIndex?.takeIf { it in newNodes.indices }
+        if (resolvedNodeIndex == null) {
+            newNodes += message.toMessageNode()
+            return copy(messageNodes = newNodes)
+        }
+
+        val node = newNodes[resolvedNodeIndex]
+        val newMessages = node.messages.toMutableList()
+        val existingMessageIndex = newMessages.indexOfFirst { it.id == message.id }
+        val newMessageIndex = if (existingMessageIndex >= 0) {
+            newMessages[existingMessageIndex] = message
+            node.selectIndex
+        } else {
+            newMessages += message
+            newMessages.lastIndex
+        }
+        newNodes[resolvedNodeIndex] = node.copy(
+            messages = newMessages,
+            selectIndex = newMessageIndex,
+        )
+        return copy(messageNodes = newNodes)
+    }
+
     companion object {
         fun ofId(
             id: Uuid,

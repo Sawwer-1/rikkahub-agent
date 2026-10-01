@@ -153,6 +153,7 @@ import me.rerere.rikkahub.data.agentrun.AgentRunRepository
 import me.rerere.rikkahub.data.sync.webdav.WebDavSync
 import me.rerere.search.SearchService
 import me.rerere.rikkahub.data.sync.S3Sync
+import okhttp3.ConnectionPool
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -1377,12 +1378,20 @@ val dataSourceModule = module {
 
     single { me.rerere.rikkahub.data.ai.SystemPromptBuilder() }
 
+    // Shared connection pool (ported from jude): one pool instance reused by every
+    // OkHttpClient so idle sockets are shared across clients and can be evicted
+    // together when the app returns to the foreground (see RikkaHubApp).
+    single {
+        ConnectionPool(maxIdleConnections = 5, keepAliveDuration = 5, TimeUnit.MINUTES)
+    }
+
     single<OkHttpClient> {
         val acceptLang = AcceptLanguageBuilder.fromAndroid(get())
             .build()
         OkHttpClient.Builder()
+            .connectionPool(get())
             .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.MINUTES)
+            .readTimeout(120, TimeUnit.SECONDS)
             .writeTimeout(120, TimeUnit.SECONDS)
             .followSslRedirects(true)
             .followRedirects(true)
@@ -1431,8 +1440,9 @@ val dataSourceModule = module {
 
     single<OkHttpClient>(named("codex")) {
         OkHttpClient.Builder()
+            .connectionPool(get())
             .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.MINUTES)
+            .readTimeout(120, TimeUnit.SECONDS)
             .writeTimeout(120, TimeUnit.SECONDS)
             .followSslRedirects(true)
             .followRedirects(true)
