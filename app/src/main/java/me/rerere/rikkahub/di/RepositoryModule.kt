@@ -8,6 +8,7 @@ import me.rerere.rikkahub.data.files.SkillManager
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.FavoriteRepository
 import me.rerere.rikkahub.data.repository.FilesRepository
+import me.rerere.rikkahub.data.repository.FolderRepository
 import me.rerere.rikkahub.data.repository.GenMediaRepository
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
@@ -28,6 +29,13 @@ import java.io.File
 val repositoryModule = module {
     single {
         ConversationRepository(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get())
+    }
+
+    single {
+        FolderRepository(
+            folderDAO = get(),
+            conversationDAO = get(),
+        )
     }
 
     single { me.rerere.rikkahub.data.repository.ConversationDeletionPolicy(get()) }

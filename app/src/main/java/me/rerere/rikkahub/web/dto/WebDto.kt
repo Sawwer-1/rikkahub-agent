@@ -88,6 +88,16 @@ data class UpdateConversationInjectionsRequest(
 )
 
 @Serializable
+data class CreateFolderRequest(
+    val name: String
+)
+
+@Serializable
+data class RenameFolderRequest(
+    val name: String
+)
+
+@Serializable
 data class UpdateAssistantRequest(
     val assistantId: String
 )
@@ -157,6 +167,15 @@ data class ConversationListDto(
     val createAt: Long,
     val updateAt: Long,
     val isGenerating: Boolean = false
+)
+
+@Serializable
+data class FolderDto(
+    val id: String,
+    val assistantId: String,
+    val name: String,
+    val sortIndex: Int,
+    val createAt: Long,
 )
 
 @Serializable
@@ -303,6 +322,14 @@ fun Conversation.toListDto(isGenerating: Boolean = false) = ConversationListDto(
     createAt = createAt.toEpochMilli(),
     updateAt = updateAt.toEpochMilli(),
     isGenerating = isGenerating
+)
+
+fun me.rerere.rikkahub.data.model.Folder.toDto() = FolderDto(
+    id = id.toString(),
+    assistantId = assistantId.toString(),
+    name = name,
+    sortIndex = sortIndex,
+    createAt = createAt.toEpochMilli(),
 )
 
 fun Conversation.toDto(isGenerating: Boolean = false) = ConversationDto(

@@ -944,6 +944,7 @@ val appModule = module {
             waitingApprovalAuthority = get(),
             finalConversationAuthority = get(),
             executionMessageAuthorityBinder = get(),
+            folderRepository = get(),
         )
     }
     single {
@@ -969,6 +970,7 @@ val appModule = module {
             appScope = get(),
             chatService = get(),
             conversationRepo = get(),
+            folderRepo = get(),
             settingsStore = get(),
             filesManager = get()
         )

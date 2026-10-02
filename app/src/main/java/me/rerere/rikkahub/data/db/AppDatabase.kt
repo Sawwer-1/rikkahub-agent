@@ -23,6 +23,7 @@ import me.rerere.rikkahub.data.db.dao.DreamExperienceDao
 import me.rerere.rikkahub.data.db.dao.DreamSynthesisDao
 import me.rerere.rikkahub.data.db.dao.BrowserLibraryDao
 import me.rerere.rikkahub.data.db.dao.FavoriteDAO
+import me.rerere.rikkahub.data.db.dao.FolderDAO
 import me.rerere.rikkahub.data.db.dao.GenMediaDAO
 import me.rerere.rikkahub.data.db.dao.ManagedFileDAO
 import me.rerere.rikkahub.data.db.dao.MemoryDAO
@@ -61,6 +62,7 @@ import me.rerere.rikkahub.data.db.entity.DreamSnapshotEntity
 import me.rerere.rikkahub.data.db.entity.BrowserBookmarkEntity
 import me.rerere.rikkahub.data.db.entity.BrowserHistoryEntity
 import me.rerere.rikkahub.data.db.entity.FavoriteEntity
+import me.rerere.rikkahub.data.db.entity.FolderEntity
 import me.rerere.rikkahub.data.db.entity.GenMediaEntity
 import me.rerere.rikkahub.data.db.entity.ManagedFileEntity
 import me.rerere.rikkahub.data.db.entity.MemoryEntity
@@ -184,13 +186,16 @@ import me.rerere.rikkahub.owner.db.HostOperationEventEntity
         AnonymousQuestionEntity::class,
         AnonymousQuestionProfileEntity::class,
         AnonymousQuestionReplyEntity::class,
+        FolderEntity::class,
     ],
     // v49 makes workflow capability/provenance authority durable. Learned artifacts remain
     // disabled until an explicit cross-database promotion completes.
     // v51 adds rolling-summary compression columns (summary / hidden node ids / auto config).
     // v52 adds the social surfaces ported from jude: moments (timeline / comments / profile)
     // and the anonymous question box (questions / replies / profile).
-    version = 52,
+    // v53 adds conversation folders ported from ExTV: conversation_folder, hand-written as
+    // Migration_52_53 (registered in DataSourceModule).
+    version = 53,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -224,6 +229,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun browserLibraryDao(): BrowserLibraryDao
 
     abstract fun conversationDao(): ConversationDAO
+
+    abstract fun folderDao(): FolderDAO
 
     abstract fun memoryDao(): MemoryDAO
 
