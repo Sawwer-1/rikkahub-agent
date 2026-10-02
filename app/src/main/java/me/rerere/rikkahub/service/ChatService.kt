@@ -119,6 +119,7 @@ import me.rerere.rikkahub.data.model.toMessageNode
 import me.rerere.rikkahub.data.repository.withRuntimeGraph
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.ConversationSourceInvalidationMode
+import me.rerere.rikkahub.data.repository.FolderRepository
 import me.rerere.rikkahub.data.repository.selectedMemorySourceVersions
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.MemoryRetrievalDiagnosticsStore
@@ -752,6 +753,7 @@ class ChatService(
     private val appScope: AppScope,
     private val settingsStore: SettingsStore,
     private val conversationRepo: ConversationRepository,
+    private val folderRepository: FolderRepository,
     private val memoryRepository: MemoryRepository,
     private val memoryRetrievalDiagnostics: MemoryRetrievalDiagnosticsStore,
     private val agentTimingStore: AgentTimingStore,
@@ -1146,6 +1148,9 @@ class ChatService(
                     scope = appScope,
                     onIdle = { removeSession(it, createdSession) },
                     canEvict = { runtimes[id]?.hasRetainedWork != true },
+                    // 语音/消息队列持久化（jude 移植，batch 9）：文件式快照，不建 Room 表；
+                    // 进程被杀后未派发的排队输入不丢。
+                    queueStorageFile = java.io.File(context.filesDir, "message_queue/$id.json"),
                 )
                 _sessionsVersion.value++
                 Log.i(TAG, "createSession: $id (total: ${sessions.size + 1})")
@@ -1312,6 +1317,10 @@ class ChatService(
                                 sessions[runtimeId]?.requestIdleCheck()
                             }
                         }
+                        // 语音消息队列（jude 移植，batch 9）：runtime 彻底空档（无活动 run、
+                        // 无待审批、无排队命令，onRunJobChanged(null) 已清空 generationJob）后，
+                        // 派发排队中的待发送输入。
+                        dispatchNextQueuedMessage(runtimeId)
                     },
                     onRunJobChanged = { job -> session.attachRunJob(job) },
                     onRunStarted = {
@@ -1912,6 +1921,121 @@ class ChatService(
         // actions use submitEmergency(InterruptCommand) instead.
         appScope.launch {
             submitUserMessage(conversationId, content, answer, CommandOrigin.APP_UI)
+        }
+    }
+
+    // ---- 语音消息队列（移植自 extv，batch 9）----
+    // 排队输入在派发前不进会话历史；语音模式借 QueuedMessage.reply 观察助手回复文本用于朗读。
+    // 与目标仓的接线点：入队项经 submitUserMessageTracked 走 runtime 命令链（submit 家族），
+    // 回复在命令终局（CommandOutcome）后从会话状态抽取。
+
+    fun getMessageQueueFlow(conversationId: Uuid): StateFlow<MessageQueueState> =
+        getOrCreateSession(conversationId).messageQueue.state
+
+    fun removeQueuedMessage(conversationId: Uuid, messageId: Uuid) {
+        sessions[conversationId]?.messageQueue?.remove(messageId)
+        dispatchNextQueuedMessage(conversationId)
+    }
+
+    fun beginEditQueuedMessage(conversationId: Uuid, messageId: Uuid): QueuedMessage? =
+        sessions[conversationId]?.messageQueue?.beginEdit(messageId)
+
+    fun finishEditQueuedMessage(
+        conversationId: Uuid,
+        messageId: Uuid,
+        parts: List<UIMessagePart>? = null,
+    ) {
+        sessions[conversationId]?.messageQueue?.finishEdit(messageId, parts)
+        dispatchNextQueuedMessage(conversationId)
+    }
+
+    fun resumeMessageQueue(conversationId: Uuid) {
+        sessions[conversationId]?.messageQueue?.resume()
+        dispatchNextQueuedMessage(conversationId)
+    }
+
+    /** 语音入队（移植自 extv）：入队即尝试派发；reply 在撤回（remove/pause）时以 null 结束。 */
+    fun enqueueVoiceMessage(conversationId: Uuid, text: String): Deferred<String?> {
+        val session = getOrCreateSession(conversationId)
+        val reply = CompletableDeferred<String?>()
+        synchronized(session) {
+            check(text.isNotBlank()) { context.getString(R.string.chat_page_voice_empty) }
+            check(
+                !session.messageQueue.state.value.paused ||
+                    session.messageQueue.state.value.messages.isEmpty()
+            ) { context.getString(R.string.chat_page_voice_resume_queue) }
+            check(session.state.value.currentMessages.none { message ->
+                message.parts.any { it is UIMessagePart.Tool && it.isPending }
+            }) { context.getString(R.string.chat_page_voice_tools_before_resume) }
+            if (session.messageQueue.state.value.messages.isEmpty()) session.messageQueue.resume()
+            session.messageQueue.enqueue(listOf(UIMessagePart.Text(text)), reply = reply)
+        }
+        dispatchNextQueuedMessage(conversationId)
+        return reply
+    }
+
+    /**
+     * 目标仓适配（batch 9）：extv 以 session.getJob() 判空档；此处改用 runtime 附着在会话上的
+     * generationJob（onRunJobChanged 维护），同样拦住待审批工具。空档唤醒点见 getOrCreateRuntime
+     * 的 onBecameIdle 回调。
+     */
+    private fun dispatchNextQueuedMessage(conversationId: Uuid): Job? {
+        val session = sessions[conversationId] ?: return null
+        synchronized(session) {
+            if (session.generationJob.value?.isActive == true) return null
+            if (session.state.value.currentMessages.any { message ->
+                    message.parts.any { it is UIMessagePart.Tool && it.isPending }
+                }
+            ) return null
+            val next = session.messageQueue.takeNext() ?: return null
+            return sendQueuedMessage(session, next)
+        }
+    }
+
+    private fun sendQueuedMessage(session: ConversationSession, queued: QueuedMessage): Job {
+        val conversationId = session.id
+        return appScope.launch {
+            try {
+                ensureHydrated(conversationId)
+                val previousIds = session.state.value.currentMessages.map { it.id }.toSet()
+                val tracked = submitUserMessageTracked(
+                    conversationId = conversationId,
+                    content = queued.parts,
+                    answer = queued.answer,
+                    origin = CommandOrigin.APP_UI,
+                )
+                val submission = tracked.submission
+                if (submission !is SubmitResult.Accepted) {
+                    throw IllegalStateException(
+                        (submission as? SubmitResult.Rejected)?.reason
+                            ?: (submission as? SubmitResult.RuntimeUnavailable)?.reason
+                            ?: context.getString(R.string.chat_page_voice_generation_failed)
+                    )
+                }
+                val outcome = tracked.outcome.await()
+                if (outcome != CommandOutcome.Completed) {
+                    throw IllegalStateException(
+                        when (outcome) {
+                            is CommandOutcome.Rejected -> outcome.reason
+                            is CommandOutcome.Failed -> outcome.error.message.orEmpty()
+                            else -> outcome.toString()
+                        }.ifBlank { context.getString(R.string.chat_page_voice_generation_failed) }
+                    )
+                }
+                queued.reply?.let { reply ->
+                    runCatching {
+                        session.state.value.currentMessages
+                            .filter { it.id !in previousIds && it.role == MessageRole.ASSISTANT }
+                            .joinToString("\n") { it.toText() }
+                    }.onSuccess { reply.complete(it) }
+                        .onFailure { reply.completeExceptionally(it) }
+                }
+            } catch (e: Exception) {
+                queued.reply?.completeExceptionally(e)
+                if (e is CancellationException) throw e
+                session.messageQueue.pause()
+                addError(e, conversationId, title = context.getString(R.string.error_title_send_message))
+            }
         }
     }
 
@@ -5291,6 +5415,43 @@ class ChatService(
 
     fun updateConversationState(conversationId: Uuid, update: (Conversation) -> Conversation) {
         mergeConversationState(conversationId, update)
+    }
+
+    /**
+     * 移动会话到文件夹（folderId 为 null 表示移出到未归类）。
+     *
+     * 若该会话当前有活跃 session（正在查看或后台生成），先同步内存态再落库：
+     * 否则仅改数据库 folder_id，而内存里那份 Conversation 仍是旧 folderId，
+     * 后续任意 saveConversation(id, state.value) 会用整对象把 folder_id 覆盖回旧值，导致移动丢失。
+     * 先改内存可确保这段窗口内的整对象保存也带上新 folderId。
+     */
+    suspend fun moveConversationToFolder(conversationId: Uuid, folderId: Uuid?) {
+        if (sessions.containsKey(conversationId)) {
+            updateConversationState(conversationId) { it.copy(folderId = folderId?.toString() ?: "") }
+        }
+        conversationRepo.updateConversationFolderId(conversationId, folderId)
+    }
+
+    /**
+     * 文件夹内是否存在正在生成回复的会话。
+     * 仅活跃 session 可能在生成；内存态 folderId 为权威（移动会先同步内存态）。
+     */
+    fun hasGeneratingConversationInFolder(folderId: Uuid): Boolean {
+        return sessions.values.any { it.isGenerating && it.state.value.folderId == folderId.toString() }
+    }
+
+    /**
+     * 删除文件夹（folder_id 归属会被清空，会话本身保留）。
+     *
+     * 先把内存中归属该文件夹的活跃 session folderId 置空，再删库：
+     * 否则 clearFolder 只改了数据库，而活跃 session 内存态仍指向该文件夹，
+     * 后续整对象保存会写回一个已被删除的 folder_id，导致会话在列表中悬空。
+     */
+    suspend fun deleteFolder(folderId: Uuid) {
+        sessions.values
+            .filter { it.state.value.folderId == folderId.toString() }
+            .forEach { updateConversationState(it.id) { c -> c.copy(folderId = "") } }
+        folderRepository.deleteFolder(folderId)
     }
 
     private fun mergeConversationState(

@@ -43,6 +43,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.AiBrain01
 import me.rerere.hugeicons.stroke.AiMagic
 import me.rerere.hugeicons.stroke.Alert01
 import me.rerere.hugeicons.stroke.Tick01
@@ -285,6 +286,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { Icon(HugeIcons.McpServer, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_mcp_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_mcp)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.SettingSubAgents) },
+                        leadingContent = { Icon(HugeIcons.AiBrain01, null) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_sub_agents_desc)) },
+                        headlineContent = { Text(stringResource(R.string.setting_page_sub_agents)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingWeb) },

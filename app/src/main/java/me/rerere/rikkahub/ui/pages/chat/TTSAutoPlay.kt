@@ -18,7 +18,10 @@ fun TTSAutoPlay(vm: ChatVM, setting: Settings, conversation: Conversation) {
     val updatedSetting by rememberUpdatedState(setting)
     LaunchedEffect(Unit) {
         vm.generationDoneFlow.collect { conversationId ->
-            if (updatedSetting.displaySetting.autoPlayTTSAfterGeneration) {
+            // 语音模式进行中由语音会话独占朗读（移植自 extv，batch 9）。
+            if (!vm.voiceSession.state.value.isActive &&
+                updatedSetting.displaySetting.autoPlayTTSAfterGeneration
+            ) {
                 val lastMessage = currentConversation.currentMessages.lastOrNull()
                 if (lastMessage != null && lastMessage.role == MessageRole.ASSISTANT) {
                     val text = lastMessage.toText()

@@ -71,6 +71,7 @@ object CapabilityCatalog {
         LocalToolOption.Tts to setOf("text_to_speech", "tts_library_list", "tts_library_play"),
         LocalToolOption.AskUser to setOf("ask_user"),
         LocalToolOption.ScreenTime to setOf("get_screen_time"),
+        LocalToolOption.UsageStats to setOf("get_device_usage_stats", "usage_lock_control"),
         LocalToolOption.Calendar to setOf(
             "calendar_query", "calendar_create", "calendar_delete", "calendar_update",
         ),
@@ -96,6 +97,7 @@ object CapabilityCatalog {
         LocalToolOption.Download to setOf("download_file", "write_text_file"),
         LocalToolOption.Wallpaper to setOf("set_wallpaper"),
         LocalToolOption.Location to setOf("get_location"),
+        LocalToolOption.Weather to setOf("get_local_weather"),
         LocalToolOption.StepCounter to setOf("get_step_count"),
         LocalToolOption.Contacts to setOf("search_contacts", "list_contacts"),
         LocalToolOption.CallLog to setOf("list_call_log"),
@@ -113,7 +115,10 @@ object CapabilityCatalog {
             "tap", "long_press", "swipe", "read_window_tree", "find_node", "click_node",
             "set_text", "scroll", "global_action", "take_screenshot", "wake_screen",
         ),
-        LocalToolOption.AppLauncher to setOf("launch_app", "list_installed_apps", "open_url"),
+        LocalToolOption.AppLauncher to setOf(
+            "launch_app", "list_installed_apps", "open_url",
+            "launch_activity", "list_app_activities",
+        ),
         LocalToolOption.SystemIntents to setOf(
             "create_calendar_event", "create_contact", "send_email_intent", "send_sms_intent",
             "open_wifi_settings", "show_location_on_map",
@@ -163,7 +168,7 @@ object CapabilityCatalog {
             "external_automation_add_trusted_package",
             "external_automation_remove_trusted_package",
         ),
-        LocalToolOption.WebFetch to setOf("web_fetch"),
+        LocalToolOption.WebFetch to setOf("web_fetch", "web_extract"),
         LocalToolOption.Browser to me.rerere.rikkahub.browser.BrowserToolDefaults.ALL_TOOLS.toSet(),
         LocalToolOption.NotificationListener to setOf(
             "list_recent_notifications", "list_active_notifications", "dismiss_notification",
@@ -201,6 +206,7 @@ object CapabilityCatalog {
     private val activityToolNames: Set<String> = setOf(
         "share",
         "launch_app",
+        "launch_activity",
         "open_url",
         "show_image",
         "open_file",
@@ -387,6 +393,7 @@ object CapabilityCatalog {
         "telegram_status",
         "transcribe_audio_file",
         "web_fetch",
+        "web_extract",
         "whisper_status",
         "clipboard_tool",
         "text_to_speech",
@@ -427,6 +434,7 @@ object CapabilityCatalog {
         "get_media_status",
         "get_location",
         "reverse_geocode",
+        "get_local_weather",
         "get_step_count",
         "search_contacts",
         "list_contacts",
@@ -436,6 +444,7 @@ object CapabilityCatalog {
         "list_jobs",
         "get_job_history",
         "list_installed_apps",
+        "list_app_activities",
         "list_files",
         "read_file",
         "file_info",
@@ -816,6 +825,20 @@ object CapabilityCatalog {
             allowedOrigins = InvocationSurfacePolicy.ALL_NON_KEYGUARD,
         ))
 
+        // Local weather (ported from jude, batch 7). Reads device location + calls the
+        // Open-Meteo API; per-call approval mirrors the tool's needsApproval gate.
+        reg(CapabilityDescriptor(
+            id = CapabilityId.Weather,
+            localToolOption = LocalToolOption.Weather,
+            requirements = listOf(
+                CapabilityRequirement.RuntimePermission(Manifest.permission.ACCESS_COARSE_LOCATION),
+            ),
+            implementationState = ImplementationState.Implemented,
+            riskLevel = RiskLevel.Medium,
+            approvalPolicy = ApprovalPolicy.AlwaysAsk,
+            allowedOrigins = InvocationSurfacePolicy.ALL_NON_KEYGUARD,
+        ))
+
         reg(CapabilityDescriptor(
             id = CapabilityId.ReverseGeocoding,
             localToolOption = null,
@@ -978,6 +1001,22 @@ object CapabilityCatalog {
         reg(CapabilityDescriptor(
             id = CapabilityId.ScreenTime,
             localToolOption = LocalToolOption.ScreenTime,
+            requirements = listOf(
+                CapabilityRequirement.SpecialAccess(SpecialAccessType.UsageStats),
+            ),
+            implementationState = ImplementationState.Implemented,
+            riskLevel = RiskLevel.Medium,
+            approvalPolicy = ApprovalPolicy.AlwaysAsk,
+            allowedOrigins = InvocationSurfacePolicy.LOCAL_UNLOCKED,
+            requiresForegroundApp = true,
+        ))
+
+        // Device usage stats + AI usage lock (ported from jude, batch 4). Usage Access
+        // special access covers both tools; lock executes on the service, stats reads
+        // the system UsageStatsManager.
+        reg(CapabilityDescriptor(
+            id = CapabilityId.UsageStats,
+            localToolOption = LocalToolOption.UsageStats,
             requirements = listOf(
                 CapabilityRequirement.SpecialAccess(SpecialAccessType.UsageStats),
             ),

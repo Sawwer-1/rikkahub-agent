@@ -39,6 +39,7 @@ enum class CapabilityId {
 
     // ── Location & Sensors ────────────────────────────────────────────────────────
     Location,
+    Weather,
     ReverseGeocoding,
     GnssDiagnostics,
     StepCounter,
@@ -56,6 +57,7 @@ enum class CapabilityId {
 
     // ── System Automation ─────────────────────────────────────────────────────────
     ScreenTime,
+    UsageStats,
     CronJobs,
     ScreenAutomation,
     AppLauncher,

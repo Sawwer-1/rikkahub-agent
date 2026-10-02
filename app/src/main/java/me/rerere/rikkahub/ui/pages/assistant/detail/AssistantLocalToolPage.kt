@@ -651,6 +651,25 @@ private fun AssistantLocalToolContent(
             )
             item(
                 headlineContent = {
+                    Text(stringResource(R.string.assistant_page_local_tools_weather_title))
+                },
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_local_tools_weather_desc))
+                },
+                trailingContent = {
+                    PermissionedSwitch(
+                        checked = assistant.localTools.contains(LocalToolOption.Weather),
+                        onCheckedChange = { toggleLocalTool(LocalToolOption.Weather, it) },
+                        requiredRuntimePerms = listOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION,
+                        ),
+                        runtimePermissionPolicy = RuntimePermissionPolicy.ANY,
+                    )
+                }
+            )
+            item(
+                headlineContent = {
                     Text(stringResource(R.string.assistant_page_local_tools_contacts_title))
                 },
                 supportingContent = {

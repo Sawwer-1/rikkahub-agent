@@ -125,6 +125,7 @@ import me.rerere.rikkahub.data.ai.tools.local.callPhoneTool
 import me.rerere.rikkahub.data.ai.tools.local.batchCopyTool
 import me.rerere.rikkahub.data.ai.tools.local.batchMoveTool
 import me.rerere.rikkahub.data.ai.tools.local.batchDeleteTool
+import me.rerere.rikkahub.data.ai.tools.local.webExtractTool
 import me.rerere.rikkahub.data.ai.tools.local.webFetchTool
 import me.rerere.rikkahub.data.ai.tools.local.alarmCreateTool
 import me.rerere.rikkahub.data.ai.tools.local.alarmListTool
@@ -179,6 +180,10 @@ sealed class LocalToolOption {
     @Serializable
     @SerialName("usage_stats")
     data object UsageStats : LocalToolOption()
+
+    @Serializable
+    @SerialName("weather")
+    data object Weather : LocalToolOption()
 
     @Serializable
     @SerialName("calendar")
@@ -257,10 +262,10 @@ sealed class LocalToolOption {
          */
         val PRIVILEGED_IMPLEMENTED: List<LocalToolOption>
             get() = listOf(
-            JavascriptEngine, TimeInfo, Clipboard, Tts, AskUser, ScreenTime, Calendar,
+            JavascriptEngine, TimeInfo, Clipboard, Tts, AskUser, ScreenTime, UsageStats, Calendar,
             Battery, AudioInfo, TelephonyInfo, WifiInfo, Sensors, HealthSensors, StorageInfo,
             Toast, Notification, Share, Torch, Vibrate, Brightness, Volume, MediaPlayer,
-            MediaScanner, Download, Location, Contacts, CallLog, SmsInbox, CameraPhoto,
+            MediaScanner, Download, Location, Weather, Contacts, CallLog, SmsInbox, CameraPhoto,
             MicRecorder, SpeechToText, Fingerprint, CronJobs, Ssh, TelegramBot,
             ScreenAutomation, AppLauncher, Termux, NotificationListener, Files, McpControl,
             ExternalAutomation, Reliability, SubAgents, CostGuards, Workflows, SkillImport,
@@ -427,6 +432,8 @@ class LocalTools(
     // Social surfaces (ported from jude, batch 3). Isolation key: callerAssistantId.
     private val momentRepository: me.rerere.rikkahub.data.repository.MomentRepository,
     private val anonymousQuestionRepository: me.rerere.rikkahub.data.repository.AnonymousQuestionRepository,
+    // Local weather (ported from jude, batch 7) — backs the get_local_weather tool.
+    private val weatherRepository: me.rerere.weather.WeatherRepository,
 ) {
     private val displayTargetResolver by lazy {
         me.rerere.rikkahub.data.ai.tools.local.DisplayTargetResolver(displayAutomationRuntime)
@@ -780,6 +787,35 @@ class LocalTools(
     }
 
     val screenTimeTool by lazy { buildScreenTimeTool(context, eventBus) }
+
+    // get_local_weather (ported from jude LocalTools.kt:649). Needs approval on every call
+    // because it reads the device location; the repository itself re-checks the runtime
+    // permission and returns a structured error instead of throwing when it is missing.
+    val weatherTool by lazy {
+        Tool(
+            name = "get_local_weather",
+            description = """
+                Get current weather and a short forecast for the user's local Android device location.
+                This reads the device location only after Android location permission has been granted, then calls the built-in weather API directly from the app.
+                Use this only when the user asks about local weather, temperature, rain, wind, or forecast.
+                The tool requires user approval before each execution because location can be sensitive.
+            """.trimIndent().replace("\n", " "),
+            parameters = {
+                InputSchema.Obj(properties = buildJsonObject { })
+            },
+            needsApproval = { true },
+            execute = {
+                val payload = if (!weatherRepository.hasLocationPermission()) {
+                    buildJsonObject {
+                        put("error", "Location permission is not granted.")
+                    }
+                } else {
+                    weatherRepository.loadLocalWeather().toJson()
+                }
+                listOf(UIMessagePart.Text(payload.toString()))
+            }
+        )
+    }
 
     val usageStatsTool by lazy {
         Tool(
@@ -1342,6 +1378,9 @@ class LocalTools(
         if (options.contains(LocalToolOption.UsageStats)) {
             tools.add(usageStatsTool)
         }
+        if (options.contains(LocalToolOption.Weather)) {
+            tools.add(weatherTool)
+        }
         if (usageLockEnabled) {
             tools.add(usageLockTool)
         }
@@ -1517,6 +1556,14 @@ class LocalTools(
             )
             tools.add(me.rerere.rikkahub.data.ai.tools.local.listInstalledAppsTool(context))
             tools.add(me.rerere.rikkahub.data.ai.tools.local.openUrlTool(context, invocationContext, interactiveToolStreamer))
+            tools.add(me.rerere.rikkahub.data.ai.tools.local.listAppActivitiesTool(context))
+            tools.add(
+                me.rerere.rikkahub.data.ai.tools.local.launchActivityTool(
+                    context,
+                    invocationContext,
+                    interactiveToolStreamer,
+                )
+            )
         }
         if (options.contains(LocalToolOption.Termux)) {
             tools.addAll(linuxRuntimeTools(
@@ -1683,6 +1730,8 @@ class LocalTools(
         if (options.contains(LocalToolOption.WebFetch)) {
             // Lightweight HTTP GET/POST (item 1.2) — backed by the shared OkHttp singleton.
             tools.add(webFetchTool(okHttpClient))
+            // Readability wrapper over the same fetch path (web_extract): article/text/links/metadata.
+            tools.add(webExtractTool(okHttpClient))
         }
         // Phase 25 — Phase 3 second cut + ExternalStorage + Archive.
         if (options.contains(LocalToolOption.SmsSend)) {

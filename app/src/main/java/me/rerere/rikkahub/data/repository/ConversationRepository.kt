@@ -142,6 +142,34 @@ class ConversationRepository(
         }
     }
 
+    fun getUnfiledConversationsOfAssistantPaging(assistantId: Uuid): Flow<PagingData<Conversation>> = Pager(
+        config = PagingConfig(
+            pageSize = PAGE_SIZE,
+            initialLoadSize = INITIAL_LOAD_SIZE,
+            enablePlaceholders = false
+        ),
+        pagingSourceFactory = { conversationDAO.getUnfiledConversationsOfAssistantPaging(assistantId.toString()) }
+    ).flow.map { pagingData ->
+        pagingData.map { entity ->
+            // 列表视图不需要完整的 nodes，使用空列表
+            conversationEntityToConversation(entity, emptyList())
+        }
+    }
+
+    fun getConversationsOfFolderPaging(folderId: Uuid): Flow<PagingData<Conversation>> = Pager(
+        config = PagingConfig(
+            pageSize = PAGE_SIZE,
+            initialLoadSize = INITIAL_LOAD_SIZE,
+            enablePlaceholders = false
+        ),
+        pagingSourceFactory = { conversationDAO.getConversationsOfFolderPaging(folderId.toString()) }
+    ).flow.map { pagingData ->
+        pagingData.map { entity ->
+            // 列表视图不需要完整的 nodes，使用空列表
+            conversationEntityToConversation(entity, emptyList())
+        }
+    }
+
     suspend fun getConversationsOfAssistantPage(
         assistantId: Uuid,
         offset: Int,
@@ -522,6 +550,17 @@ class ConversationRepository(
 
     suspend fun updateConversationTitle(conversationId: Uuid, title: String): Boolean =
         mutateMetadata(conversationId, ConversationMetadataMutation.Title(title)) != null
+
+    /**
+     * 单列更新会话的文件夹归属，folderId 为 null 表示移出文件夹（未归类）。
+     * 只改 folder_id 一列，不触碰 nodes / FTS 投影。
+     */
+    suspend fun updateConversationFolderId(conversationId: Uuid, folderId: Uuid?) {
+        conversationDAO.updateFolderId(
+            id = conversationId.toString(),
+            folderId = folderId?.toString() ?: ""
+        )
+    }
 
     /** Existence and field update share the Room write transaction; missing is never creation. */
     suspend fun mutateMetadata(id: Uuid, mutation: ConversationMetadataMutation): Conversation? {
