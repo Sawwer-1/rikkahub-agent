@@ -261,7 +261,7 @@ sealed class LocalToolOption {
          */
         val PRIVILEGED_IMPLEMENTED: List<LocalToolOption>
             get() = listOf(
-            JavascriptEngine, TimeInfo, Clipboard, Tts, AskUser, ScreenTime, Calendar,
+            JavascriptEngine, TimeInfo, Clipboard, Tts, AskUser, ScreenTime, UsageStats, Calendar,
             Battery, AudioInfo, TelephonyInfo, WifiInfo, Sensors, HealthSensors, StorageInfo,
             Toast, Notification, Share, Torch, Vibrate, Brightness, Volume, MediaPlayer,
             MediaScanner, Download, Location, Weather, Contacts, CallLog, SmsInbox, CameraPhoto,

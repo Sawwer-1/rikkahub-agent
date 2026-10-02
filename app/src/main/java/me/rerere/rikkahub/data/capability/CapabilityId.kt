@@ -57,6 +57,7 @@ enum class CapabilityId {
 
     // ── System Automation ─────────────────────────────────────────────────────────
     ScreenTime,
+    UsageStats,
     CronJobs,
     ScreenAutomation,
     AppLauncher,

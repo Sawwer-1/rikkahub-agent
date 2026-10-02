@@ -71,6 +71,7 @@ object CapabilityCatalog {
         LocalToolOption.Tts to setOf("text_to_speech", "tts_library_list", "tts_library_play"),
         LocalToolOption.AskUser to setOf("ask_user"),
         LocalToolOption.ScreenTime to setOf("get_screen_time"),
+        LocalToolOption.UsageStats to setOf("get_device_usage_stats", "usage_lock_control"),
         LocalToolOption.Calendar to setOf(
             "calendar_query", "calendar_create", "calendar_delete", "calendar_update",
         ),
@@ -994,6 +995,22 @@ object CapabilityCatalog {
         reg(CapabilityDescriptor(
             id = CapabilityId.ScreenTime,
             localToolOption = LocalToolOption.ScreenTime,
+            requirements = listOf(
+                CapabilityRequirement.SpecialAccess(SpecialAccessType.UsageStats),
+            ),
+            implementationState = ImplementationState.Implemented,
+            riskLevel = RiskLevel.Medium,
+            approvalPolicy = ApprovalPolicy.AlwaysAsk,
+            allowedOrigins = InvocationSurfacePolicy.LOCAL_UNLOCKED,
+            requiresForegroundApp = true,
+        ))
+
+        // Device usage stats + AI usage lock (ported from jude, batch 4). Usage Access
+        // special access covers both tools; lock executes on the service, stats reads
+        // the system UsageStatsManager.
+        reg(CapabilityDescriptor(
+            id = CapabilityId.UsageStats,
+            localToolOption = LocalToolOption.UsageStats,
             requirements = listOf(
                 CapabilityRequirement.SpecialAccess(SpecialAccessType.UsageStats),
             ),
