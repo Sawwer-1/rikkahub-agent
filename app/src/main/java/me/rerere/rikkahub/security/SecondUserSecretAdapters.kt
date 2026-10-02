@@ -197,16 +197,22 @@ internal fun ASRProviderSetting.legacyApiKeyOrNull(): String? = when (this) {
     is ASRProviderSetting.OpenAIRealtime -> apiKey
     is ASRProviderSetting.DashScope -> apiKey
     is ASRProviderSetting.Volcengine -> apiKey
+    is ASRProviderSetting.MiMo -> apiKey
+    is ASRProviderSetting.Step -> apiKey
 }
 
 internal fun ASRProviderSetting.clearLegacyApiKey(): ASRProviderSetting = when (this) {
     is ASRProviderSetting.OpenAIRealtime -> copy(apiKey = "")
     is ASRProviderSetting.DashScope -> copy(apiKey = "")
     is ASRProviderSetting.Volcengine -> copy(apiKey = "")
+    is ASRProviderSetting.MiMo -> copy(apiKey = "")
+    is ASRProviderSetting.Step -> copy(apiKey = "")
 }
 
 private fun ASRProviderSetting.withVaultApiKey(chars: CharArray): ASRProviderSetting = when (this) {
     is ASRProviderSetting.OpenAIRealtime -> copy(apiKey = chars.concatToString())
     is ASRProviderSetting.DashScope -> copy(apiKey = chars.concatToString())
     is ASRProviderSetting.Volcengine -> copy(apiKey = chars.concatToString())
+    is ASRProviderSetting.MiMo -> copy(apiKey = chars.concatToString())
+    is ASRProviderSetting.Step -> copy(apiKey = chars.concatToString())
 }

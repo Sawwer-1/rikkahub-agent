@@ -1187,9 +1187,10 @@ private fun ChatFilesPickerSheet(
             onPickAudio = { audioPickerLauncher.launch("audio/*") },
             onPickFile = { filePickerLauncher.launch(arrayOf("*/*")) },
             // 语音模式入口（移植自 extv，batch 9）：无 ASR 供应商或语音会话进行中时隐藏。
-            // 目标仓三种 ASR 供应商均为 realtime 断句，无 extv 的 supportsServerVadVoiceMode 位。
+            // batch 11b 起 ASR 新增 MiMo / Step 两家 HTTP 分段供应商, 不具备服务端断句能力,
+            // 入口按 supportsServerVadVoiceMode 过滤（与 extv 一致）。
             onStartVoiceMode = if (
-                setting.getSelectedASRProvider() != null &&
+                setting.getSelectedASRProvider()?.supportsServerVadVoiceMode == true &&
                 voiceState.phase == VoicePhase.Off
             ) {
                 {

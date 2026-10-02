@@ -192,7 +192,17 @@ fun WorkspaceDetailPage(id: String) {
                     contentPadding = PaddingValues(),
                     onSelectArea = vm::selectArea,
                     onGoUp = vm::goUp,
-                    onOpen = vm::open,
+                    onOpen = { entry ->
+                        when {
+                            entry.isDirectory -> vm.open(entry)
+
+                            entry.isOpenableInEditor() -> navController.navigate(
+                                Screen.WorkspaceFileEditor(id, state.area.name, entry.path)
+                            )
+
+                            else -> Unit
+                        }
+                    },
                     onDelete = { deleteTarget = it },
                     onExport = { entry ->
                         exportTarget = entry
@@ -650,7 +660,7 @@ private fun WorkspaceFileCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (entry.isDirectory) Modifier.clickable(onClick = onOpen) else Modifier),
+            .then(if (entry.isDirectory || entry.isOpenableInEditor()) Modifier.clickable(onClick = onOpen) else Modifier),
         colors = CustomColors.cardColorsOnSurfaceContainer,
     ) {
         Row(
@@ -782,6 +792,16 @@ private fun ErrorCard(message: String) {
         )
     }
 }
+
+/**
+ * Whether tapping the file should open the in-app editor. SVG is classified as IMAGE by
+ * [detectFileType] but the editor can preview it, so it is handled explicitly here.
+ */
+private fun WorkspaceFileEntry.isOpenableInEditor(): Boolean =
+    !isDirectory && (
+        detectFileType() == WorkspaceFileType.TEXT ||
+            name.substringAfterLast('.', "").equals("svg", ignoreCase = true)
+        )
 
 private fun formatBytes(bytes: Long): String {
     if (bytes < 1024) return "$bytes B"
