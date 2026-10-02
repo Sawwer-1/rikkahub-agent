@@ -1390,6 +1390,20 @@ class OwnerApplicationControlHandler(
             websocketUrl = args.string("websocket_url")?.take(2_048) ?: provider.websocketUrl,
             language = args.string("language")?.take(40) ?: provider.language,
         )
+        is ASRProviderSetting.MiMo -> provider.copy(
+            name = args.string("name")?.take(160) ?: provider.name,
+            baseUrl = args.string("base_url")?.take(2_048) ?: provider.baseUrl,
+            model = args.string("model")?.take(200) ?: provider.model,
+            language = args.string("language")?.take(40) ?: provider.language,
+            sampleRate = (args.int("sample_rate") ?: provider.sampleRate).coerceIn(8_000, 48_000),
+        )
+        is ASRProviderSetting.Step -> provider.copy(
+            name = args.string("name")?.take(160) ?: provider.name,
+            baseUrl = args.string("base_url")?.take(2_048) ?: provider.baseUrl,
+            model = args.string("model")?.take(200) ?: provider.model,
+            language = args.string("language")?.take(40) ?: provider.language,
+            sampleRate = (args.int("sample_rate") ?: provider.sampleRate).coerceIn(8_000, 48_000),
+        )
     }
 
     private suspend fun safetySnapshot() = SafetySnapshot(
