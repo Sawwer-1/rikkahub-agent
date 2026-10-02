@@ -312,6 +312,12 @@ data class ConversationListInvalidateEvent(
     val timestamp: Long
 )
 
+@Serializable
+data class FolderListEvent(
+    val assistantId: String,
+    val folders: List<FolderDto>,
+)
+
 // ========== Conversion Extensions ==========
 
 fun Conversation.toListDto(isGenerating: Boolean = false) = ConversationListDto(

@@ -32,6 +32,7 @@ import me.rerere.rikkahub.web.dto.WebAuthTokenResponse
 import me.rerere.rikkahub.web.routes.aiIconRoutes
 import me.rerere.rikkahub.web.routes.assetsRoutes
 import me.rerere.rikkahub.web.routes.conversationRoutes
+import me.rerere.rikkahub.web.routes.eventsRoutes
 import me.rerere.rikkahub.web.routes.filesRoutes
 import me.rerere.rikkahub.web.routes.folderRoutes
 import me.rerere.rikkahub.web.routes.settingsRoutes
@@ -170,6 +171,7 @@ fun Application.configureWebApi(
                 authenticate("auth-jwt") {
                     conversationRoutes(chatService, conversationRepo, settingsStore)
                     folderRoutes(chatService, folderRepo, settingsStore)
+                    eventsRoutes(chatService, conversationRepo, folderRepo, settingsStore)
                     settingsRoutes(settingsStore)
                     filesRoutes(filesManager, context)
                     assetsRoutes(context)
@@ -177,6 +179,7 @@ fun Application.configureWebApi(
             } else {
                 conversationRoutes(chatService, conversationRepo, settingsStore)
                 folderRoutes(chatService, folderRepo, settingsStore)
+                eventsRoutes(chatService, conversationRepo, folderRepo, settingsStore)
                 settingsRoutes(settingsStore)
                 filesRoutes(filesManager, context)
                 assetsRoutes(context)

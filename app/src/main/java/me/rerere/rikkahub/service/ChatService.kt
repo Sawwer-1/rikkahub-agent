@@ -605,6 +605,21 @@ internal fun ChatCommand.requiresMemorySourceReadiness(): Boolean = when (this) 
 }
 
 /**
+ * 生成保活判定（移植自 extv，batch 11a）：会驱动模型/工具回合的前台工作命令在运行期间
+ * 占用前台服务；与 [requiresMemorySourceReadiness] 同一命令集合。answer=false 的投递
+ * 只落库、不触发生成（对齐 extv 的 keepAliveInBackground = answer），不占用前台。
+ */
+private fun ChatCommand.keepsForegroundWhileRunning(): Boolean = when (this) {
+    is SendMessageCommand -> content.answer
+    is InterruptCommand -> replacement.content.answer
+    is InterruptRegenerateCommand -> true
+    is RegenerateCommand -> true
+    is ToolApprovalCommand -> true
+    ResumeAfterApprovalCommand -> true
+    else -> false
+}
+
+/**
  * Returns the startup reconciliation failure for model-facing commands, or null when it is safe
  * to continue. Cancellation and VM errors are never converted into an ordinary rejection.
  */
@@ -1109,6 +1124,35 @@ class ChatService(
         }
     }
 
+    // ---- 后台生成保活（移植自 extv，batch 11a）----
+    // 生成类命令执行期间以前台服务 + 部分唤醒锁保活，用户退出 App 后生成不中断。
+    // 引用计数：首个 acquire 拉起服务，最后一个 release 才停掉（多会话/排队消息并发安全）。
+    private val foregroundWorkTracker = ForegroundWorkTracker(
+        onFirstAcquire = { ChatGenerationForegroundService.start(context) },
+        onLastRelease = { ChatGenerationForegroundService.stop(context) },
+    )
+
+    /**
+     * 生成开始点位（batch 11a）：为模型面命令占用前台工作，并等待服务就绪（startForeground
+     * 与唤醒锁均已生效）后才放行执行，避免流式连接先于前台提升建立。返回的合租约由
+     * ConversationRuntime 在 run 结束（含取消/异常）时统一关闭——即停止点位，与 learning
+     * 租约同生共死。
+     */
+    private suspend fun acquireForegroundGenerationLease(
+        learningLease: me.rerere.rikkahub.learning.resources.LearningForegroundLease,
+    ): AutoCloseable {
+        val releaseForegroundWork = foregroundWorkTracker.acquire()
+        ChatGenerationForegroundService.start(context)
+        if (!ChatGenerationForegroundService.awaitReady()) {
+            // 设备策略拒绝前台提升时保持可用的降级路径，仅记日志。
+            Log.w(TAG, "Chat foreground service was not ready before generation started")
+        }
+        return AutoCloseable {
+            releaseForegroundWork()
+            learningLease.close()
+        }
+    }
+
     init {
         // 添加生命周期观察�?
         ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver)
@@ -1323,12 +1367,18 @@ class ChatService(
                         dispatchNextQueuedMessage(runtimeId)
                     },
                     onRunJobChanged = { job -> session.attachRunJob(job) },
-                    onRunStarted = {
-                        learningForegroundRegistry.enter(
+                    onRunStarted = { envelope ->
+                        val learningLease = learningForegroundRegistry.enter(
                             me.rerere.rikkahub.learning.resources.LearningForegroundWorkKind
                                 .CONVERSATION_EXECUTION,
                             kotlinx.coroutines.currentCoroutineContext()[Job],
                         )
+                        // 生成开始点位（batch 11a）：模型面命令在运行期间占用前台服务保活。
+                        if (envelope.command.keepsForegroundWhileRunning()) {
+                            acquireForegroundGenerationLease(learningLease)
+                        } else {
+                            learningLease
+                        }
                     },
                     onPetRunStarted = {
                         learningForegroundRegistry.enter(
@@ -4877,12 +4927,30 @@ class ChatService(
         }
         if (!shouldGenerate) return
 
+        // 标题回退（移植自 extv，batch 11a）：标题模型缺失/禁用/失败或返回空时，用首条
+        // 用户消息首行兜底，保证标题最终落定；写入门槛由 GeneratedTitle 变异在仓库层
+        // 原子保证（force || 现存标题为空），此处不再重复判定。
+        val fallback = titleFallbackFrom(conversation.currentMessages)
+
+        suspend fun applyTitle(title: String?) {
+            if (title.isNullOrBlank()) return
+            mutateConversationMetadata(
+                conversationId,
+                me.rerere.rikkahub.data.repository.ConversationMetadataMutation.GeneratedTitle(title, force),
+            )
+        }
+
         runCatching {
             val settings = settingsStore.settingsFlow.first()
-            val model = settings.findModelById(settings.titleModelId, fallback = settings.fastModelId) ?: return
-            val provider = model.findProvider(settings.providers) ?: return
+            val model = settings.findModelById(settings.titleModelId, fallback = settings.fastModelId)
+                ?: run { applyTitle(fallback); return@runCatching }
+            val provider = model.findProvider(settings.providers)
+                ?: run { applyTitle(fallback); return@runCatching }
             // Same defence as handleLlmTurn: don't burn tokens on a disabled provider.
-            if (!provider.enabled) return
+            if (!provider.enabled) {
+                applyTitle(fallback)
+                return@runCatching
+            }
 
             val providerHandler = providerManager.getProviderByType(provider)
             val result = providerHandler.generateText(
@@ -4899,8 +4967,7 @@ class ChatService(
             )
 
             val generatedTitle = result.choices[0].message?.toText()?.trim().orEmpty()
-            mutateConversationMetadata(conversationId,
-                me.rerere.rikkahub.data.repository.ConversationMetadataMutation.GeneratedTitle(generatedTitle, force))
+            applyTitle(generatedTitle.ifBlank { fallback })
         }.onFailure {
             if (it is CancellationException) throw it
             // Title generation is auxiliary �?a failure here doesn't block the chat
@@ -4910,6 +4977,8 @@ class ChatService(
             // and the user gets a popup per message until they switch models. Match
             // the generateSuggestion pattern (log only) to keep the surface quiet.
             Log.w(TAG, "generateTitle failed", it)
+            runCatching { applyTitle(fallback) }
+                .onFailure { e -> Log.w(TAG, "generateTitle fallback apply failed", e) }
         }
     }
 
