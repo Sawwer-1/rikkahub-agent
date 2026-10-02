@@ -50,6 +50,7 @@ import org.koin.compose.koinInject
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import androidx.compose.ui.res.stringResource
 
 @Composable
 fun AlarmSettingsPage() {
@@ -67,7 +68,7 @@ fun AlarmSettingsPage() {
     Scaffold(
         topBar = {
             LargeTopAppBar(
-                title = { Text("Alarm") },
+                title = { Text(stringResource(R.string.ui2_alarm_title)) },
                 navigationIcon = { BackButton() },
                 scrollBehavior = scrollBehavior,
             )
@@ -86,10 +87,10 @@ fun AlarmSettingsPage() {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Exact alarm permission not granted. Alarms may not fire on time.", color = MaterialTheme.colorScheme.onErrorContainer)
+                        Text(stringResource(R.string.ui2_alarm_exact_permission_warning), color = MaterialTheme.colorScheme.onErrorContainer)
                         Spacer(Modifier.height(8.dp))
                         Button(onClick = { automation.openExactAlarmSettings() }) {
-                            Text("Grant permission")
+                            Text(stringResource(R.string.ui2_alarm_grant_permission))
                         }
                     }
                 }
@@ -97,7 +98,7 @@ fun AlarmSettingsPage() {
             }
 
             if (alarms.isEmpty()) {
-                Text("No alarms set. Ask the AI to create one!", style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.ui2_alarm_empty), style = MaterialTheme.typography.bodyLarge)
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(alarms, key = { it.id }) { alarm ->
@@ -130,6 +131,15 @@ private fun AlarmCard(
     onDelete: () -> Unit,
 ) {
     val zone = ZoneId.systemDefault()
+    val dayLabels = listOf(
+        stringResource(R.string.ui2_alarm_day_mon),
+        stringResource(R.string.ui2_alarm_day_tue),
+        stringResource(R.string.ui2_alarm_day_wed),
+        stringResource(R.string.ui2_alarm_day_thu),
+        stringResource(R.string.ui2_alarm_day_fri),
+        stringResource(R.string.ui2_alarm_day_sat),
+        stringResource(R.string.ui2_alarm_day_sun),
+    )
     val timeStr = when (alarm.scheduleType) {
         "once" -> alarm.time?.let {
             try {
@@ -140,7 +150,7 @@ private fun AlarmCard(
             val h = alarm.hour ?: 0
             val m = alarm.minute ?: 0
             val days = alarm.daysOfWeek?.split(",")?.mapNotNull { it.toIntOrNull() }
-                ?.map { listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun").getOrElse(it - 1) { "?" } }
+                ?.map { dayLabels.getOrElse(it - 1) { "?" } }
                 ?.joinToString(", ") ?: "—"
             "${"%02d".format(h)}:%02d".format(m) + " ($days)"
         }
@@ -161,7 +171,7 @@ private fun AlarmCard(
             Switch(checked = alarm.enabled, onCheckedChange = onToggleEnabled)
             Spacer(Modifier.width(4.dp))
             IconButton(onClick = onDelete) {
-                Icon(HugeIcons.Delete01, "Delete", tint = MaterialTheme.colorScheme.error)
+                Icon(HugeIcons.Delete01, stringResource(R.string.ui2_alarm_delete), tint = MaterialTheme.colorScheme.error)
             }
         }
     }

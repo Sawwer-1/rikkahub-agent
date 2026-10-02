@@ -89,7 +89,7 @@ class SkillsVM(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val info = parseGitHubUrl(repoUrl) ?: run {
-                    withContext(Dispatchers.Main) { onResult(false, "Invalid GitHub repository URL") }
+                    withContext(Dispatchers.Main) { onResult(false, context.getString(R.string.ui2_skills_error_invalid_github_url)) }
                     return@launch
                 }
 
@@ -97,24 +97,24 @@ class SkillsVM(
                 val files = mutableListOf<Pair<String, String>>() // relativePath -> downloadUrl
                 val listed = listFilesRecursively(info.owner, info.repo, info.branch, info.path, info.path, files)
                 if (!listed) {
-                    withContext(Dispatchers.Main) { onResult(false, "Failed to list GitHub directory contents") }
+                    withContext(Dispatchers.Main) { onResult(false, context.getString(R.string.ui2_skills_error_list_failed)) }
                     return@launch
                 }
 
                 val skillMdEntry = files.find { it.first == "SKILL.md" } ?: run {
-                    withContext(Dispatchers.Main) { onResult(false, "No SKILL.md found in the directory") }
+                    withContext(Dispatchers.Main) { onResult(false, context.getString(R.string.ui2_skills_error_no_skill_md)) }
                     return@launch
                 }
 
                 val skillMdContent = downloadText(skillMdEntry.second) ?: run {
-                    withContext(Dispatchers.Main) { onResult(false, "Failed to download SKILL.md — check the URL and your network") }
+                    withContext(Dispatchers.Main) { onResult(false, context.getString(R.string.ui2_skills_error_download_skill_md)) }
                     return@launch
                 }
 
                 val frontmatter = SkillFrontmatterParser.parse(skillMdContent)
                 val name = frontmatter["name"]
                 if (name.isNullOrBlank()) {
-                    withContext(Dispatchers.Main) { onResult(false, "SKILL.md is missing the required 'name' field") }
+                    withContext(Dispatchers.Main) { onResult(false, context.getString(R.string.ui2_skills_error_missing_name)) }
                     return@launch
                 }
 
@@ -122,7 +122,12 @@ class SkillsVM(
                 for ((relativePath, downloadUrl) in files) {
                     val content = downloadText(downloadUrl)
                     if (content == null) {
-                        withContext(Dispatchers.Main) { onResult(false, "Failed to download file: $relativePath") }
+                        withContext(Dispatchers.Main) {
+                            onResult(
+                                false,
+                                context.getString(R.string.ui2_skills_error_download_file, relativePath),
+                            )
+                        }
                         return@launch
                     }
                     fileContents[relativePath] = content
@@ -130,14 +135,14 @@ class SkillsVM(
 
                 val saved = skillManager.saveSkillFilesAtomically(name, fileContents)
                 if (!saved) {
-                    withContext(Dispatchers.Main) { onResult(false, "Failed to save skill files") }
+                    withContext(Dispatchers.Main) { onResult(false, context.getString(R.string.ui2_skills_error_save_failed)) }
                     return@launch
                 }
 
                 _skills.value = skillManager.listSkills()
                 withContext(Dispatchers.Main) { onResult(true, name) }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { onResult(false, e.message ?: "Unknown error") }
+                withContext(Dispatchers.Main) { onResult(false, e.message ?: context.getString(R.string.ui2_common_unknown_error)) }
             }
         }
     }

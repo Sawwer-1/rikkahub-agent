@@ -128,7 +128,7 @@ private fun OpenAIRealtimeASRConfiguration(
             onValueChange = { onValueChange(setting.copy(prompt = it)) },
             modifier = Modifier.fillMaxWidth(),
             minLines = 2,
-            placeholder = { Text("Optional") }
+            placeholder = { Text(stringResource(R.string.ui2_asr_prompt_placeholder)) }
         )
     }
 
@@ -144,7 +144,7 @@ private fun OpenAIRealtimeASRConfiguration(
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            label = "VAD Threshold"
+            label = stringResource(R.string.ui2_asr_vad_threshold)
         )
     }
 
@@ -160,7 +160,7 @@ private fun OpenAIRealtimeASRConfiguration(
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            label = "Prefix Padding"
+            label = stringResource(R.string.ui2_asr_prefix_padding)
         )
     }
 
@@ -176,7 +176,7 @@ private fun OpenAIRealtimeASRConfiguration(
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            label = "Silence Duration"
+            label = stringResource(R.string.ui2_asr_silence_duration)
         )
     }
 }
@@ -246,7 +246,7 @@ private fun DashScopeASRConfiguration(
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            label = "VAD Threshold"
+            label = stringResource(R.string.ui2_asr_vad_threshold)
         )
     }
 
@@ -262,7 +262,7 @@ private fun DashScopeASRConfiguration(
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            label = "Silence Duration"
+            label = stringResource(R.string.ui2_asr_silence_duration)
         )
     }
 }
@@ -386,7 +386,7 @@ private fun MiMoASRConfiguration(
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            label = "Sample Rate"
+            label = stringResource(R.string.ui2_asr_sample_rate)
         )
     }
 
@@ -402,7 +402,7 @@ private fun MiMoASRConfiguration(
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            label = "Segment Duration (s)"
+            label = stringResource(R.string.ui2_asr_segment_duration)
         )
     }
 }
@@ -472,7 +472,7 @@ private fun StepASRConfiguration(
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            label = "Sample Rate"
+            label = stringResource(R.string.ui2_asr_sample_rate)
         )
     }
 
@@ -488,7 +488,7 @@ private fun StepASRConfiguration(
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            label = "Segment Duration (s)"
+            label = stringResource(R.string.ui2_asr_segment_duration)
         )
     }
 

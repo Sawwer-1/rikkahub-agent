@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
@@ -60,7 +61,7 @@ fun EmergencyStopPage() {
     Scaffold(
         topBar = {
             LargeTopAppBar(
-                title = { Text("Safety & Emergency Stop") },
+                title = { Text(stringResource(R.string.ui3_emergency_title)) },
                 navigationIcon = { BackButton() },
                 scrollBehavior = scrollBehavior,
             )
@@ -100,7 +101,7 @@ fun EmergencyStopPage() {
                         )
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            text = if (emergencyStop) "EMERGENCY STOP ACTIVE" else "Agent is Running",
+                            text = if (emergencyStop) stringResource(R.string.ui3_emergency_active) else stringResource(R.string.ui3_emergency_running),
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             color = if (emergencyStop)
@@ -112,12 +113,9 @@ fun EmergencyStopPage() {
                         Spacer(Modifier.height(8.dp))
                         Text(
                             text = if (emergencyStop)
-                                "All agent tool execution is paused. No tools can be called " +
-                                        "from any origin (local, remote, or automated). Tap Resume " +
-                                        "to restore normal operation."
+                                stringResource(R.string.ui3_emergency_active_desc)
                             else
-                                "Agent tools and automation are active. Tap the button below " +
-                                        "to immediately stop ALL tool execution.",
+                                stringResource(R.string.ui3_emergency_running_desc),
                             style = MaterialTheme.typography.bodyMedium,
                             textAlign = TextAlign.Center,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -138,7 +136,7 @@ fun EmergencyStopPage() {
                             modifier = Modifier.fillMaxWidth(0.7f),
                         ) {
                             Text(
-                                text = if (emergencyStop) "Resume Agent" else "STOP ALL AGENT ACTIONS",
+                                text = if (emergencyStop) stringResource(R.string.ui3_emergency_resume) else stringResource(R.string.ui3_emergency_stop_all),
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold,
                             )
@@ -150,7 +148,7 @@ fun EmergencyStopPage() {
             // ── Safety Toggles ────────────────────────────────────────────────────
             item {
                 Text(
-                    text = "Safety Controls",
+                    text = stringResource(R.string.ui3_emergency_safety_controls),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -158,9 +156,8 @@ fun EmergencyStopPage() {
 
             item {
                 SafetyToggle(
-                    title = "High-Risk Tools",
-                    description = "Allow tools that can modify system state, install/uninstall " +
-                            "apps, start VPN, or execute privileged commands.",
+                    title = stringResource(R.string.ui3_emergency_high_risk_title),
+                    description = stringResource(R.string.ui3_emergency_high_risk_desc),
                     checked = highRiskEnabled,
                     onCheckedChange = { scope.launch { safety.setHighRiskToolsEnabled(it) } },
                     enabled = !emergencyStop,
@@ -169,9 +166,8 @@ fun EmergencyStopPage() {
 
             item {
                 SafetyToggle(
-                    title = "Remote Tool Calls",
-                    description = "Allow Telegram, WebServer, MCP, and external intents " +
-                            "to execute tools. When disabled, only local chat can call tools.",
+                    title = stringResource(R.string.ui3_emergency_remote_title),
+                    description = stringResource(R.string.ui3_emergency_remote_desc),
                     checked = remoteCallsEnabled,
                     onCheckedChange = { scope.launch { safety.setRemoteToolCallsEnabled(it) } },
                     enabled = !emergencyStop,
@@ -180,9 +176,8 @@ fun EmergencyStopPage() {
 
             item {
                 SafetyToggle(
-                    title = "Background Automation",
-                    description = "Allow scheduled jobs, workflows, and cron tasks to " +
-                            "execute automatically in the background.",
+                    title = stringResource(R.string.ui3_emergency_background_title),
+                    description = stringResource(R.string.ui3_emergency_background_desc),
                     checked = backgroundAutomation,
                     onCheckedChange = { scope.launch { safety.setBackgroundAutomationEnabled(it) } },
                     enabled = !emergencyStop,
@@ -191,9 +186,8 @@ fun EmergencyStopPage() {
 
             item {
                 SafetyToggle(
-                    title = "Allow While Device Locked",
-                    description = "Allow high-risk tool execution even when the device screen " +
-                            "is locked or the keyguard is active.",
+                    title = stringResource(R.string.ui3_emergency_locked_title),
+                    description = stringResource(R.string.ui3_emergency_locked_desc),
                     checked = allowLocked,
                     onCheckedChange = { scope.launch { safety.setAllowWhileDeviceLocked(it) } },
                     enabled = !emergencyStop,
@@ -202,9 +196,8 @@ fun EmergencyStopPage() {
 
             item {
                 SafetyToggle(
-                    title = "Privileged Bridge",
-                    description = "Enable external privilege bridges (Shizuku / ADB / " +
-                            "Device Owner) for elevated operations.",
+                    title = stringResource(R.string.ui3_emergency_bridge_title),
+                    description = stringResource(R.string.ui3_emergency_bridge_desc),
                     checked = privilegedBridge,
                     onCheckedChange = { scope.launch { safety.setPrivilegedBridgeEnabled(it) } },
                     enabled = !emergencyStop,
@@ -223,7 +216,7 @@ fun EmergencyStopPage() {
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !emergencyStop,
                 ) {
-                    Text("Reset All to Defaults")
+                    Text(stringResource(R.string.ui3_emergency_reset))
                 }
                 Spacer(Modifier.height(32.dp))
             }

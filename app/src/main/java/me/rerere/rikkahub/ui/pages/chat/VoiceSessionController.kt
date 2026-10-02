@@ -77,7 +77,7 @@ class VoiceSessionController(
                     it.copy(
                         phase = VoicePhase.Error,
                         error = when (e) {
-                            is TimeoutCancellationException -> "Speech recognition timed out. Restart voice mode."
+                            is TimeoutCancellationException -> getString(R.string.ui3_voice_asr_timeout)
                             is MessageQueuePausedException -> getString(R.string.chat_page_voice_queue_paused)
                             else -> e.message ?: getString(R.string.chat_page_voice_failed)
                         },
@@ -190,7 +190,7 @@ class VoiceSessionController(
                             asr.state.first { state ->
                                 check(state.errorMessage == null) { state.errorMessage.orEmpty() }
                                 check(state.status == ASRStatus.Listening || state.status == ASRStatus.Stopping) {
-                                    "Speech recognition disconnected"
+                                    getString(R.string.ui3_voice_asr_disconnected)
                                 }
                                 state.transcript != text
                             }
@@ -199,7 +199,7 @@ class VoiceSessionController(
                         asr.state.first { state ->
                             check(state.errorMessage == null) { state.errorMessage.orEmpty() }
                             check(state.status == ASRStatus.Listening || state.status == ASRStatus.Stopping) {
-                                "Speech recognition disconnected"
+                                getString(R.string.ui3_voice_asr_disconnected)
                             }
                             state.transcript.isNotBlank()
                         }

@@ -149,7 +149,7 @@ fun ImageGenPage(
                     IconButton(onClick = vm::startNewSession) {
                         Icon(
                             imageVector = HugeIcons.Add01,
-                            contentDescription = "New session"
+                            contentDescription = stringResource(R.string.ui2_imggen_new_session)
                         )
                     }
                 }
@@ -413,7 +413,7 @@ private fun InputBar(
             ) {
                 Icon(
                     imageVector = HugeIcons.Add01,
-                    contentDescription = "Add reference image"
+                    contentDescription = stringResource(R.string.ui2_imggen_add_reference_image)
                 )
             }
 
@@ -523,6 +523,7 @@ private fun ImageGalleryScreen(
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     val pullToRefreshState = rememberPullToRefreshState()
+    val promptCopiedMsg = stringResource(R.string.ui2_imggen_prompt_copied)
 
     PullToRefreshBox(
         isRefreshing = false,
@@ -608,7 +609,7 @@ private fun ImageGalleryScreen(
                                             onClick = {
                                                 clipboardManager.setText(AnnotatedString(it.prompt))
                                                 toaster.show(
-                                                    message = "Prompt copied to clipboard",
+                                                    message = promptCopiedMsg,
                                                     type = ToastType.Success
                                                 )
                                             },
@@ -616,7 +617,7 @@ private fun ImageGalleryScreen(
                                         ) {
                                             Icon(
                                                 imageVector = HugeIcons.Copy01,
-                                                contentDescription = "Copy prompt",
+                                                contentDescription = stringResource(R.string.ui2_imggen_copy_prompt),
                                                 modifier = Modifier.size(16.dp)
                                             )
                                         }

@@ -877,8 +877,8 @@ private fun QwenTTSConfiguration(
     val languageTypes = listOf("Auto", "Chinese", "English", "Japanese", "Korean")
 
     FormItem(
-        label = { Text("Language Type") },
-        description = { Text("Language type for TTS synthesis") }
+        label = { Text(stringResource(R.string.ui2_tts_language_type)) },
+        description = { Text(stringResource(R.string.ui2_tts_language_type_desc)) }
     ) {
         EditableDropdownField(
             value = setting.languageType,
@@ -1010,29 +1010,29 @@ private fun XAITTSConfiguration(
 
     // Language
     val languages = listOf(
-        "auto" to "Auto-detect",
-        "en" to "English",
-        "zh" to "Chinese (Simplified)",
-        "ja" to "Japanese",
-        "ko" to "Korean",
-        "fr" to "French",
-        "de" to "German",
-        "es-ES" to "Spanish (Spain)",
-        "es-MX" to "Spanish (Mexico)",
-        "pt-BR" to "Portuguese (Brazil)",
-        "pt-PT" to "Portuguese (Portugal)",
-        "it" to "Italian",
-        "ru" to "Russian",
-        "ar-EG" to "Arabic (Egypt)",
-        "hi" to "Hindi",
-        "tr" to "Turkish",
-        "vi" to "Vietnamese",
-        "id" to "Indonesian",
-        "bn" to "Bengali"
+        "auto" to stringResource(R.string.ui2_lang_auto_detect),
+        "en" to stringResource(R.string.ui2_lang_english),
+        "zh" to stringResource(R.string.ui2_lang_chinese_simplified),
+        "ja" to stringResource(R.string.ui2_lang_japanese),
+        "ko" to stringResource(R.string.ui2_lang_korean),
+        "fr" to stringResource(R.string.ui2_lang_french),
+        "de" to stringResource(R.string.ui2_lang_german),
+        "es-ES" to stringResource(R.string.ui2_lang_spanish_spain),
+        "es-MX" to stringResource(R.string.ui2_lang_spanish_mexico),
+        "pt-BR" to stringResource(R.string.ui2_lang_portuguese_brazil),
+        "pt-PT" to stringResource(R.string.ui2_lang_portuguese_portugal),
+        "it" to stringResource(R.string.ui2_lang_italian),
+        "ru" to stringResource(R.string.ui2_lang_russian),
+        "ar-EG" to stringResource(R.string.ui2_lang_arabic_egypt),
+        "hi" to stringResource(R.string.ui2_lang_hindi),
+        "tr" to stringResource(R.string.ui2_lang_turkish),
+        "vi" to stringResource(R.string.ui2_lang_vietnamese),
+        "id" to stringResource(R.string.ui2_lang_indonesian),
+        "bn" to stringResource(R.string.ui2_lang_bengali)
     )
 
     FormItem(
-        label = { Text("Language") },
+        label = { Text(stringResource(R.string.ui2_tts_language)) },
     ) {
         EditableDropdownField(
             value = setting.language,

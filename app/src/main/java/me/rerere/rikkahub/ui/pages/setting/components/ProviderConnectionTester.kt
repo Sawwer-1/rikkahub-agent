@@ -255,7 +255,7 @@ private fun TestResultItem(
                 }
             }
             is UiState.Error -> Text(
-                text = state.error.message ?: "Error",
+                text = state.error.message ?: stringResource(R.string.ui2_common_error),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.extendColors.red6,
                 maxLines = 2,
@@ -289,7 +289,7 @@ private fun TestResultItem(
                     style = MaterialTheme.typography.titleMedium
                 )
                 Text(
-                    text = state.error.message ?: "Error",
+                    text = state.error.message ?: stringResource(R.string.ui2_common_error),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.extendColors.red6
                 )

@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
@@ -123,10 +124,11 @@ private fun ScheduledJobRow(
     onToggle: (Boolean) -> Unit,
     onTap: () -> Unit,
 ) {
+    val context = LocalContext.current
     val rel = relativeStrings()
     val nowMs by rememberTickingNowMs()
-    val schedule = remember(job.scheduleType, job.atUnixMs, job.cronExpression) {
-        summariseSchedule(job)
+    val schedule = remember(context, job.scheduleType, job.atUnixMs, job.cronExpression) {
+        summariseSchedule(context, job)
     }
     val statusLine: String = when (job.lastRunAtMs) {
         null -> stringResource(R.string.setting_page_scheduled_jobs_subtitle_never_run)

@@ -317,11 +317,11 @@ fun McpPicker(
                         )
                         Text(
                             text = when (val s = status) {
-                                is McpStatus.Idle -> "Idle"
-                                is McpStatus.Connecting -> "Connecting"
-                                is McpStatus.Connected -> "Connected"
-                                is McpStatus.Reconnecting -> "Reconnecting (${s.attempt}/${s.maxAttempts})"
-                                is McpStatus.Error -> "Error: ${s.message}"
+                                is McpStatus.Idle -> stringResource(R.string.ui3_mcp_status_idle)
+                                is McpStatus.Connecting -> stringResource(R.string.ui3_mcp_status_connecting)
+                                is McpStatus.Connected -> stringResource(R.string.ui3_mcp_status_connected)
+                                is McpStatus.Reconnecting -> stringResource(R.string.ui3_mcp_status_reconnecting, s.attempt, s.maxAttempts)
+                                is McpStatus.Error -> stringResource(R.string.ui3_mcp_status_error, s.message)
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = LocalContentColor.current.copy(alpha = 0.8f),
@@ -333,7 +333,7 @@ fun McpPicker(
                             Tag(
                                 type = TagType.INFO
                             ) {
-                                Text("${enabledTools.size}/${tools.size} tools")
+                                Text(stringResource(R.string.ui3_mcp_tools_count, enabledTools.size, tools.size))
                             }
                         }
                     }

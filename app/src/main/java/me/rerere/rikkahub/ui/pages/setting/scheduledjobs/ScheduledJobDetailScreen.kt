@@ -196,7 +196,7 @@ fun ScheduledJobDetailScreen(
             }
             item {
                 SectionHeader(stringResource(R.string.setting_page_scheduled_jobs_section_schedule))
-                Text(summariseSchedule(current))
+                Text(summariseSchedule(ctx, current))
                 current.timezone?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         stringResource(R.string.setting_page_scheduled_jobs_schedule_tz, it),
@@ -221,7 +221,7 @@ fun ScheduledJobDetailScreen(
             }
             item {
                 SectionHeader(stringResource(R.string.setting_page_scheduled_jobs_section_what_runs))
-                Text(modeLabel(current))
+                Text(modeLabel(ctx, current))
                 if (current.mode == "llm") {
                     current.prompt?.takeIf { it.isNotBlank() }?.let {
                         Text(

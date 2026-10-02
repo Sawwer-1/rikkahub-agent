@@ -147,7 +147,7 @@ private fun createVoiceAsr(context: Context, client: OkHttpClient, provider: ASR
     return object : ASRController by delegate {
         override fun start(onTranscriptChange: (String) -> Unit) {
             check(audioManager.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-                "Unable to acquire audio focus for the microphone. Try again later."
+                context.getString(R.string.ui3_voice_audio_focus_failed)
             }
             delegate.start(onTranscriptChange)
         }
