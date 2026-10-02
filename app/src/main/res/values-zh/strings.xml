@@ -2817,4 +2817,22 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="heartbeat_prompt_fixed_rule">固定规则：每次自主唤醒都会另外告诉助手，距离用户上一次发言已经过去多久，此规则不受上方提示词修改。</string>
   <string name="heartbeat_goodnight_on">晚安模式：开启（已连续 %1$d 次无新使用，3 次后自动关闭）</string>
   <string name="heartbeat_goodnight_off">晚安模式：关闭</string>
+  <!-- Social surfaces (ported from jude, batch 3): moments + anonymous question box -->
+  <string name="anonymous_question_box">匿名提问箱</string>
+  <string name="anonymous_question_box_empty">还没有匿名问题</string>
+  <string name="anonymous_question_box_publish">发布问题</string>
+  <string name="anonymous_question_box_refresh">刷新</string>
+  <string name="anonymous_question_box_answer">回答这个问题</string>
+  <string name="anonymous_question_box_submit">提交</string>
+  <string name="moments_vision_model_required">当前聊天模型不支持识图，请在设置 → 默认模型 → OCR 模型中接入可识图模型。</string>
+  <string name="moments_refresh_processing">刷新已在进行中，请稍后再试。</string>
+  <string name="moments_refresh_no_due">刷新完成：当前没有待处理或待重试内容。</string>
+  <string name="moments_refresh_summary">刷新完成：检查 %1$d 条，成功写入 %2$d 条。</string>
+  <string name="moments_refresh_empty_text">模型返回文本为空 %1$d 条，已保留重试。</string>
+  <string name="moments_refresh_invalid_response">模型返回内容无法解析 %1$d 条，已保留重试。</string>
+  <string name="moments_refresh_model_unavailable">没有找到可用模型 %1$d 条。</string>
+  <string name="moments_refresh_persistence_failed">生成成功但 Room 写入未确认 %1$d 条。</string>
+  <string name="moments_refresh_generation_failed">生成过程异常 %1$d 条，已保留重试。</string>
+  <string name="moments_refresh_no_visible_comment">已处理但没有文字评论 %1$d 条，可能只有点赞。</string>
+  <string name="moments_refresh_vision_model_required">需要识图模型 %1$d 条。</string>
 </resources>

@@ -5,6 +5,8 @@ import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantDetailVM
 import me.rerere.rikkahub.ui.pages.backup.BackupVM
 import me.rerere.rikkahub.ui.pages.chat.ChatDrawerVM
 import me.rerere.rikkahub.ui.pages.chat.ChatVM
+import me.rerere.rikkahub.ui.pages.chat.MomentsVM
+import me.rerere.rikkahub.ui.pages.chat.AnonymousQuestionBoxVM
 import me.rerere.rikkahub.ui.pages.debug.DebugVM
 import me.rerere.rikkahub.ui.pages.developer.DeveloperVM
 import me.rerere.rikkahub.ui.pages.favorite.FavoriteVM
@@ -52,6 +54,8 @@ val viewModelModule = module {
         )
     }
     viewModelOf(::ChatDrawerVM)
+    viewModelOf(::MomentsVM)
+    viewModelOf(::AnonymousQuestionBoxVM)
     viewModelOf(::SettingVM)
     viewModelOf(::AgentRuntimeSettingsViewModel)
     viewModelOf(::QuickCaptureSettingsViewModel)

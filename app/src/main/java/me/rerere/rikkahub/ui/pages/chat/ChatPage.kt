@@ -307,6 +307,20 @@ private fun ChatPageContent(
     val assistant = setting.getAssistantById(conversation.assistantId) ?: setting.getCurrentAssistant()
     var showFilesSheet by remember { mutableStateOf(false) }
     var showSendModeDialog by remember { mutableStateOf(false) }
+    // Social surfaces (ported from jude, batch 3). Scope key = the conversation's assistant id,
+    // matching MomentRepository.observeTimeline / the per-assistant isolation of the tools.
+    val momentsVM: MomentsVM = koinViewModel()
+    val anonymousQuestionBoxVM: AnonymousQuestionBoxVM = koinViewModel()
+    var momentsVisible by rememberSaveable(conversation.id) { mutableStateOf(false) }
+    var anonymousQuestionBoxVisible by rememberSaveable(conversation.id) { mutableStateOf(false) }
+    val momentsUnread by remember(conversation.assistantId) {
+        momentsVM.observeHasUnread(conversation.assistantId)
+    }.collectAsStateWithLifecycle(false)
+    val anonymousQuestionUnread by remember(conversation.assistantId) {
+        anonymousQuestionBoxVM.observeHasUnread(conversation.assistantId)
+    }.collectAsStateWithLifecycle(false)
+    val conversationSystemPrompt = conversation.customSystemPrompt
+        ?.takeIf { assistant.allowConversationSystemPrompt && it.isNotBlank() }
 
     fun showRewardFeedbackResult(result: RewardFeedbackWriteResult) {
         when (result) {
@@ -409,6 +423,10 @@ private fun ChatPageContent(
                                 Screen.SettingDiagnosticsForConversation(conversation.id.toString())
                             )
                         },
+                        momentsUnread = momentsUnread,
+                        anonymousQuestionBoxUnread = anonymousQuestionUnread,
+                        onOpenMoments = { momentsVisible = true },
+                        onOpenAnonymousQuestionBox = { anonymousQuestionBoxVisible = true },
                         onUpdateTitle = { vm.updateTitle(it) },
                     )
                     PetDialogueCard(
@@ -885,6 +903,28 @@ private fun ChatPageContent(
                 onDismiss = { showFilesSheet = false },
             )
         }
+
+        MomentsOverlay(
+            visible = momentsVisible,
+            assistantId = conversation.assistantId,
+            assistant = assistant,
+            conversation = conversation,
+            assistantName = assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) },
+            conversationSystemPrompt = conversationSystemPrompt,
+            settings = setting,
+            vm = momentsVM,
+            onDismiss = { momentsVisible = false },
+        )
+        AnonymousQuestionBoxOverlay(
+            visible = anonymousQuestionBoxVisible,
+            scopeId = conversation.assistantId,
+            assistant = assistant,
+            conversation = conversation,
+            settings = setting,
+            conversationSystemPrompt = conversationSystemPrompt,
+            vm = anonymousQuestionBoxVM,
+            onDismiss = { anonymousQuestionBoxVisible = false },
+        )
     }
 }
 
@@ -1137,6 +1177,10 @@ private fun TopBar(
     onCompressedSummaryChange: (String?) -> Unit,
     onClickMenu: () -> Unit,
     onOpenDiagnostics: () -> Unit,
+    momentsUnread: Boolean,
+    anonymousQuestionBoxUnread: Boolean,
+    onOpenMoments: () -> Unit,
+    onOpenAnonymousQuestionBox: () -> Unit,
     onNewChat: () -> Unit,
     onUpdateTitle: (String) -> Unit
 ) {
@@ -1218,6 +1262,16 @@ private fun TopBar(
                     onEditorVisibilityChange = { summaryEditorVisible = it },
                 )
             }
+
+            // Social surfaces (ported from jude, batch 3): moments + anonymous question box.
+            MomentsButton(
+                hasUnread = momentsUnread,
+                onClick = onOpenMoments,
+            )
+            AnonymousQuestionBoxButton(
+                hasUnread = anonymousQuestionBoxUnread,
+                onClick = onOpenAnonymousQuestionBox,
+            )
 
             IconButton(onClick = onOpenDiagnostics) {
                 Icon(HugeIcons.Activity01, "Runtime Diagnostics")
