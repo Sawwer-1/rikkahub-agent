@@ -96,6 +96,7 @@ object CapabilityCatalog {
         LocalToolOption.Download to setOf("download_file", "write_text_file"),
         LocalToolOption.Wallpaper to setOf("set_wallpaper"),
         LocalToolOption.Location to setOf("get_location"),
+        LocalToolOption.Weather to setOf("get_local_weather"),
         LocalToolOption.StepCounter to setOf("get_step_count"),
         LocalToolOption.Contacts to setOf("search_contacts", "list_contacts"),
         LocalToolOption.CallLog to setOf("list_call_log"),
@@ -427,6 +428,7 @@ object CapabilityCatalog {
         "get_media_status",
         "get_location",
         "reverse_geocode",
+        "get_local_weather",
         "get_step_count",
         "search_contacts",
         "list_contacts",
@@ -807,6 +809,20 @@ object CapabilityCatalog {
         reg(CapabilityDescriptor(
             id = CapabilityId.Location,
             localToolOption = LocalToolOption.Location,
+            requirements = listOf(
+                CapabilityRequirement.RuntimePermission(Manifest.permission.ACCESS_COARSE_LOCATION),
+            ),
+            implementationState = ImplementationState.Implemented,
+            riskLevel = RiskLevel.Medium,
+            approvalPolicy = ApprovalPolicy.AlwaysAsk,
+            allowedOrigins = InvocationSurfacePolicy.ALL_NON_KEYGUARD,
+        ))
+
+        // Local weather (ported from jude, batch 7). Reads device location + calls the
+        // Open-Meteo API; per-call approval mirrors the tool's needsApproval gate.
+        reg(CapabilityDescriptor(
+            id = CapabilityId.Weather,
+            localToolOption = LocalToolOption.Weather,
             requirements = listOf(
                 CapabilityRequirement.RuntimePermission(Manifest.permission.ACCESS_COARSE_LOCATION),
             ),

@@ -10,7 +10,9 @@ import kotlinx.serialization.json.Json
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.ProviderManager
+import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
@@ -113,14 +115,37 @@ object OcrTransformer : InputMessageTransformer, KoinComponent {
         }
 
         val settings = get<SettingsStore>().settingsFlow.value
-        val model = settings.findModelById(settings.ocrModelId) ?: return cacheResult(
+        val ocrConfig = settings.ocrOpenAIConfig
+        // Independent OCR endpoint override (jude-parity): when the separate OpenAI-compatible
+        // config is enabled it replaces both the model and the provider resolved from the main
+        // provider list; when disabled the pre-existing selection logic applies unchanged.
+        val model = if (ocrConfig.enabled) {
+            ocrConfig.modelId.trim().takeIf { it.isNotBlank() }?.let { modelId ->
+                Model(
+                    modelId = modelId,
+                    displayName = modelId,
+                    type = ModelType.CHAT,
+                )
+            } ?: settings.findModelById(settings.ocrModelId)
+        } else {
+            settings.findModelById(settings.ocrModelId)
+        } ?: return cacheResult(
             part.url,
             "[Image: OCR model is not configured]",
         )
-        val providerSetting = model.findProvider(settings.providers) ?: return cacheResult(
-            part.url,
-            "[Image: OCR provider is not configured]",
-        )
+        val providerSetting = if (ocrConfig.enabled) {
+            ProviderSetting.OpenAI(
+                apiKey = ocrConfig.apiKey,
+                baseUrl = ocrConfig.baseUrl.trimEnd('/'),
+                chatCompletionsPath = ocrConfig.chatCompletionsPath,
+                useResponseApi = ocrConfig.useResponseApi,
+            )
+        } else {
+            model.findProvider(settings.providers) ?: return cacheResult(
+                part.url,
+                "[Image: OCR provider is not configured]",
+            )
+        }
         val provider = get<ProviderManager>().getProviderByType(providerSetting)
         val result = withTimeoutOrNull(OCR_TIMEOUT_MS) {
             provider.generateText(

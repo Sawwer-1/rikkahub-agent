@@ -160,6 +160,7 @@ class SettingsStore(
         val COMPRESS_MODEL = stringPreferencesKey("compress_model")
         val COMPRESS_PROMPT = stringPreferencesKey("compress_prompt")
         val COMPRESS_OPENAI_CONFIG = stringPreferencesKey("compress_openai_config")
+        val OCR_OPENAI_CONFIG = stringPreferencesKey("ocr_openai_config")
         val FINAL_ANSWER_REMINDER_PROMPT = stringPreferencesKey("final_answer_reminder_prompt")
 
         // 提供商
@@ -292,6 +293,9 @@ class SettingsStore(
                 compressOpenAIConfig = preferences[COMPRESS_OPENAI_CONFIG]?.let { value ->
                     runCatching { JsonInstant.decodeFromString<CompressOpenAIConfig>(value) }.getOrNull()
                 } ?: CompressOpenAIConfig(),
+                ocrOpenAIConfig = preferences[OCR_OPENAI_CONFIG]?.let { value ->
+                    runCatching { JsonInstant.decodeFromString<OcrOpenAIConfig>(value) }.getOrNull()
+                } ?: OcrOpenAIConfig(),
                 finalAnswerReminderPrompt = resolveFinalAnswerReminderPrompt(
                     preferences[FINAL_ANSWER_REMINDER_PROMPT],
                 ),
@@ -603,6 +607,7 @@ class SettingsStore(
             preferences[COMPRESS_MODEL] = settings.compressModelId.toString()
             preferences[COMPRESS_PROMPT] = settings.compressPrompt
             preferences[COMPRESS_OPENAI_CONFIG] = JsonInstant.encodeToString(settings.compressOpenAIConfig)
+            preferences[OCR_OPENAI_CONFIG] = JsonInstant.encodeToString(settings.ocrOpenAIConfig)
             preferences[FINAL_ANSWER_REMINDER_PROMPT] = settings.finalAnswerReminderPrompt
 
             preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
@@ -830,6 +835,16 @@ class SettingsStore(
 }
 
 @Serializable
+data class OcrOpenAIConfig(
+    val enabled: Boolean = false,
+    val modelId: String = "",
+    val apiKey: String = "",
+    val baseUrl: String = "https://api.openai.com/v1",
+    val chatCompletionsPath: String = "/chat/completions",
+    val useResponseApi: Boolean = false,
+)
+
+@Serializable
 data class CompressOpenAIConfig(
     val enabled: Boolean = false,
     val modelId: String = "",
@@ -872,6 +887,7 @@ data class Settings(
     val suggestionPrompt: String = DEFAULT_SUGGESTION_PROMPT,
     val ocrModelId: Uuid = Uuid.random(),
     val ocrPrompt: String = DEFAULT_OCR_PROMPT,
+    val ocrOpenAIConfig: OcrOpenAIConfig = OcrOpenAIConfig(),
     val compressModelId: Uuid = Uuid.random(),
     val compressPrompt: String = DEFAULT_COMPRESS_PROMPT,
     val compressOpenAIConfig: CompressOpenAIConfig = CompressOpenAIConfig(),

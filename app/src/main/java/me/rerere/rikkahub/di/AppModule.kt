@@ -9,6 +9,7 @@ import me.rerere.rikkahub.data.ai.AgentSafetySettings
 import me.rerere.rikkahub.data.ai.AILoggingManager
 import me.rerere.rikkahub.data.ai.ToolExecutionGate
 import me.rerere.rikkahub.data.ai.tools.LocalTools
+import me.rerere.weather.WeatherRepository
 import me.rerere.rikkahub.data.ai.tools.local.BiometricResultBuffer
 import me.rerere.rikkahub.data.ai.tools.local.CameraResultBuffer
 import me.rerere.rikkahub.data.event.AppEventBus
@@ -499,6 +500,13 @@ val appModule = module {
     }
 
     single {
+        WeatherRepository(
+            context = get(),
+            okHttpClient = get(),
+        )
+    }
+
+    single {
         LocalTools(
             context = get(),
             eventBus = get(),
@@ -552,6 +560,7 @@ val appModule = module {
             reverseGeocodeToolProvider = get(),
             momentRepository = get(),
             anonymousQuestionRepository = get(),
+            weatherRepository = get(),
         )
     }
 

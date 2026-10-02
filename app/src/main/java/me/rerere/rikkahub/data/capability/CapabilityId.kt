@@ -39,6 +39,7 @@ enum class CapabilityId {
 
     // ── Location & Sensors ────────────────────────────────────────────────────────
     Location,
+    Weather,
     ReverseGeocoding,
     GnssDiagnostics,
     StepCounter,

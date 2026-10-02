@@ -181,6 +181,10 @@ sealed class LocalToolOption {
     data object UsageStats : LocalToolOption()
 
     @Serializable
+    @SerialName("weather")
+    data object Weather : LocalToolOption()
+
+    @Serializable
     @SerialName("calendar")
     data object Calendar : LocalToolOption()
 
@@ -260,7 +264,7 @@ sealed class LocalToolOption {
             JavascriptEngine, TimeInfo, Clipboard, Tts, AskUser, ScreenTime, Calendar,
             Battery, AudioInfo, TelephonyInfo, WifiInfo, Sensors, HealthSensors, StorageInfo,
             Toast, Notification, Share, Torch, Vibrate, Brightness, Volume, MediaPlayer,
-            MediaScanner, Download, Location, Contacts, CallLog, SmsInbox, CameraPhoto,
+            MediaScanner, Download, Location, Weather, Contacts, CallLog, SmsInbox, CameraPhoto,
             MicRecorder, SpeechToText, Fingerprint, CronJobs, Ssh, TelegramBot,
             ScreenAutomation, AppLauncher, Termux, NotificationListener, Files, McpControl,
             ExternalAutomation, Reliability, SubAgents, CostGuards, Workflows, SkillImport,
@@ -427,6 +431,8 @@ class LocalTools(
     // Social surfaces (ported from jude, batch 3). Isolation key: callerAssistantId.
     private val momentRepository: me.rerere.rikkahub.data.repository.MomentRepository,
     private val anonymousQuestionRepository: me.rerere.rikkahub.data.repository.AnonymousQuestionRepository,
+    // Local weather (ported from jude, batch 7) — backs the get_local_weather tool.
+    private val weatherRepository: me.rerere.weather.WeatherRepository,
 ) {
     private val displayTargetResolver by lazy {
         me.rerere.rikkahub.data.ai.tools.local.DisplayTargetResolver(displayAutomationRuntime)
@@ -780,6 +786,35 @@ class LocalTools(
     }
 
     val screenTimeTool by lazy { buildScreenTimeTool(context, eventBus) }
+
+    // get_local_weather (ported from jude LocalTools.kt:649). Needs approval on every call
+    // because it reads the device location; the repository itself re-checks the runtime
+    // permission and returns a structured error instead of throwing when it is missing.
+    val weatherTool by lazy {
+        Tool(
+            name = "get_local_weather",
+            description = """
+                Get current weather and a short forecast for the user's local Android device location.
+                This reads the device location only after Android location permission has been granted, then calls the built-in weather API directly from the app.
+                Use this only when the user asks about local weather, temperature, rain, wind, or forecast.
+                The tool requires user approval before each execution because location can be sensitive.
+            """.trimIndent().replace("\n", " "),
+            parameters = {
+                InputSchema.Obj(properties = buildJsonObject { })
+            },
+            needsApproval = { true },
+            execute = {
+                val payload = if (!weatherRepository.hasLocationPermission()) {
+                    buildJsonObject {
+                        put("error", "Location permission is not granted.")
+                    }
+                } else {
+                    weatherRepository.loadLocalWeather().toJson()
+                }
+                listOf(UIMessagePart.Text(payload.toString()))
+            }
+        )
+    }
 
     val usageStatsTool by lazy {
         Tool(
@@ -1341,6 +1376,9 @@ class LocalTools(
         }
         if (options.contains(LocalToolOption.UsageStats)) {
             tools.add(usageStatsTool)
+        }
+        if (options.contains(LocalToolOption.Weather)) {
+            tools.add(weatherTool)
         }
         if (usageLockEnabled) {
             tools.add(usageLockTool)
