@@ -322,7 +322,7 @@ private fun completedToolRecords(message: UIMessage): List<String> = message.par
                 appendLine("- Tool: ${part.toolName}")
                 appendLine("  Result:")
                 appendLine(
-                    part.output.joinToString("\n") { output -> output.toText() }
+                    part.output.joinToString("\n") { output -> output.toLedgerText() }
                         .ifBlank { "(empty output)" },
                 )
                 append("  Input: ${part.input}")
@@ -5651,4 +5651,10 @@ private fun SubmitResult.toOwnerRunSubmission(): me.rerere.rikkahub.owner.OwnerR
     is SubmitResult.QueueFull -> me.rerere.rikkahub.owner.OwnerRunSubmission(false, "RUN_QUEUE_FULL")
     is SubmitResult.RuntimeUnavailable -> me.rerere.rikkahub.owner.OwnerRunSubmission(false, "RUN_RUNTIME_UNAVAILABLE")
     is SubmitResult.Rejected -> me.rerere.rikkahub.owner.OwnerRunSubmission(false, "RUN_CONTROL_REJECTED")
+}
+
+private fun me.rerere.ai.ui.UIMessagePart.toLedgerText(): String = when (this) {
+    is me.rerere.ai.ui.UIMessagePart.Text -> text
+    is me.rerere.ai.ui.UIMessagePart.Tool -> "[tool call: $toolName]"
+    else -> ""
 }

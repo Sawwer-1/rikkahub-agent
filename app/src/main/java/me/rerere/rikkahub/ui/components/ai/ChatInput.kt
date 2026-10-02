@@ -485,8 +485,7 @@ private fun TextInputRow(
             append("RikkaHub 已锁定到 ")
             append(unlockText)
             if (lock.reason.isNotBlank()) {
-                append("
-")
+                append("\n")
                 append(lock.reason)
             }
         }
