@@ -84,7 +84,7 @@ import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.hooks.ChatInputState
-import me.rerere.rikkahub.service.recommendedManualCompressionKeepRecentMessages
+import me.rerere.rikkahub.data.model.AutoCompressConfig
 import me.rerere.workspace.WorkspaceShellStatus
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
@@ -95,7 +95,8 @@ internal fun FilesPicker(
     assistant: Assistant,
     state: ChatInputState,
     mcpManager: McpManager,
-    onCompressContext: (additionalPrompt: String, targetTokens: Int, keepRecentMessages: Int) -> Job,
+    onCompressContext: (additionalPrompt: String, targetTokens: Int, keepRecentMessages: Int, autoCompress: Boolean) -> Job,
+    onSaveAutoCompressConfig: (AutoCompressConfig?) -> Unit,
     onUpdateAssistant: (Assistant) -> Unit,
     onUpdateConversation: (ConversationMetadataMutation) -> Unit,
     showInjectionSheet: Boolean,
@@ -291,18 +292,26 @@ internal fun FilesPicker(
             onDismiss = { onShowInjectionSheetChange(false) })
     }
 
-    // Compress Context Dialog
+    // Compress Context Dialog (rolling summary, jude port)
     if (showCompressDialog) {
-        CompressContextDialog(
-            initialKeepRecentMessages = recommendedManualCompressionKeepRecentMessages(
-                conversation.currentMessages.size,
-            ),
+        RollingCompressDialog(
+            autoCompressConfig = conversation.autoCompressConfig,
             onDismiss = {
             onShowCompressDialogChange(false)
             onDismiss()
             },
-            onConfirm = { additionalPrompt, targetTokens, keepRecentMessages ->
-                onCompressContext(additionalPrompt, targetTokens, keepRecentMessages)
+            onSaveConfig = { additionalPrompt, targetTokens, keepRecentMessages, autoCompress ->
+                onSaveAutoCompressConfig(
+                    AutoCompressConfig(
+                        enabled = autoCompress,
+                        additionalPrompt = additionalPrompt,
+                        targetTokens = targetTokens,
+                        keepRecentMessages = keepRecentMessages,
+                    )
+                )
+            },
+            onConfirm = { additionalPrompt, targetTokens, keepRecentMessages, autoCompress ->
+                onCompressContext(additionalPrompt, targetTokens, keepRecentMessages, autoCompress)
             },
         )
     }

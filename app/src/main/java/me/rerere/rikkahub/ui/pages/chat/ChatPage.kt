@@ -73,6 +73,8 @@ import me.rerere.hugeicons.stroke.Activity01
 import me.rerere.hugeicons.stroke.LeftToRightListBullet
 import me.rerere.hugeicons.stroke.Menu03
 import me.rerere.hugeicons.stroke.MessageAdd01
+import me.rerere.hugeicons.stroke.View
+import me.rerere.hugeicons.stroke.ViewOff
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.authority.reward.RewardFeedbackWriteResult
@@ -298,6 +300,9 @@ private fun ChatPageContent(
     val context = LocalContext.current
     val workspaceRepository: WorkspaceRepository = koinInject()
     var previewMode by rememberSaveable { mutableStateOf(false) }
+    // 滚动摘要压缩（jude 移植）：压缩消息显隐 + 摘要编辑器可见性
+    var showCompressedMessages by rememberSaveable(conversation.id) { mutableStateOf(false) }
+    var summaryEditorVisible by rememberSaveable(conversation.id) { mutableStateOf(false) }
     val hazeState = rememberHazeState()
     val assistant = setting.getAssistantById(conversation.assistantId) ?: setting.getCurrentAssistant()
     var showFilesSheet by remember { mutableStateOf(false) }
@@ -389,6 +394,14 @@ private fun ChatPageContent(
                         bigScreen = bigScreen,
                         drawerState = drawerState,
                         previewMode = previewMode,
+                        showCompressedMessages = showCompressedMessages,
+                        onToggleCompressedMessages = {
+                            showCompressedMessages = !showCompressedMessages
+                        },
+                        summaryEditorVisible = summaryEditorVisible,
+                        onCompressedSummaryChange = { newSummary ->
+                            vm.updateCompressedSummary(newSummary)
+                        },
                         onNewChat = { navigateToChatPage(navController) },
                         onClickMenu = { previewMode = !previewMode },
                         onOpenDiagnostics = {
@@ -715,6 +728,7 @@ private fun ChatPageContent(
                 previewMode = previewMode,
                 settings = setting,
                 hazeState = hazeState,
+                showCompressedMessages = showCompressedMessages,
                 errors = errors,
                 onDismissError = onDismissError,
                 onClearAllErrors = onClearAllErrors,
@@ -1072,8 +1086,13 @@ private fun ChatFilesPickerSheet(
             state = inputState,
             assistant = assistant,
             mcpManager = vm.mcpManager,
-            onCompressContext = { additionalPrompt, targetTokens, keepRecentMessages ->
-                vm.handleCompressContext(additionalPrompt, targetTokens, keepRecentMessages)
+            onCompressContext = { additionalPrompt, targetTokens, keepRecentMessages, autoCompress ->
+                vm.handleRollingCompressContext(
+                    additionalPrompt, targetTokens, keepRecentMessages, autoCompress,
+                )
+            },
+            onSaveAutoCompressConfig = { config ->
+                vm.saveAutoCompressConfig(config)
             },
             onUpdateAssistant = {
                 vm.updateSettings(
@@ -1112,6 +1131,10 @@ private fun TopBar(
     drawerState: DrawerState,
     bigScreen: Boolean,
     previewMode: Boolean,
+    showCompressedMessages: Boolean,
+    onToggleCompressedMessages: () -> Unit,
+    summaryEditorVisible: Boolean,
+    onCompressedSummaryChange: (String?) -> Unit,
     onClickMenu: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     onNewChat: () -> Unit,
@@ -1173,6 +1196,29 @@ private fun TopBar(
             }
         },
         actions = {
+            if (conversation.hasCompressedMessages && !summaryEditorVisible) {
+                IconButton(onClick = onToggleCompressedMessages) {
+                    Icon(
+                        imageVector = if (showCompressedMessages) HugeIcons.ViewOff else HugeIcons.View,
+                        contentDescription = if (showCompressedMessages) {
+                            "Hide compressed messages"
+                        } else {
+                            "Show compressed messages"
+                        }
+                    )
+                }
+            }
+
+            conversation.compressedSummary?.takeIf { it.isNotBlank() }?.let { summary ->
+                val autoCompressEnabled = conversation.autoCompressConfig?.enabled == true
+                ConversationSummaryButton(
+                    summary = summary,
+                    autoCompressEnabled = autoCompressEnabled,
+                    onSummaryChange = onCompressedSummaryChange,
+                    onEditorVisibilityChange = { summaryEditorVisible = it },
+                )
+            }
+
             IconButton(onClick = onOpenDiagnostics) {
                 Icon(HugeIcons.Activity01, "Runtime Diagnostics")
             }

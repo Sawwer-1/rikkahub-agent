@@ -48,6 +48,7 @@ import me.rerere.rikkahub.data.datastore.getChatModelForAssistant
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.data.model.AutoCompressConfig
 import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
@@ -447,6 +448,46 @@ class ChatVM(
             ).onFailure {
                 chatService.addError(it, title = context.getString(R.string.error_title_compress_conversation))
             }
+        }
+    }
+
+    /**
+     * Rolling-summary compression (jude port). Persists the auto-compress config on the
+     * conversation when the dialog confirms with the toggle state.
+     */
+    fun handleRollingCompressContext(
+        additionalPrompt: String,
+        targetTokens: Int,
+        keepRecentMessages: Int,
+        autoCompress: Boolean,
+    ): Job {
+        return viewModelScope.launch {
+            chatService.compressConversationRolling(
+                conversationId = _conversationId,
+                additionalPrompt = additionalPrompt,
+                targetTokens = targetTokens,
+                keepRecentMessages = keepRecentMessages,
+                autoCompressConfig = AutoCompressConfig(
+                    enabled = autoCompress,
+                    additionalPrompt = additionalPrompt,
+                    targetTokens = targetTokens,
+                    keepRecentMessages = keepRecentMessages,
+                ),
+            ).onFailure {
+                chatService.addError(it, title = context.getString(R.string.error_title_compress_conversation))
+            }
+        }
+    }
+
+    fun saveAutoCompressConfig(config: AutoCompressConfig?) {
+        viewModelScope.launch {
+            chatService.saveConversationAutoCompressConfig(_conversationId, config)
+        }
+    }
+
+    fun updateCompressedSummary(summary: String?) {
+        viewModelScope.launch {
+            chatService.updateCompressedSummary(_conversationId, summary)
         }
     }
 

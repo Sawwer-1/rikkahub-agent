@@ -32,4 +32,10 @@ data class ConversationEntity(
     val workspaceCwd: String = "",
     @ColumnInfo("folder_id", defaultValue = "")
     val folderId: String = "",
+    @ColumnInfo("compressed_summary", defaultValue = "")
+    val compressedSummary: String = "",
+    @ColumnInfo("compressed_message_node_ids", defaultValue = "[]")
+    val compressedMessageNodeIds: String = "[]",
+    @ColumnInfo("auto_compress_config", defaultValue = "")
+    val autoCompressConfig: String = "",
 )

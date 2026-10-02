@@ -37,7 +37,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.JsonObject
@@ -51,6 +53,7 @@ import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ProviderManager
+import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessage
@@ -102,9 +105,13 @@ import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
 import me.rerere.rikkahub.data.datastore.getChatModelForAssistant
+import me.rerere.rikkahub.data.datastore.CompressOpenAIConfig
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.data.model.AutoCompressConfig
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.model.MessageNode
+import me.rerere.rikkahub.data.model.messagesForGeneration
 import me.rerere.rikkahub.personal.heartbeat.HeartbeatUserActivity
 import me.rerere.rikkahub.data.model.AssistantAffectScope
 import me.rerere.rikkahub.data.model.replaceRegexes
@@ -189,6 +196,19 @@ private const val TAG = "ChatService"
 private const val FAST_PATH_TOOL_BUDGET_MS = 30_000L
 private const val STREAMING_UI_UPDATE_INTERVAL_NANOS = 50_000_000L
 
+// Rolling-summary compression (ported from jude).
+private const val MIN_COMPRESSION_CHUNK_TOKENS = 8000
+private const val COMPRESSION_CHUNK_TOKENS_PER_TARGET_TOKEN = 8
+
+// Tool-history preservation (plan B, semantics from extv ContextCompactionPlanner). N equals
+// extv's default autoCompactionKeepRecentToolCalls; the token budget bounds the whole ledger.
+private const val COMPRESSION_TOOL_HISTORY_KEEP_RECORDS = 5
+private const val COMPRESSION_TOOL_HISTORY_MAX_TOKENS = 4_000
+private const val TOOL_HISTORY_HEADER = "[Tool execution history — authoritative retained context]"
+private const val TOOL_HISTORY_FOOTER = "[End tool execution history]"
+private const val TOOL_RECORD_HEADER = "[Retained tool execution record]"
+private const val TOOL_RECORD_FOOTER = "[End retained tool execution record]"
+
 internal fun backgroundTextGenerationParams(
     model: Model,
     reasoningLevel: ReasoningLevel = ReasoningLevel.OFF,
@@ -202,6 +222,143 @@ internal fun backgroundTextGenerationParams(
     customHeaders = model.customHeaders,
     customBody = model.customBodies,
 )
+
+internal fun splitMessagesForCompression(
+    messages: List<UIMessage>,
+    targetTokens: Int,
+): List<List<UIMessage>> = splitByEstimatedCompressionTokens(
+    items = messages,
+    targetTokens = targetTokens,
+    textOf = { it.summaryAsText() },
+)
+
+internal fun splitTextsForCompression(
+    texts: List<String>,
+    targetTokens: Int,
+): List<List<String>> = splitByEstimatedCompressionTokens(
+    items = texts,
+    targetTokens = targetTokens,
+    textOf = { it },
+)
+
+internal fun compressionChunkTokenBudget(targetTokens: Int): Int {
+    return maxOf(
+        MIN_COMPRESSION_CHUNK_TOKENS,
+        targetTokens.coerceAtLeast(1) * COMPRESSION_CHUNK_TOKENS_PER_TARGET_TOKEN,
+    )
+}
+
+internal fun effectiveCompressionKeepRecentMessages(keepRecentMessages: Int): Int {
+    return keepRecentMessages.coerceAtLeast(1)
+}
+
+internal fun estimateCompressionTokens(text: String): Int {
+    var asciiChars = 0
+    var nonAsciiChars = 0
+    text.forEach { char ->
+        if (char.code <= 0x7F) {
+            asciiChars++
+        } else {
+            nonAsciiChars++
+        }
+    }
+    return ((asciiChars + 3) / 4 + nonAsciiChars).coerceAtLeast(1)
+}
+
+private fun <T> splitByEstimatedCompressionTokens(
+    items: List<T>,
+    targetTokens: Int,
+    textOf: (T) -> String,
+): List<List<T>> {
+    if (items.isEmpty()) return emptyList()
+
+    val tokenBudget = compressionChunkTokenBudget(targetTokens)
+    val chunks = mutableListOf<List<T>>()
+    var currentChunk = mutableListOf<T>()
+    var currentTokens = 0
+
+    items.forEach { item ->
+        val itemTokens = estimateCompressionTokens(textOf(item))
+        if (currentChunk.isNotEmpty() && currentTokens + itemTokens > tokenBudget) {
+            chunks += currentChunk
+            currentChunk = mutableListOf()
+            currentTokens = 0
+        }
+        currentChunk += item
+        currentTokens += itemTokens
+    }
+
+    if (currentChunk.isNotEmpty()) {
+        chunks += currentChunk
+    }
+    return chunks
+}
+
+/** A node carries at least one completed tool call worth preserving verbatim. */
+internal fun MessageNode.hasCompletedToolRecord(): Boolean =
+    currentMessage.parts.any { part -> part is UIMessagePart.Tool && part.isExecuted }
+
+private fun truncateToCompressionTokenBudget(text: String, maxTokens: Int): String {
+    if (maxTokens <= 0) return "[tool record omitted: tool history budget exhausted]"
+    if (estimateCompressionTokens(text) <= maxTokens) return text
+
+    var asciiChars = 0
+    var nonAsciiChars = 0
+    var end = 0
+    while (end < text.length) {
+        if (text[end].code <= 0x7F) asciiChars++ else nonAsciiChars++
+        if (nonAsciiChars + (asciiChars + 3) / 4 > maxTokens) break
+        end++
+    }
+    return text.substring(0, end).trimEnd() + " …[truncated]"
+}
+
+private fun completedToolRecords(message: UIMessage): List<String> = message.parts.mapNotNull { part ->
+    when (part) {
+        is UIMessagePart.Tool -> {
+            if (!part.isExecuted) return@mapNotNull null
+            buildString {
+                appendLine("- Call ID: ${part.toolCallId}")
+                appendLine("- Tool: ${part.toolName}")
+                appendLine("  Result:")
+                appendLine(
+                    part.output.joinToString("\n") { output -> output.toText() }
+                        .ifBlank { "(empty output)" },
+                )
+                append("  Input: ${part.input}")
+            }.trim()
+        }
+        else -> null
+    }
+}
+
+/**
+ * Builds the deterministic tool-execution ledger appended after the compressed summary
+ * (plan B). Records are extracted verbatim from the compressed nodes — never re-generated
+ * by the summary model — and only the most recent [maxRecords] calls are retained.
+ */
+internal fun buildCompressedToolHistoryLedger(
+    compressedNodes: List<MessageNode>,
+    maxRecords: Int = COMPRESSION_TOOL_HISTORY_KEEP_RECORDS,
+    maxTokens: Int = COMPRESSION_TOOL_HISTORY_MAX_TOKENS,
+): String? {
+    if (compressedNodes.isEmpty() || maxRecords <= 0 || maxTokens <= 0) return null
+    val records = compressedNodes.flatMap { node -> completedToolRecords(node.currentMessage) }
+    val retained = records.takeLast(maxRecords)
+    if (retained.isEmpty()) return null
+
+    val header = "$TOOL_HISTORY_HEADER\n"
+    val perRecordBudget = (maxTokens - estimateCompressionTokens(header)).coerceAtLeast(0) / retained.size
+    return buildString {
+        append(header)
+        retained.forEach { record ->
+            appendLine(TOOL_RECORD_HEADER)
+            appendLine(truncateToCompressionTokenBudget(record, perRecordBudget))
+            appendLine(TOOL_RECORD_FOOTER)
+        }
+        appendLine(TOOL_HISTORY_FOOTER)
+    }.trim()
+}
 
 data class ChatError(
     val id: Uuid = Uuid.random(),
@@ -2152,6 +2309,16 @@ class ChatService(
                         updateConversation(conversationId, withUser)
                     }
                     if (content.answer) {
+                        // 自动滚动摘要：用户消息已落库、生成开始前触发（jude 语义）。
+                        // 全程 runCatching，失败只记日志，绝不阻塞聊天。
+                        runCatching {
+                            autoCompressConversationIfNeeded(
+                                conversationId = conversationId,
+                                conversation = getConversationFlow(conversationId).value,
+                            )
+                        }.onFailure {
+                            Log.w(TAG, "autoCompressConversationIfNeeded crashed", it)
+                        }
                         // Must surface generation failures as RunOutcome.Failed. Swallowing them
                         // (propagateFailure=false) marks the durable command COMPLETED after only
                         // the user message is saved — UI shows loading then silence with no reply.
@@ -3470,13 +3637,14 @@ class ChatService(
             // Freeze one time boundary for standing, expiry, FTS and eventual lastAccess. A long
             // tool loop must not see internally inconsistent memory validity decisions.
             val memoryFrozenNowMs = System.currentTimeMillis()
-            val generationInputMessages = conversation.currentMessages.let { allMessages ->
-                if (messageRange != null) {
-                    allMessages.subList(messageRange.start, messageRange.endInclusive + 1)
-                } else {
-                    allMessages
-                }
+            // Rolling-summary compression: generation sees only visible nodes; the compressed
+            // range is replaced by the persisted summary plus the verbatim tool-history ledger.
+            val compressedMessageNodes = conversation.messageNodes.filter { node ->
+                node.id in conversation.activeCompressedMessageNodeIds
             }
+            val conversationContextSummary = conversation.compressedSummary?.takeIf { it.isNotBlank() }
+            val conversationToolHistory = buildCompressedToolHistoryLedger(compressedMessageNodes)
+            val generationInputMessages = conversation.messagesForGeneration(messageRange)
             // Stage D needs the exact command authority even when the independently reviewed
             // Stage-E injection opt-in is off. Merely attaching this content-free identity has no
             // provider effect; GenerationHandler applies the separate Stage-D and Stage-E gates.
@@ -3627,6 +3795,8 @@ class ChatService(
                 capabilitySubject = capabilitySubject,
                 selectedPrivilegedConversation = privilegeContext.isPrivileged,
                 conversationSystemPrompt = conversation.customSystemPrompt,
+                conversationContextSummary = conversationContextSummary,
+                conversationToolHistory = conversationToolHistory,
                 conversationModeInjectionIds = conversation.modeInjectionIds,
                 conversationLorebookIds = conversation.lorebookIds,
                 workspaceCwd = conversation.workspaceCwd,
@@ -4660,6 +4830,236 @@ class ChatService(
         }
     }
 
+    // ---- 滚动摘要压缩（jude 移植主体 + extv 工具记录保留语义）----
+
+    /**
+     * Rolling-summary compression. Nodes stay in place and are hidden behind a persisted
+     * summary; the tool-bearing nodes inside the compressed range are preserved verbatim in
+     * a tool-history ledger at generation time instead of being fed into the prose summary.
+     */
+    suspend fun compressConversationRolling(
+        conversationId: Uuid,
+        additionalPrompt: String,
+        targetTokens: Int,
+        keepRecentMessages: Int = 32,
+        autoCompressConfig: AutoCompressConfig? = null,
+    ): Result<Unit> = runCatching {
+        val settings = settingsStore.settingsFlow.first()
+        initializeConversation(conversationId)
+        val compressionBase = getConversationFlow(conversationId).value.normalizeCompressionState()
+        val expectedSummary = compressionBase.compressedSummary
+        val expectedCompressedNodeIds = compressionBase.activeCompressedMessageNodeIds
+        val model = settings.findModelById(settings.compressModelId)
+            ?: settings.getChatModelForAssistant(compressionBase.assistantId)
+            ?: throw IllegalStateException("No model available for compression")
+        val provider = model.findProvider(settings.providers)
+            ?: throw IllegalStateException("Provider not found")
+        val compressionProvider = provider.withCompressionApiOverride(settings.compressOpenAIConfig)
+        val compressionModel = model.withCompressionModelOverride(settings.compressOpenAIConfig)
+
+        val providerHandler = providerManager.getProviderByType(compressionProvider)
+
+        val visibleNodes = compressionBase.visibleMessageNodes
+        val allNodes = visibleNodes
+        val allMessages = allNodes.map { it.currentMessage }
+        if (allMessages.isEmpty()) {
+            throw IllegalStateException(context.getString(R.string.chat_page_compress_not_enough_messages))
+        }
+        val effectiveKeepRecentMessages = effectiveCompressionKeepRecentMessages(keepRecentMessages)
+
+        // Split messages into those to compress and those to keep
+        val nodesToCompress: List<MessageNode>
+        val messagesToCompress: List<UIMessage>
+
+        if (allMessages.size > effectiveKeepRecentMessages) {
+            nodesToCompress = allNodes.dropLast(effectiveKeepRecentMessages)
+            // Plan B: tool-bearing nodes are kept verbatim in the tool-history ledger, so only
+            // nodes that carry summarizable text feed the prose summary.
+            messagesToCompress = nodesToCompress
+                .map { node -> node.currentMessage }
+                .filter { it.summaryAsText().isNotBlank() }
+        } else {
+            throw IllegalStateException(context.getString(R.string.chat_page_compress_not_enough_messages))
+        }
+
+        suspend fun generateCompressedSummary(contentToCompress: String, extraContext: String): String {
+            val prompt = settings.compressPrompt.applyPlaceholders(
+                "content" to contentToCompress,
+                "target_tokens" to targetTokens.toString(),
+                "additional_context" to extraContext,
+                "locale" to Locale.getDefault().displayName
+            )
+
+            val result = providerHandler.generateText(
+                providerSetting = compressionProvider,
+                messages = listOf(UIMessage.user(prompt)),
+                params = backgroundTextGenerationParams(compressionModel).copy(maxTokens = targetTokens),
+            )
+
+            return result.choices[0].message?.toText()?.trim()
+                ?: throw IllegalStateException("Failed to generate compressed summary")
+        }
+
+        suspend fun mergeSummaries(summaries: List<String>, extraContext: String): String {
+            val nonBlankSummaries = summaries.map { it.trim() }.filter { it.isNotBlank() }
+            if (nonBlankSummaries.size <= 1) return nonBlankSummaries.singleOrNull().orEmpty()
+
+            val mergedSummaries = splitTextsForCompression(nonBlankSummaries, targetTokens)
+                .map { chunk ->
+                    val contentToMerge = chunk.mapIndexed { index, summary ->
+                        "Partial summary ${index + 1}:\n$summary"
+                    }.joinToString("\n\n")
+                    generateCompressedSummary(
+                        contentToCompress = contentToMerge,
+                        extraContext = extraContext
+                    )
+                }
+
+            return if (mergedSummaries.size == nonBlankSummaries.size) {
+                mergedSummaries.joinToString("\n\n")
+            } else {
+                mergeSummaries(mergedSummaries, extraContext)
+            }
+        }
+
+        suspend fun compressMessages(messages: List<UIMessage>): String {
+            val contentToCompress = messages.joinToString("\n\n") { it.summaryAsText() }
+            val extraContext = buildString {
+                append("Summarize only the new messages below.")
+                if (additionalPrompt.isNotBlank()) {
+                    appendLine()
+                    append("Additional instructions from user: $additionalPrompt")
+                }
+            }
+            return generateCompressedSummary(contentToCompress, extraContext)
+        }
+
+        // 压缩请求体大、耗时长，限制并发，避免网关同时掐断多个连接。
+        val compressionSemaphore = Semaphore(2)
+        val compressedSummaries = coroutineScope {
+            splitMessagesForCompression(messagesToCompress, targetTokens)
+                .map { chunk -> async { compressionSemaphore.withPermit { compressMessages(chunk) } } }
+                .awaitAll()
+        }
+
+        val compressedSummary = mergeSummaries(
+            summaries = compressedSummaries,
+            extraContext = buildString {
+                append("Merge these partial summaries into one coherent current conversation summary. ")
+                append("Remove duplicate headings and duplicate facts, preserve important decisions, ")
+                append("user preferences, constraints, open tasks, and current state.")
+                if (additionalPrompt.isNotBlank()) {
+                    appendLine()
+                    append("Additional instructions from user: $additionalPrompt")
+                }
+            }
+        )
+        val previousSummary = expectedSummary?.takeIf { it.isNotBlank() }
+        val summaryForPrompt = if (previousSummary == null) {
+            compressedSummary.ifBlank { null }
+        } else {
+            val rollingSummaryInput = buildString {
+                appendLine("Existing rolling summary:")
+                appendLine(previousSummary)
+                appendLine()
+                appendLine("New summary to merge:")
+                appendLine(compressedSummary)
+            }
+            generateCompressedSummary(
+                contentToCompress = rollingSummaryInput,
+                extraContext = buildString {
+                    append("Merge the existing rolling summary and the new summary into one current conversation summary. ")
+                    append("Remove duplicate facts, preserve important decisions, user preferences, constraints, open tasks, and current state. ")
+                    append("Mark superseded or corrected information as outdated only when it matters.")
+                    if (additionalPrompt.isNotBlank()) {
+                        appendLine()
+                        append("Additional instructions from user: $additionalPrompt")
+                    }
+                }
+            ).ifBlank { null }
+        }
+        val selectedNodeIds = nodesToCompress.mapTo(mutableSetOf()) { it.id }
+        val latestConversation = getConversationFlow(conversationId).value
+        val newConversation = latestConversation
+            .withCompressionResultIfBaseUnchanged(
+                expectedSummary = expectedSummary,
+                expectedCompressedNodeIds = expectedCompressedNodeIds,
+                newSummary = summaryForPrompt,
+                nodeIdsToCompress = selectedNodeIds,
+                newAutoCompressConfig = autoCompressConfig?.copy(
+                    keepRecentMessages = effectiveKeepRecentMessages
+                ),
+            )
+            ?.copy(chatSuggestions = emptyList())
+        if (newConversation == null) {
+            // 压缩期间会话已被其他写入（新一轮压缩/摘要编辑）推进，按过期丢弃本次结果。
+            Log.i(TAG, "compressConversationRolling: stale compression result dropped for $conversationId")
+            return@runCatching
+        }
+
+        saveConversation(conversationId, newConversation)
+    }
+
+    private suspend fun autoCompressConversationIfNeeded(
+        conversationId: Uuid,
+        conversation: Conversation,
+    ) {
+        val settings = settingsStore.settingsFlow.first()
+        val assistant = settings.getAssistantById(conversation.assistantId)
+            ?: settings.getCurrentAssistant()
+        // 会话级自动压缩配置（jude 版核心）；AAA 未引入助手级 fallback。
+        val config = conversation.autoCompressConfig ?: return
+        if (!config.enabled) return
+
+        val triggerMessageCount = assistant?.contextMessageSize ?: return
+        if (triggerMessageCount <= 0) return
+
+        val keepRecentMessages = config.keepRecentMessages.coerceAtLeast(1)
+        if (conversation.visibleMessageNodes.size < keepRecentMessages + triggerMessageCount) return
+
+        compressConversationRolling(
+            conversationId = conversationId,
+            additionalPrompt = config.additionalPrompt,
+            targetTokens = config.targetTokens,
+            keepRecentMessages = keepRecentMessages,
+            autoCompressConfig = config.copy(keepRecentMessages = keepRecentMessages),
+        ).onFailure {
+            // 自动压缩是后台优化：失败时只记录日志、跳过本次压缩，不弹错误卡片打断聊天。
+            Log.w(TAG, "autoCompressConversationIfNeeded: $it")
+        }
+    }
+
+    private fun ProviderSetting.withCompressionApiOverride(
+        config: CompressOpenAIConfig,
+    ): ProviderSetting {
+        if (!config.enabled) return this
+        return ProviderSetting.OpenAI(
+            apiKey = config.apiKey,
+            baseUrl = config.baseUrl,
+            chatCompletionsPath = config.chatCompletionsPath,
+            useResponseApi = config.useResponseApi,
+        )
+    }
+
+    private fun Model.withCompressionModelOverride(
+        config: CompressOpenAIConfig,
+    ): Model {
+        if (!config.enabled || config.modelId.isBlank()) return this
+        return copy(modelId = config.modelId.trim())
+    }
+
+    suspend fun updateCompressedSummary(conversationId: Uuid, summary: String?) {
+        val updated = getConversationFlow(conversationId).value.copy(
+            compressedSummary = summary?.takeIf { it.isNotBlank() },
+        )
+        saveConversation(conversationId, updated)
+    }
+
+    suspend fun saveConversationAutoCompressConfig(conversationId: Uuid, config: AutoCompressConfig?) {
+        val updated = getConversationFlow(conversationId).value.copy(autoCompressConfig = config)
+        saveConversation(conversationId, updated)
+    }
+
     // ---- 压缩对话历史 ----
 
     suspend fun compressConversation(
@@ -5068,12 +5468,12 @@ class ChatService(
             throw NotFoundException("Message not found")
         }
 
-        val copiedNodes = currentConversation.messageNodes
+        val copiedNodePairs = currentConversation.messageNodes
             .subList(0, targetNodeIndex + 1)
-            .map { node ->
-                node.copy(
+            .map { sourceNode ->
+                sourceNode.id to sourceNode.copy(
                     id = Uuid.random(),
-                    messages = node.messages.map { message ->
+                    messages = sourceNode.messages.map { message ->
                         message.copy(
                             id = Uuid.random(),
                             parts = message.parts.map { part ->
@@ -5083,6 +5483,16 @@ class ChatService(
                     }
                 )
             }
+        val copiedNodeIdsBySourceId = copiedNodePairs.associate { (sourceNodeId, copiedNode) ->
+            sourceNodeId to copiedNode.id
+        }
+        val copiedNodes = copiedNodePairs.map { it.second }
+        val targetNodeId = currentConversation.messageNodes[targetNodeIndex].id
+        // 压缩元数据重映射：分支点在压缩范围内时不可复用滚动摘要（摘要可能包含分支点之后的内容）。
+        val forkCompressionState = currentConversation.compressionStateForFork(
+            targetNodeId = targetNodeId,
+            copiedNodeIdsBySourceId = copiedNodeIdsBySourceId,
+        )
 
         val forkConversation = Conversation(
             id = Uuid.random(),
@@ -5091,6 +5501,9 @@ class ChatService(
             customSystemPrompt = currentConversation.customSystemPrompt,
             modeInjectionIds = currentConversation.modeInjectionIds,
             lorebookIds = currentConversation.lorebookIds,
+            compressedSummary = forkCompressionState.summary,
+            compressedMessageNodeIds = forkCompressionState.compressedNodeIds,
+            autoCompressConfig = currentConversation.autoCompressConfig,
         )
 
         conversationRepo.insertConversation(forkConversation)

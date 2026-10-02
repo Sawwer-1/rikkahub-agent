@@ -27,6 +27,10 @@ data class Conversation(
     val customSystemPrompt: String? = null,
     val modeInjectionIds: Set<Uuid> = emptySet(),
     val lorebookIds: Set<Uuid> = emptySet(),
+    // Rolling-summary compression (ported from jude). Hidden-but-persisted history.
+    val compressedSummary: String? = null,
+    val compressedMessageNodeIds: Set<Uuid> = emptySet(),
+    val autoCompressConfig: AutoCompressConfig? = null,
     // Absolute path inside the workspace rootfs
     val workspaceCwd: String? = null,
     // Upstream conversation folder identifier; retained for backup/schema compatibility.
@@ -48,6 +52,102 @@ data class Conversation(
             return messageNodes.map { node -> node.messages[node.selectIndex] }
         }
 
+    val visibleMessageNodes: List<MessageNode>
+        get() {
+            val activeIds = activeCompressedMessageNodeIds
+            return if (activeIds.isEmpty()) {
+                messageNodes
+            } else {
+                messageNodes.filterNot { it.id in activeIds }
+            }
+        }
+
+    val hasCompressedMessages: Boolean
+        get() = activeCompressedMessageNodeIds.isNotEmpty()
+
+    /**
+     * Compression ids that actually apply to the current node list. The last node is never
+     * hidden, so the conversation always keeps at least one visible message to anchor on.
+     */
+    val activeCompressedMessageNodeIds: Set<Uuid>
+        get() {
+            if (messageNodes.isEmpty() || compressedMessageNodeIds.isEmpty()) {
+                return emptySet()
+            }
+            val existingNodeIds = messageNodes.mapTo(mutableSetOf()) { it.id }
+            val activeIds = compressedMessageNodeIds.filterTo(mutableSetOf()) { it in existingNodeIds }
+            return if (activeIds.size < messageNodes.size) {
+                activeIds
+            } else {
+                activeIds - messageNodes.last().id
+            }
+        }
+
+    fun normalizeCompressionState(): Conversation {
+        val activeIds = activeCompressedMessageNodeIds
+        return if (activeIds == compressedMessageNodeIds) {
+            this
+        } else {
+            copy(compressedMessageNodeIds = activeIds)
+        }
+    }
+
+    /**
+     * Applies an asynchronous compression result only while its summary base is still current.
+     * New messages may be appended during compression, but another compression or summary edit wins.
+     */
+    fun withCompressionResultIfBaseUnchanged(
+        expectedSummary: String?,
+        expectedCompressedNodeIds: Set<Uuid>,
+        newSummary: String?,
+        nodeIdsToCompress: Set<Uuid>,
+        newAutoCompressConfig: AutoCompressConfig?,
+    ): Conversation? {
+        val normalized = normalizeCompressionState()
+        if (
+            normalized.compressedSummary != expectedSummary ||
+            normalized.activeCompressedMessageNodeIds != expectedCompressedNodeIds
+        ) {
+            return null
+        }
+
+        val existingNodeIds = normalized.messageNodes.mapTo(mutableSetOf()) { it.id }
+        val applicableNodeIds = nodeIdsToCompress.filterTo(mutableSetOf()) { it in existingNodeIds }
+        if (applicableNodeIds.isEmpty()) return null
+
+        return normalized.copy(
+            compressedSummary = newSummary,
+            compressedMessageNodeIds = normalized.activeCompressedMessageNodeIds + applicableNodeIds,
+            autoCompressConfig = newAutoCompressConfig ?: normalized.autoCompressConfig,
+        ).normalizeCompressionState()
+    }
+
+    /**
+     * Remaps compression metadata when a visible message prefix is copied into a fork.
+     * A fork created inside compressed history cannot reuse the rolling summary because
+     * that summary may contain messages that occur after the selected fork point.
+     */
+    fun compressionStateForFork(
+        targetNodeId: Uuid,
+        copiedNodeIdsBySourceId: Map<Uuid, Uuid>,
+    ): ConversationForkCompressionState {
+        val activeCompressedNodeIds = activeCompressedMessageNodeIds
+        if (compressedSummary.isNullOrBlank() || targetNodeId in activeCompressedNodeIds) {
+            return ConversationForkCompressionState()
+        }
+
+        val remappedCompressedNodeIds = activeCompressedNodeIds
+            .mapNotNullTo(mutableSetOf()) { copiedNodeIdsBySourceId[it] }
+        if (remappedCompressedNodeIds.isEmpty()) {
+            return ConversationForkCompressionState()
+        }
+
+        return ConversationForkCompressionState(
+            summary = compressedSummary,
+            compressedNodeIds = remappedCompressedNodeIds,
+        )
+    }
+
     fun getMessageNodeByMessage(message: UIMessage): MessageNode? {
         return messageNodes.firstOrNull { node -> node.messages.contains(message) }
     }
@@ -58,10 +158,28 @@ data class Conversation(
 
     fun updateCurrentMessages(messages: List<UIMessage>): Conversation {
         val newNodes = this.messageNodes.toMutableList()
+        val compressedNodeIds = activeCompressedMessageNodeIds
+        val targetNodeIndices = newNodes.mapIndexedNotNull { index, node ->
+            index.takeIf { node.id !in compressedNodeIds }
+        }
+
+        val existingNodeIndexByMessageId = buildMap {
+            newNodes.forEachIndexed { nodeIndex, node ->
+                node.messages.forEach { message -> put(message.id, nodeIndex) }
+            }
+        }
 
         messages.forEachIndexed { index, message ->
-            val node = newNodes
-                .getOrElse(index) { message.toMessageNode() }
+            // Whole-conversation transforms may include compressed messages. Match identity first
+            // so those messages stay in their original hidden nodes; generation output can still
+            // fall back to the visible positional projection used by the streaming pipeline.
+            val nodeIndex = existingNodeIndexByMessageId[message.id]
+                ?: targetNodeIndices.getOrNull(index)
+            val node = if (nodeIndex != null) {
+                newNodes[nodeIndex]
+            } else {
+                message.toMessageNode()
+            }
 
             val newMessages = node.messages.toMutableList()
             var newMessageIndex = node.selectIndex
@@ -78,10 +196,10 @@ data class Conversation(
             )
 
             // 更新newNodes
-            if (index > newNodes.lastIndex) {
+            if (nodeIndex == null) {
                 newNodes.add(newNode)
             } else {
-                newNodes[index] = newNode
+                newNodes[nodeIndex] = newNode
             }
         }
 
@@ -131,6 +249,33 @@ data class Conversation(
             messageNodes = messages,
             newConversation = newConversation,
         )
+    }
+}
+
+@Serializable
+data class AutoCompressConfig(
+    val enabled: Boolean = false,
+    val additionalPrompt: String = "",
+    val targetTokens: Int = 2000,
+    val keepRecentMessages: Int = 32,
+)
+
+data class ConversationForkCompressionState(
+    val summary: String? = null,
+    val compressedNodeIds: Set<Uuid> = emptySet(),
+)
+
+fun Conversation.messagesForGeneration(messageRange: ClosedRange<Int>? = null): List<UIMessage> {
+    val sourceNodes = if (messageRange != null) {
+        messageNodes.subList(messageRange.start, messageRange.endInclusive + 1)
+    } else {
+        messageNodes
+    }
+    val visibleMessages = sourceNodes
+        .filterNot { it.id in compressedMessageNodeIds }
+        .map { it.currentMessage }
+    return visibleMessages.ifEmpty {
+        sourceNodes.lastOrNull()?.currentMessage?.let(::listOf).orEmpty()
     }
 }
 

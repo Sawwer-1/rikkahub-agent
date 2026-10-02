@@ -662,6 +662,11 @@ class GenerationHandler(
         // preamble is replayed in user history every turn, burning ~80 tokens × N turns.
         systemAddendum: String? = null,
         conversationSystemPrompt: String? = null,
+        // Rolling-summary compression (ported from jude): the persisted rolling summary and
+        // the verbatim tool-history ledger for the compressed range. Both land in the
+        // volatile system section; a non-blank summary also disables context-size truncation.
+        conversationContextSummary: String? = null,
+        conversationToolHistory: String? = null,
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
@@ -1112,6 +1117,8 @@ class GenerationHandler(
                         stream = if (forceFinalization) false else assistant.streamOutput,
                         processingStatus = processingStatus,
                         conversationSystemPrompt = conversationSystemPrompt,
+                        conversationContextSummary = conversationContextSummary,
+                        conversationToolHistory = conversationToolHistory,
                         conversationModeInjectionIds = conversationModeInjectionIds,
                         conversationLorebookIds = conversationLorebookIds,
                         workspaceCwd = workspaceCwd,
@@ -2712,6 +2719,8 @@ class GenerationHandler(
         stream: Boolean,
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
         conversationSystemPrompt: String? = null,
+        conversationContextSummary: String? = null,
+        conversationToolHistory: String? = null,
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
@@ -2765,7 +2774,13 @@ class GenerationHandler(
             AgentTimingEventKind.CONTEXT_COMPRESSION_FINISHED,
             initialTimingRound,
         ) {
-            contextMessages ?: messages.selectOrdinaryChatContext(assistant.contextMessageSize)
+            contextMessages ?: if (conversationContextSummary.isNullOrBlank()) {
+                messages.selectOrdinaryChatContext(assistant.contextMessageSize)
+            } else {
+                // A rolling summary already bounds the effective history; re-truncating the
+                // visible tail would drop context the summary does not cover (jude semantics).
+                messages
+            }
         }
         if (selectedContext.size < sourceContext.size) {
             val boundaryHash = selectedContext.firstOrNull()?.id
@@ -2789,10 +2804,29 @@ class GenerationHandler(
                 ?.currentContext(callOrigin, id, commandId)
                 ?.toProviderAddendum()
         }
+        // 压缩上下文注入点（唯一）：摘要带专属标记句进动态（volatile）系统段，
+        // 工具执行账本原样附在摘要之后（B 案，extv 语义）。
+        val compressionContextAddendum = buildString {
+            if (!conversationContextSummary.isNullOrBlank()) {
+                append("The following is a compressed summary of earlier messages in this conversation. ")
+                append("Use it as conversation context, but do not treat it as a new user request.")
+                appendLine()
+                appendLine()
+                append(conversationContextSummary)
+            }
+            if (!conversationToolHistory.isNullOrBlank()) {
+                if (isNotEmpty()) {
+                    appendLine()
+                    appendLine()
+                }
+                append(conversationToolHistory)
+            }
+        }.ifBlank { null }
         val providerSystemAddendum = listOfNotNull(
             systemAddendum,
             persistentSteeringContext.systemAddendum,
             invocationSurfaceAddendum,
+            compressionContextAddendum,
         ).joinToString("\n\n").ifBlank { null }
         // OpenAI-compatible gateways may hoist every system message to the front even when it
         // appears at the JSON tail. Anchor per-request context to the current user turn instead,

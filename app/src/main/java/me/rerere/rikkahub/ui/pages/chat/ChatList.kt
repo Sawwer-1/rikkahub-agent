@@ -153,6 +153,7 @@ fun ChatList(
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
     onAddSelectionToMemory: (Set<Uuid>) -> Unit = {},
+    showCompressedMessages: Boolean = false,
 ) {
     AnimatedContent(
         targetState = previewMode,
@@ -198,6 +199,7 @@ fun ChatList(
                 onToggleFavorite = onToggleFavorite,
                 onConversationSystemPromptChange = onConversationSystemPromptChange,
                 onAddSelectionToMemory = onAddSelectionToMemory,
+                showCompressedMessages = showCompressedMessages,
             )
         }
     }
@@ -231,8 +233,15 @@ private fun ChatListNormal(
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
     onAddSelectionToMemory: (Set<Uuid>) -> Unit = {},
+    showCompressedMessages: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
+    // 滚动摘要压缩：默认只显示可见节点；眼睛按钮打开时显示被压缩的原始消息。
+    val displayedMessageNodes = if (showCompressedMessages) {
+        conversation.messageNodes
+    } else {
+        conversation.visibleMessageNodes
+    }
     // Keep the entire subscription branch absent while disabled. This avoids creating a timing
     // flow, installing lifecycle/draw observers, or touching the process sidecar in normal use.
     val agentTimingUiState = if (settings.displaySetting.showAgentTiming) {
@@ -344,7 +353,7 @@ private fun ChatListNormal(
                     .padding(top = innerPadding.calculateTopPadding()),
             ) {
             itemsIndexed(
-                items = conversation.messageNodes,
+                items = displayedMessageNodes,
                 key = { index, item -> item.id },
             ) { index, node ->
                 val timingUiState = agentTimingUiState

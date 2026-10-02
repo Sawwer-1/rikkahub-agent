@@ -173,7 +173,8 @@ import me.rerere.rikkahub.owner.db.HostOperationEventEntity
     ],
     // v49 makes workflow capability/provenance authority durable. Learned artifacts remain
     // disabled until an explicit cross-database promotion completes.
-    version = 50,
+    // v51 adds rolling-summary compression columns (summary / hidden node ids / auto config).
+    version = 51,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),

@@ -1,11 +1,16 @@
 package me.rerere.rikkahub.data.repository
 
+import me.rerere.rikkahub.data.model.AutoCompressConfig
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.data.db.entity.ConversationEntity
 import me.rerere.rikkahub.utils.JsonInstant
 import java.time.Instant
 import kotlin.uuid.Uuid
+
+/** Decodes a persisted AutoCompressConfig JSON blob; empty/legacy values decode to null. */
+private fun String.toAutoCompressConfigOrNull(): AutoCompressConfig? =
+    ifEmpty { null }?.let { JsonInstant.decodeFromString<AutoCompressConfig>(it) }
 
 fun conversationToConversationEntity(conversation: Conversation): ConversationEntity {
     require(conversation.messageNodes.none { it.messages.any { message -> message.hasBase64Part() } })
@@ -23,6 +28,11 @@ fun conversationToConversationEntity(conversation: Conversation): ConversationEn
         lorebookIds = JsonInstant.encodeToString(conversation.lorebookIds),
         workspaceCwd = conversation.workspaceCwd ?: "",
         folderId = conversation.folderId,
+        compressedSummary = conversation.compressedSummary ?: "",
+        compressedMessageNodeIds = JsonInstant.encodeToString(conversation.compressedMessageNodeIds),
+        autoCompressConfig = conversation.autoCompressConfig
+            ?.let { JsonInstant.encodeToString(it) }
+            ?: "",
     )
 }
 
@@ -44,5 +54,10 @@ fun conversationEntityToConversation(
         lorebookIds = JsonInstant.decodeFromString(conversationEntity.lorebookIds),
         workspaceCwd = conversationEntity.workspaceCwd.ifEmpty { null },
         folderId = conversationEntity.folderId,
+        compressedSummary = conversationEntity.compressedSummary.ifEmpty { null },
+        compressedMessageNodeIds = JsonInstant.decodeFromString(
+            conversationEntity.compressedMessageNodeIds,
+        ),
+        autoCompressConfig = conversationEntity.autoCompressConfig.toAutoCompressConfigOrNull(),
     )
 }
