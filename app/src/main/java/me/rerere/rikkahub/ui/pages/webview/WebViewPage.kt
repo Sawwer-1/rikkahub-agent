@@ -45,6 +45,7 @@ import me.rerere.rikkahub.ui.components.webview.rememberRikkaHubAssetWebViewClie
 import me.rerere.rikkahub.ui.theme.JetbrainsMono
 import me.rerere.rikkahub.utils.base64Decode
 import androidx.compose.ui.res.stringResource
+import me.rerere.rikkahub.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

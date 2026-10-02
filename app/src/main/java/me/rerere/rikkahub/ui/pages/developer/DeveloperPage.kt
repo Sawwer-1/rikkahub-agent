@@ -33,6 +33,7 @@ import me.rerere.rikkahub.data.ai.AILogging
 import me.rerere.rikkahub.data.datastore.AiLogLevel
 import org.koin.androidx.compose.koinViewModel
 import androidx.compose.ui.res.stringResource
+import me.rerere.rikkahub.R
 
 @Composable
 fun DeveloperPage(vm: DeveloperVM = koinViewModel()) {

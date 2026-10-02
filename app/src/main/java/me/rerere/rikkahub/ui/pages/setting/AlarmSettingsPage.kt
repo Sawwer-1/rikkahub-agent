@@ -51,6 +51,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import androidx.compose.ui.res.stringResource
+import me.rerere.rikkahub.R
 
 @Composable
 fun AlarmSettingsPage() {
