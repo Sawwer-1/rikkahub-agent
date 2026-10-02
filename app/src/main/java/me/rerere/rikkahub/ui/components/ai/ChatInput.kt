@@ -64,6 +64,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.mutableLongStateOf
+import java.text.DateFormat
+import java.util.Date
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -440,6 +445,52 @@ private fun TextInputRow(
     val quickMessages = remember(settings.quickMessages, assistant.quickMessageIds) {
         settings.getQuickMessagesOfAssistant(assistant)
     }
+    val context = LocalContext.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    val toaster = LocalToaster.current
+    var lockNowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val activeLock = settings.usageReminderState.activeLock
+    LaunchedEffect(
+        settings.usageReminderConfig.lockEnabled,
+        activeLock?.source,
+        activeLock?.targetPackageName,
+        activeLock?.lockedUntilMillis,
+    ) {
+        lockNowMillis = System.currentTimeMillis()
+        activeLock
+            ?.takeIf {
+                settings.usageReminderConfig.lockEnabled &&
+                    it.source == "ai_tool" &&
+                    it.targetPackageName == context.packageName &&
+                    it.lockedUntilMillis > lockNowMillis
+            }
+            ?.let { lock ->
+                while (lockNowMillis < lock.lockedUntilMillis) {
+                    delay((lock.lockedUntilMillis - lockNowMillis).coerceIn(100L, 1_000L))
+                    lockNowMillis = System.currentTimeMillis()
+                }
+            }
+    }
+    val rikkahubLock = settings.usageReminderState.activeLock?.takeIf { lock ->
+        settings.usageReminderConfig.lockEnabled &&
+            lock.source == "ai_tool" &&
+            lock.lockedUntilMillis > lockNowMillis &&
+            lock.targetPackageName == context.packageName
+    }
+    val lockNotice = rikkahubLock?.let { lock ->
+        val unlockText = DateFormat.getDateFormat(context).format(Date(lock.lockedUntilMillis)) + " " +
+            DateFormat.getTimeFormat(context).format(Date(lock.lockedUntilMillis))
+        buildString {
+            append("RikkaHub 已锁定到 ")
+            append(unlockText)
+            if (lock.reason.isNotBlank()) {
+                append("
+")
+                append(lock.reason)
+            }
+        }
+    }.orEmpty()
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -469,6 +520,13 @@ private fun TextInputRow(
 
         var isFocused by remember { mutableStateOf(false) }
         var isFullScreen by remember { mutableStateOf(false) }
+        LaunchedEffect(rikkahubLock != null) {
+            if (rikkahubLock != null) {
+                isFullScreen = false
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
+            }
+        }
         var completionList by remember { mutableStateOf<ChatCompletionList?>(null) }
         val receiveContentListener = remember(
             settings.displaySetting.pasteLongTextAsFile, settings.displaySetting.pasteLongTextThreshold
@@ -556,8 +614,10 @@ private fun TextInputRow(
             )
         }
 
+        Box(modifier = Modifier.fillMaxWidth()) {
         TextField(
             state = state.textContent,
+            enabled = rikkahubLock == null,
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("chat_input")
@@ -574,7 +634,7 @@ private fun TextInputRow(
                 imeAction = if (settings.displaySetting.sendOnEnter) ImeAction.Send else ImeAction.Default
             ),
             onKeyboardAction = {
-                if (settings.displaySetting.sendOnEnter && !state.isEmpty()) {
+                if (settings.displaySetting.sendOnEnter && !state.isEmpty() && rikkahubLock == null) {
                     onSendMessage()
                 }
             },
@@ -585,7 +645,7 @@ private fun TextInputRow(
                 unfocusedContainerColor = Color.Transparent,
             ),
             trailingIcon = {
-                if (isFocused) {
+                if (isFocused && rikkahubLock == null) {
                     IconButton(
                         onClick = {
                             isFullScreen = !isFullScreen
@@ -594,12 +654,26 @@ private fun TextInputRow(
                     }
                 }
             },
-            leadingIcon = if (quickMessages.isNotEmpty()) {
+            leadingIcon = if (quickMessages.isNotEmpty() && rikkahubLock == null) {
                 {
                     QuickMessageButton(quickMessages = quickMessages, state = state)
                 }
             } else null,
         )
+            if (rikkahubLock != null) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clip(MaterialTheme.shapes.largeIncreased)
+                        .clickable {
+                            toaster.show(
+                                message = lockNotice,
+                                type = ToastType.Normal,
+                            )
+                        }
+                )
+            }
+        }
         if (isFullScreen) {
             FullScreenEditor(state = state) {
                 isFullScreen = false

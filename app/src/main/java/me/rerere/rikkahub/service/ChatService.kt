@@ -3454,7 +3454,11 @@ class ChatService(
             fun canExposeLocalTool(toolName: String): Boolean {
                 return canExposeTool(toolName)
             }
-            val localToolDefinitions = localTools.getTools(localToolOptions, invocationCtx)
+            val localToolDefinitions = localTools.getTools(
+                localToolOptions,
+                invocationCtx,
+                usageLockEnabled = settings.usageReminderConfig.lockEnabled,
+            )
                 .filter { tool -> canExposeLocalTool(tool.name) }
             val pluginToolRegistrations = if (invocationSurfaceCanExposeTools) {
                 pluginToolCatalog.registrations(

@@ -23,7 +23,7 @@ import org.koin.android.ext.android.inject
  * Follows the HeartbeatSettingsActivity pattern: standalone ComponentActivity, no nav route.
  *
  * Note: the "allow assistant to read usage stats" toggle currently drives
- * [LocalToolOption.ScreenTime] (AAA's existing usage-stats tool option). If the
+ * [LocalToolOption.UsageStats] (AAA's existing usage-stats tool option). If the
  * dedicated usage stats tool option lands later, swap the option here.
  */
 class UsageTrackerActivity : ComponentActivity() {
@@ -54,14 +54,14 @@ private fun UsageTrackerPageHost(
     val scope = rememberCoroutineScope()
     UsageTrackerPage(
         onBack = onBack,
-        usageStatsToolEnabled = assistant.localTools.contains(LocalToolOption.ScreenTime),
+        usageStatsToolEnabled = assistant.localTools.contains(LocalToolOption.UsageStats),
         usageReminderConfig = settings.usageReminderConfig,
         usageReminderState = settings.usageReminderState,
         onUsageStatsToolEnabledChange = { enabled ->
             val localTools = if (enabled) {
-                assistant.localTools + LocalToolOption.ScreenTime
+                assistant.localTools + LocalToolOption.UsageStats
             } else {
-                assistant.localTools - LocalToolOption.ScreenTime
+                assistant.localTools - LocalToolOption.UsageStats
             }
             scope.launch {
                 settingsStore.update { current ->
