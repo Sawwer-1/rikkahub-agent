@@ -18,6 +18,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -140,9 +141,6 @@ import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.utils.readClipboardText
 import me.rerere.rikkahub.utils.writeClipboardText
 import java.time.ZonedDateTime
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.ZoneId
 import kotlinx.coroutines.flow.first
 import me.rerere.rikkahub.service.UsageReminderService
 import me.rerere.usagetracker.UsageStatsPeriod
@@ -815,7 +813,7 @@ class LocalTools(
                     }
                 )
             },
-            needsApproval = false,
+            needsApproval = { false },
             execute = { params ->
                 val reader = UsageStatsReader(context)
                 if (!reader.hasUsageAccess()) {
@@ -872,52 +870,6 @@ class LocalTools(
         )
     }
 
-    private fun requestVoiceCallTool(voiceCallConfigured: Boolean) = Tool(
-            name = REQUEST_VOICE_CALL_TOOL_NAME,
-            description = """
-                Invite the user to start a voice call in the current chat.
-                Use this sparingly, only when a real-time spoken conversation would feel more natural or helpful than text.
-                Provide one short, natural reason that can be shown on the incoming-call screen.
-                The user may answer, decline, or miss the call, and the result will be returned to you.
-                当前对话确实更适合实时语音交流时，才主动邀请用户通话；不要频繁发起。
-            """.trimIndent().replace("\n", " "),
-            parameters = {
-                InputSchema.Obj(
-                    properties = buildJsonObject {
-                        put("reason", buildJsonObject {
-                            put("type", "string")
-                            put("description", "A short natural reason for calling, suitable for the incoming-call screen.")
-                        })
-                    },
-                    required = listOf("reason")
-                )
-            },
-            needsApproval = voiceCallConfigured,
-            execute = { params ->
-                if (!voiceCallConfigured) {
-                    listOf(
-                        UIMessagePart.Text(
-                            buildJsonObject {
-                                put("success", false)
-                                put("error", VOICE_CALL_UNAVAILABLE_MESSAGE)
-                            }.toString()
-                        )
-                    )
-                } else {
-                    val reason = params.jsonObject["reason"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
-                    listOf(
-                        UIMessagePart.Text(
-                            buildJsonObject {
-                                put("success", true)
-                                put("status", "answered")
-                                put("reason", reason)
-                            }.toString()
-                        )
-                    )
-                }
-            }
-        )
-
     val usageLockTool by lazy {
         Tool(
             name = "usage_lock_control",
@@ -969,7 +921,7 @@ class LocalTools(
                     required = listOf("action")
                 )
             },
-            needsApproval = false,
+            needsApproval = { false },
             execute = { params ->
                 val settings = settingsStore.settingsFlowRaw.first()
                 val lockEnabled = settings.usageReminderConfig.lockEnabled
@@ -1093,294 +1045,6 @@ class LocalTools(
                     }
 
                     else -> error("unknown action: $action, must be one of [status, lock, unlock]")
-                }
-            }
-        )
-    }
-
-    val weatherTool by lazy {
-        Tool(
-            name = "get_local_weather",
-            description = """
-                Get current weather and a short forecast for the user's local Android device location.
-                This reads the device location only after Android location permission has been granted, then calls the built-in weather API directly from the app.
-                Use this only when the user asks about local weather, temperature, rain, wind, or forecast.
-                The tool requires user approval before each execution because location can be sensitive.
-            """.trimIndent().replace("\n", " "),
-            parameters = {
-                InputSchema.Obj(properties = buildJsonObject { })
-            },
-            needsApproval = true,
-            execute = {
-                val payload = if (!weatherRepository.hasLocationPermission()) {
-                    buildJsonObject {
-                        put("error", "Location permission is not granted.")
-                    }
-                } else {
-                    weatherRepository.loadLocalWeather().toJson()
-                }
-                listOf(UIMessagePart.Text(payload.toString()))
-            }
-        )
-    }
-
-    private fun postMomentTool(assistantId: Uuid): Tool {
-        return Tool(
-            name = "post_moment",
-            description = """
-                Post a short Moments update from the assistant during chat.
-                Use this only when there is a sentence the assistant wants the user to see later in Moments,
-                not for every pleasant exchange. The visible content should feel like a natural social feed post.
-                当对话中出现值得纪念、想表达情绪、分享生活感、或适合留作动态的一句话时，可以使用 post_moment 发布朋友圈，但不要频繁。
-            """.trimIndent().replace("\n", " "),
-            parameters = {
-                InputSchema.Obj(
-                    properties = buildJsonObject {
-                        put("content", buildJsonObject {
-                            put("type", "string")
-                            put("description", "Visible Moments post content, 1 to 3 natural sentences.")
-                        })
-                        put("context_note", buildJsonObject {
-                            put("type", "string")
-                            put("description", "Hidden note explaining why this was posted and the emotional context.")
-                        })
-                    },
-                    required = listOf("content", "context_note")
-                )
-            },
-            needsApproval = false,
-            execute = { params ->
-                val obj = params.jsonObject
-                val content = obj["content"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
-                val contextNote = obj["context_note"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
-                if (content.isBlank()) {
-                    listOf(
-                        UIMessagePart.Text(
-                            buildJsonObject {
-                                put("success", false)
-                                put("error", "content is required")
-                            }.toString()
-                        )
-                    )
-                } else {
-                    val momentId = momentRepository.postAssistantMoment(
-                        assistantId = assistantId,
-                        content = content,
-                        contextNote = contextNote,
-                    )
-                    listOf(
-                        UIMessagePart.Text(
-                            buildJsonObject {
-                                put("success", true)
-                                put("moment_id", momentId.toString())
-                            }.toString()
-                        )
-                    )
-                }
-            }
-        )
-    }
-
-    private fun deleteMomentTool(assistantId: Uuid): Tool {
-        return Tool(
-            name = "delete_moment",
-            description = """
-                Delete saved Moments in the current assistant's Moments timeline.
-                Use this when the user explicitly asks to delete, remove, withdraw, clear, or erase a Moments post.
-                支持用户说“删除朋友圈”“删掉刚才那条朋友圈”“撤回包含某句话的朋友圈”等场景。
-                Prefer moment_id when known. Otherwise use keyword to match visible/hidden Moment text, or latest=true for the newest Moment.
-                Never delete Moments unless the user asks for deletion.
-            """.trimIndent().replace("\n", " "),
-            parameters = {
-                InputSchema.Obj(
-                    properties = buildJsonObject {
-                        put("moment_id", buildJsonObject {
-                            put("type", "string")
-                            put("description", "Optional exact Moment ID to delete.")
-                        })
-                        put("keyword", buildJsonObject {
-                            put("type", "string")
-                            put("description", "Optional keyword to find Moments by content, context note, image description, or assistant reaction.")
-                        })
-                        put("latest", buildJsonObject {
-                            put("type", "boolean")
-                            put("description", "Delete the latest Moment when no ID or keyword is available. Default false.")
-                        })
-                        put("limit", buildJsonObject {
-                            put("type", "integer")
-                            put("description", "Maximum matched Moments to delete, 1 to 20. Default 1.")
-                        })
-                    }
-                )
-            },
-            needsApproval = false,
-            execute = { params ->
-                val obj = params.jsonObject
-                val momentIdText = obj["moment_id"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
-                val momentId = momentIdText
-                    .takeIf { it.isNotBlank() }
-                    ?.let { runCatching { Uuid.parse(it) }.getOrNull() }
-                if (momentIdText.isNotBlank() && momentId == null) {
-                    listOf(
-                        UIMessagePart.Text(
-                            buildJsonObject {
-                                put("success", false)
-                                put("deleted_count", 0)
-                                put("error", "Invalid moment_id.")
-                            }.toString()
-                        )
-                    )
-                } else {
-                    val keyword = obj["keyword"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
-                    val latest = obj["latest"]?.jsonPrimitive?.booleanOrNull == true ||
-                        (momentId == null && keyword.isBlank())
-                    val limit = obj["limit"]?.jsonPrimitive?.intOrNull ?: 1
-                    val deleted = momentRepository.deleteMoments(
-                        assistantId = assistantId,
-                        momentId = momentId,
-                        keyword = keyword,
-                        latest = latest,
-                        limit = limit,
-                    )
-                    listOf(
-                        UIMessagePart.Text(
-                            buildJsonObject {
-                                put("success", deleted.isNotEmpty())
-                                put("deleted_count", deleted.size)
-                                if (deleted.isEmpty()) {
-                                    put("error", "No matching Moment was found in the current timeline.")
-                                }
-                                put("deleted_moments", buildJsonArray {
-                                    deleted.forEach { moment ->
-                                        addJsonObject {
-                                            put("moment_id", moment.id.toString())
-                                            put("content", moment.content.take(160))
-                                            put("created_at_timestamp_ms", moment.createdAt)
-                                        }
-                                    }
-                                })
-                            }.toString()
-                        )
-                    )
-                }
-            }
-        )
-    }
-
-    private fun postAnonymousQuestionTool(scopeId: Uuid): Tool {
-        return Tool(
-            name = "post_anonymous_question",
-            description = "Post a short anonymous question-box question when it would be natural and meaningful. Do not post frequently, do not include names or identity clues, and do not mention that the assistant authored it.",
-            parameters = {
-                InputSchema.Obj(
-                    properties = buildJsonObject {
-                        put("content", buildJsonObject {
-                            put("type", "string")
-                            put("description", "A concise anonymous question, without names or identity clues.")
-                        })
-                    },
-                    required = listOf("content")
-                )
-            },
-            needsApproval = false,
-            execute = { params ->
-                val content = params.jsonObject["content"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
-                if (content.isBlank()) {
-                    listOf(UIMessagePart.Text(buildJsonObject {
-                        put("success", false)
-                        put("error", "content is required")
-                    }.toString()))
-                } else {
-                    val id = anonymousQuestionRepository.postAssistantQuestion(scopeId, content)
-                    listOf(UIMessagePart.Text(buildJsonObject {
-                        put("success", true)
-                        put("question_id", id.toString())
-                    }.toString()))
-                }
-            }
-        )
-    }
-
-    private fun deleteAnonymousQuestionTool(scopeId: Uuid): Tool {
-        return Tool(
-            name = "delete_anonymous_question",
-            description = """
-                Delete saved questions from the current anonymous question box.
-                Use this only when the user explicitly asks to delete, remove, withdraw, clear, or erase an anonymous question.
-                Prefer question_id when known. Otherwise use keyword to match question or reply text, or latest=true for the newest question.
-                Never delete anonymous questions unless the user asks for deletion.
-            """.trimIndent().replace("\n", " "),
-            parameters = {
-                InputSchema.Obj(
-                    properties = buildJsonObject {
-                        put("question_id", buildJsonObject {
-                            put("type", "string")
-                            put("description", "Optional exact anonymous question ID to delete.")
-                        })
-                        put("keyword", buildJsonObject {
-                            put("type", "string")
-                            put("description", "Optional keyword to find anonymous questions by question or reply text.")
-                        })
-                        put("latest", buildJsonObject {
-                            put("type", "boolean")
-                            put("description", "Delete the latest anonymous question when no ID or keyword is available. Default false.")
-                        })
-                        put("limit", buildJsonObject {
-                            put("type", "integer")
-                            put("description", "Maximum matched anonymous questions to delete, 1 to 20. Default 1.")
-                        })
-                    }
-                )
-            },
-            needsApproval = false,
-            execute = { params ->
-                val obj = params.jsonObject
-                val questionIdText = obj["question_id"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
-                val questionId = questionIdText
-                    .takeIf { it.isNotBlank() }
-                    ?.let { runCatching { Uuid.parse(it) }.getOrNull() }
-                if (questionIdText.isNotBlank() && questionId == null) {
-                    listOf(
-                        UIMessagePart.Text(
-                            buildJsonObject {
-                                put("success", false)
-                                put("deleted_count", 0)
-                                put("error", "Invalid question_id.")
-                            }.toString()
-                        )
-                    )
-                } else {
-                    val keyword = obj["keyword"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
-                    val latest = obj["latest"]?.jsonPrimitive?.booleanOrNull == true ||
-                        (questionId == null && keyword.isBlank())
-                    val limit = obj["limit"]?.jsonPrimitive?.intOrNull ?: 1
-                    val deleted = anonymousQuestionRepository.deleteQuestions(
-                        scopeId = scopeId,
-                        questionId = questionId,
-                        keyword = keyword,
-                        latest = latest,
-                        limit = limit,
-                    )
-                    listOf(
-                        UIMessagePart.Text(
-                            buildJsonObject {
-                                put("success", deleted.isNotEmpty())
-                                put("deleted_count", deleted.size)
-                                if (deleted.isEmpty()) {
-                                    put("error", "No matching anonymous question was found in the current question box.")
-                                }
-                                put("deleted_questions", buildJsonArray {
-                                    deleted.forEach { question ->
-                                        addJsonObject {
-                                            put("question_id", question.id.toString())
-                                            put("content", question.content.take(160))
-                                            put("created_at_timestamp_ms", question.createdAt)
-                                        }
-                                    }
-                                })
-                            }.toString()
-                        )
-                    )
                 }
             }
         )
@@ -2141,12 +1805,12 @@ class LocalTools(
 
 private fun parseUnlockTimeMillis(value: String): Long {
     return runCatching {
-        Instant.parse(value).toEpochMilli()
+        java.time.Instant.parse(value).toEpochMilli()
     }.getOrElse {
         runCatching {
-            ZonedDateTime.parse(value).toInstant().toEpochMilli()
+            java.time.ZonedDateTime.parse(value).toInstant().toEpochMilli()
         }.getOrElse {
-            LocalDateTime.parse(value).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            java.time.LocalDateTime.parse(value).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
         }
     }
 }

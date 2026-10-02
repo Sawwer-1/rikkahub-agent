@@ -416,6 +416,7 @@ private fun ChatPageContent(
                         onCompressedSummaryChange = { newSummary ->
                             vm.updateCompressedSummary(newSummary)
                         },
+                        onSummaryEditorVisibilityChange = { summaryEditorVisible = it },
                         onNewChat = { navigateToChatPage(navController) },
                         onClickMenu = { previewMode = !previewMode },
                         onOpenDiagnostics = {
@@ -1175,6 +1176,7 @@ private fun TopBar(
     onToggleCompressedMessages: () -> Unit,
     summaryEditorVisible: Boolean,
     onCompressedSummaryChange: (String?) -> Unit,
+    onSummaryEditorVisibilityChange: (Boolean) -> Unit,
     onClickMenu: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     momentsUnread: Boolean,
@@ -1259,7 +1261,7 @@ private fun TopBar(
                     summary = summary,
                     autoCompressEnabled = autoCompressEnabled,
                     onSummaryChange = onCompressedSummaryChange,
-                    onEditorVisibilityChange = { summaryEditorVisible = it },
+                    onEditorVisibilityChange = onSummaryEditorVisibilityChange,
                 )
             }
 

@@ -584,6 +584,7 @@ class HeartbeatGenerationWorkflow(
             message just because this heartbeat was triggered. Otherwise, produce one short
             natural message.
         """.trimIndent()
+    }
 
     private fun List<UIMessage>.filterCompletedToolMessages(): List<UIMessage> =
         filterNot { message ->
