@@ -72,6 +72,8 @@ import me.rerere.rikkahub.quickcapture.QuickCaptureSettings
 import me.rerere.rikkahub.pet.PetOverlaySelection
 import me.rerere.rikkahub.pet.resolvePetOverlaySelection
 import me.rerere.rikkahub.assistant.SecondUserAuthorityConfig
+import me.rerere.usagetracker.UsageReminderConfig
+import me.rerere.usagetracker.UsageReminderState
 
 private const val TAG = "PreferencesStore"
 
@@ -157,6 +159,7 @@ class SettingsStore(
         val OCR_PROMPT = stringPreferencesKey("ocr_prompt")
         val COMPRESS_MODEL = stringPreferencesKey("compress_model")
         val COMPRESS_PROMPT = stringPreferencesKey("compress_prompt")
+        val COMPRESS_OPENAI_CONFIG = stringPreferencesKey("compress_openai_config")
         val FINAL_ANSWER_REMINDER_PROMPT = stringPreferencesKey("final_answer_reminder_prompt")
 
         // 提供商
@@ -218,6 +221,8 @@ class SettingsStore(
 
         // 统计
         val LAUNCH_COUNT = intPreferencesKey("launch_count")
+        val USAGE_REMINDER_CONFIG = stringPreferencesKey("usage_reminder_config")
+        val USAGE_REMINDER_STATE = stringPreferencesKey("usage_reminder_state")
 
         // 赞助提醒
         val SPONSOR_ALERT_DISMISSED_AT = intPreferencesKey("sponsor_alert_dismissed_at")
@@ -284,6 +289,9 @@ class SettingsStore(
                 ocrPrompt = preferences[OCR_PROMPT] ?: DEFAULT_OCR_PROMPT,
                 compressModelId = preferences[COMPRESS_MODEL]?.let { Uuid.parse(it) } ?: DEFAULT_AUTO_MODEL_ID,
                 compressPrompt = preferences[COMPRESS_PROMPT] ?: DEFAULT_COMPRESS_PROMPT,
+                compressOpenAIConfig = preferences[COMPRESS_OPENAI_CONFIG]?.let { value ->
+                    runCatching { JsonInstant.decodeFromString<CompressOpenAIConfig>(value) }.getOrNull()
+                } ?: CompressOpenAIConfig(),
                 finalAnswerReminderPrompt = resolveFinalAnswerReminderPrompt(
                     preferences[FINAL_ANSWER_REMINDER_PROMPT],
                 ),
@@ -379,6 +387,12 @@ class SettingsStore(
                     JsonInstant.decodeFromString(it)
                 } ?: BackupReminderConfig(),
                 launchCount = preferences[LAUNCH_COUNT] ?: 0,
+                usageReminderConfig = preferences[USAGE_REMINDER_CONFIG]?.let {
+                    JsonInstant.decodeFromString(it)
+                } ?: UsageReminderConfig(),
+                usageReminderState = preferences[USAGE_REMINDER_STATE]?.let {
+                    JsonInstant.decodeFromString(it)
+                } ?: UsageReminderState(),
                 sponsorAlertDismissedAt = preferences[SPONSOR_ALERT_DISMISSED_AT] ?: 0,
             )
         }
@@ -588,6 +602,7 @@ class SettingsStore(
             preferences[OCR_PROMPT] = settings.ocrPrompt
             preferences[COMPRESS_MODEL] = settings.compressModelId.toString()
             preferences[COMPRESS_PROMPT] = settings.compressPrompt
+            preferences[COMPRESS_OPENAI_CONFIG] = JsonInstant.encodeToString(settings.compressOpenAIConfig)
             preferences[FINAL_ANSWER_REMINDER_PROMPT] = settings.finalAnswerReminderPrompt
 
             preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
@@ -644,6 +659,8 @@ class SettingsStore(
             preferences[AI_LOG_LEVEL] = settings.aiLogLevel.preferenceName
             preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
             preferences[LAUNCH_COUNT] = settings.launchCount
+            preferences[USAGE_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.usageReminderConfig)
+            preferences[USAGE_REMINDER_STATE] = JsonInstant.encodeToString(settings.usageReminderState)
             preferences[SPONSOR_ALERT_DISMISSED_AT] = settings.sponsorAlertDismissedAt
         }
     }
@@ -813,6 +830,16 @@ class SettingsStore(
 }
 
 @Serializable
+data class CompressOpenAIConfig(
+    val enabled: Boolean = false,
+    val modelId: String = "",
+    val apiKey: String = "",
+    val baseUrl: String = "https://api.openai.com/v1",
+    val chatCompletionsPath: String = "/chat/completions",
+    val useResponseApi: Boolean = false,
+)
+
+@Serializable
 data class Settings(
     @Transient
     val init: Boolean = false,
@@ -847,6 +874,7 @@ data class Settings(
     val ocrPrompt: String = DEFAULT_OCR_PROMPT,
     val compressModelId: Uuid = Uuid.random(),
     val compressPrompt: String = DEFAULT_COMPRESS_PROMPT,
+    val compressOpenAIConfig: CompressOpenAIConfig = CompressOpenAIConfig(),
     val finalAnswerReminderPrompt: String = DEFAULT_FINAL_ANSWER_REMINDER_PROMPT,
     val assistantId: Uuid = DEFAULT_ASSISTANT_ID,
     val systemAssistantTargetAssistantId: Uuid? = null,
@@ -895,6 +923,8 @@ data class Settings(
     val aiLogLevel: AiLogLevel = AiLogLevel.INFO,
     val backupReminderConfig: BackupReminderConfig = BackupReminderConfig(),
     val launchCount: Int = 0,
+    val usageReminderConfig: UsageReminderConfig = UsageReminderConfig(),
+    val usageReminderState: UsageReminderState = UsageReminderState(),
     val sponsorAlertDismissedAt: Int = 0,
 ) {
     companion object {

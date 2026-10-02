@@ -28,6 +28,8 @@ import me.rerere.rikkahub.data.db.dao.ManagedFileDAO
 import me.rerere.rikkahub.data.db.dao.MemoryDAO
 import me.rerere.rikkahub.data.db.dao.MemoryV2Dao
 import me.rerere.rikkahub.data.db.dao.MessageNodeDAO
+import me.rerere.rikkahub.data.db.dao.MomentDAO
+import me.rerere.rikkahub.data.db.dao.AnonymousQuestionDAO
 import me.rerere.rikkahub.data.db.dao.LearningOutboxDao
 import me.rerere.rikkahub.data.db.dao.LearningReconciliationAuthorityDao
 import me.rerere.rikkahub.data.db.dao.LearningSourceAuthorityDao
@@ -73,6 +75,12 @@ import me.rerere.rikkahub.data.db.entity.MemoryBackfillRunEntity
 import me.rerere.rikkahub.data.db.entity.MemorySourceTombstoneEntity
 import me.rerere.rikkahub.data.db.entity.MemoryScopeChangeEntity
 import me.rerere.rikkahub.data.db.entity.MemoryScopeStateEntity
+import me.rerere.rikkahub.data.db.entity.MomentEntity
+import me.rerere.rikkahub.data.db.entity.MomentCommentEntity
+import me.rerere.rikkahub.data.db.entity.MomentProfileEntity
+import me.rerere.rikkahub.data.db.entity.AnonymousQuestionEntity
+import me.rerere.rikkahub.data.db.entity.AnonymousQuestionProfileEntity
+import me.rerere.rikkahub.data.db.entity.AnonymousQuestionReplyEntity
 import me.rerere.rikkahub.data.db.entity.MessageNodeEntity
 import me.rerere.rikkahub.data.db.entity.LearningOutboxEntity
 import me.rerere.rikkahub.data.db.entity.LearningConversationSourceAuthorityEntity
@@ -170,10 +178,19 @@ import me.rerere.rikkahub.owner.db.HostOperationEventEntity
         LearningPolicyGrantRevisionEntity::class,
         RewardFeedbackAuthorityEntity::class,
         RewardFeedbackAuthorityRevisionEntity::class,
+        MomentEntity::class,
+        MomentCommentEntity::class,
+        MomentProfileEntity::class,
+        AnonymousQuestionEntity::class,
+        AnonymousQuestionProfileEntity::class,
+        AnonymousQuestionReplyEntity::class,
     ],
     // v49 makes workflow capability/provenance authority durable. Learned artifacts remain
     // disabled until an explicit cross-database promotion completes.
-    version = 50,
+    // v51 adds rolling-summary compression columns (summary / hidden node ids / auto config).
+    // v52 adds the social surfaces ported from jude: moments (timeline / comments / profile)
+    // and the anonymous question box (questions / replies / profile).
+    version = 52,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -271,6 +288,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun learningPolicyGrantDao(): LearningPolicyGrantDao
 
     abstract fun rewardFeedbackAuthorityDao(): RewardFeedbackAuthorityDao
+
+    abstract fun momentDao(): MomentDAO
+
+    abstract fun anonymousQuestionDao(): AnonymousQuestionDAO
 }
 
 object TokenUsageConverter {

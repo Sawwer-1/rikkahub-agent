@@ -67,6 +67,8 @@ import me.rerere.rikkahub.data.db.migrations.MIGRATION_46_47
 import me.rerere.rikkahub.data.db.migrations.MIGRATION_47_48
 import me.rerere.rikkahub.data.db.migrations.MIGRATION_48_49
 import me.rerere.rikkahub.data.db.migrations.MIGRATION_49_50
+import me.rerere.rikkahub.data.db.migrations.MIGRATION_50_51
+import me.rerere.rikkahub.data.db.migrations.MIGRATION_51_52
 import me.rerere.rikkahub.data.repository.MemorySearchIndex
 import me.rerere.rikkahub.data.repository.MemoryRetriever
 import me.rerere.rikkahub.memory.AndroidMemoryWorkScheduler
@@ -207,6 +209,8 @@ val dataSourceModule = module {
                 MIGRATION_47_48,
                 MIGRATION_48_49,
                 MIGRATION_49_50,
+                MIGRATION_50_51,
+                MIGRATION_51_52,
             )
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
@@ -1328,6 +1332,14 @@ val dataSourceModule = module {
     single { get<AppDatabase>().alarmDao() }
     single { AlarmRepository(get()) }
     single { AlarmScheduler(context = get(), repository = get()) }
+
+    // Social surfaces (ported from jude, batch 3): moments + anonymous question box.
+    // Both repositories key everything on the assistant id, so per-assistant isolation is
+    // preserved end to end.
+    single { get<AppDatabase>().momentDao() }
+    single { get<AppDatabase>().anonymousQuestionDao() }
+    single { me.rerere.rikkahub.data.repository.MomentRepository(get()) }
+    single { me.rerere.rikkahub.data.repository.AnonymousQuestionRepository(get()) }
 
     single {
         McpManager(

@@ -550,6 +550,8 @@ val appModule = module {
             persistentTtsLibrary = get(),
             ttsLibraryToolProvider = get(),
             reverseGeocodeToolProvider = get(),
+            momentRepository = get(),
+            anonymousQuestionRepository = get(),
         )
     }
 
