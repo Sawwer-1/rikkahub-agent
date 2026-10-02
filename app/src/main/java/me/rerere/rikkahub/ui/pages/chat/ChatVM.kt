@@ -58,6 +58,8 @@ import me.rerere.rikkahub.data.repository.ConversationDeletionResult
 import me.rerere.rikkahub.data.repository.FavoriteRepository
 import me.rerere.rikkahub.service.ChatError
 import me.rerere.rikkahub.service.ChatService
+import me.rerere.rikkahub.service.MessageQueueState
+import me.rerere.rikkahub.service.QueuedMessage
 import me.rerere.rikkahub.ui.hooks.writeStringPreference
 import me.rerere.rikkahub.ui.hooks.ChatInputState
 import me.rerere.rikkahub.utils.UiState
@@ -122,6 +124,23 @@ class ChatVM(
         .getConversationJobs()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
+    // 语音模式与消息队列（移植自 extv，batch 9）：语音轮次经账号会话的 MessageQueue 派发。
+    val voiceSession = VoiceSessionController(viewModelScope, context::getString) {
+        chatService.enqueueVoiceMessage(_conversationId, it)
+    }
+
+    val messageQueue: StateFlow<MessageQueueState> = chatService.getMessageQueueFlow(_conversationId)
+
+    fun removeQueuedMessage(id: Uuid) = chatService.removeQueuedMessage(_conversationId, id)
+
+    fun beginEditQueuedMessage(id: Uuid): QueuedMessage? =
+        chatService.beginEditQueuedMessage(_conversationId, id)
+
+    fun finishEditQueuedMessage(id: Uuid, parts: List<UIMessagePart>?) =
+        chatService.finishEditQueuedMessage(_conversationId, id, parts)
+
+    fun resumeMessageQueue() = chatService.resumeMessageQueue(_conversationId)
+
     init {
         chatService.onConversationVisible(_conversationId)
         // 添加对话引用
@@ -138,6 +157,7 @@ class ChatVM(
 
     override fun onCleared() {
         super.onCleared()
+        voiceSession.stop()
         // 移除对话引用
         chatService.removeConversationReference(_conversationId)
     }

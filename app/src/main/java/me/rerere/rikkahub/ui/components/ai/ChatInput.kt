@@ -102,6 +102,8 @@ import me.rerere.rikkahub.data.datastore.getQuickMessagesOfAssistant
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.QuickMessage
+import me.rerere.rikkahub.service.MessageQueueState
+import me.rerere.rikkahub.service.QueuedMessage
 import me.rerere.rikkahub.ui.components.ai.completion.ChatCompletionContext
 import me.rerere.rikkahub.ui.components.ai.completion.ChatCompletionItem
 import me.rerere.rikkahub.ui.components.ai.completion.ChatCompletionList
@@ -114,9 +116,12 @@ import me.rerere.rikkahub.ui.context.LocalASRState
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.hooks.ChatInputState
+import me.rerere.rikkahub.ui.pages.chat.VoicePhase
+import me.rerere.rikkahub.ui.pages.chat.VoiceSessionState
 import me.rerere.rikkahub.utils.SoundEffectPlayer
 import org.koin.compose.koinInject
 import kotlin.time.Duration.Companion.seconds
+import kotlin.uuid.Uuid
 
 internal enum class ChatInputPrimaryAction {
     SEND,
@@ -146,6 +151,14 @@ fun ChatInput(
     onCancelClick: () -> Unit,
     onSendClick: () -> Unit,
     onLongSendClick: () -> Unit,
+    messageQueue: MessageQueueState = MessageQueueState(),
+    onRemoveQueuedMessage: (Uuid) -> Unit = {},
+    onBeginEditQueuedMessage: (Uuid) -> QueuedMessage? = { null },
+    onFinishEditQueuedMessage: (Uuid, List<UIMessagePart>?) -> Unit = { _, _ -> },
+    onResumeMessageQueue: () -> Unit = {},
+    onStartVoiceMode: (() -> Unit)? = null,
+    voiceState: VoiceSessionState = VoiceSessionState(),
+    onStopVoiceMode: () -> Unit = {},
 ) {
     val toaster = LocalToaster.current
     val assistant = settings.getCurrentAssistant()
@@ -214,6 +227,13 @@ fun ChatInput(
                 .padding(horizontal = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            MessageQueuePanel(
+                state = messageQueue,
+                onRemove = onRemoveQueuedMessage,
+                onBeginEdit = onBeginEditQueuedMessage,
+                onFinishEdit = onFinishEditQueuedMessage,
+                onResume = onResumeMessageQueue,
+            )
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -237,6 +257,16 @@ fun ChatInput(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
+                    if (voiceState.phase != VoicePhase.Off) {
+                        VoiceModeRow(
+                            state = voiceState,
+                            onStop = onStopVoiceMode,
+                            onRetry = { onStartVoiceMode?.invoke() },
+                        )
+                        androidx.compose.material3.HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+                    }
                     if (state.messageContent.isNotEmpty()) {
                         MediaFileInputRow(state = state)
                     }

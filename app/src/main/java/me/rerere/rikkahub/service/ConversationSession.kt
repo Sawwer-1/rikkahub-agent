@@ -23,7 +23,12 @@ class ConversationSession(
     private val onIdle: (Uuid) -> Unit,
     private val canEvict: () -> Boolean = { true },
     private val idleTimeoutMs: Long = IDLE_TIMEOUT_MS,
+    // 语音/消息队列持久化文件（jude 移植，batch 9），null 表示仅内存。
+    queueStorageFile: java.io.File? = null,
 ) {
+    // 语音/消息队列（移植自 extv，batch 9）：排队中的待发送输入
+    val messageQueue = MessageQueue(queueStorageFile)
+
     // 会话状态
     val state = MutableStateFlow(initial)
     internal val metadataMutationMutex = kotlinx.coroutines.sync.Mutex()

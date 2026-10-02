@@ -66,6 +66,7 @@ import me.rerere.hugeicons.stroke.Package
 import me.rerere.hugeicons.stroke.Package01
 import me.rerere.hugeicons.stroke.Settings02
 import me.rerere.hugeicons.stroke.Video01
+import me.rerere.hugeicons.stroke.Voice
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.ai.mcp.McpManager
@@ -109,6 +110,7 @@ internal fun FilesPicker(
     onPickVideo: () -> Unit,
     onPickAudio: () -> Unit,
     onPickFile: () -> Unit,
+    onStartVoiceMode: (() -> Unit)? = null,
 ) {
     val settings = LocalSettings.current
     val provider = settings.getChatModelForAssistant(conversation.assistantId)
@@ -138,6 +140,14 @@ internal fun FilesPicker(
             }
 
             FilePickButton(onClick = onPickFile)
+
+            onStartVoiceMode?.let { start ->
+                BigIconTextButton(
+                    icon = { Icon(HugeIcons.Voice, contentDescription = null) },
+                    text = { Text(stringResource(R.string.chat_page_voice_title)) },
+                    onClick = start,
+                )
+            }
         }
 
         HorizontalDivider(

@@ -49,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -83,6 +84,7 @@ import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
+import me.rerere.rikkahub.data.datastore.getSelectedASRProvider
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
@@ -158,6 +160,9 @@ fun ChatPage(
     val isBigScreen =
         windowAdaptiveInfo.width > windowAdaptiveInfo.height && windowAdaptiveInfo.width >= 1100.dp
 
+    // 语音模式（移植自 extv，batch 9）：挂在大屏/抽屉分支之上，窗口缩放不会重建语音会话。
+    val startVoiceMode = rememberVoiceModeStarter(vm, setting)
+
     val inputState = vm.inputState
 
     // 初始化输入状态（处理传入的 files 和 text 参数）
@@ -228,6 +233,7 @@ fun ChatPage(
                     enableWebSearch = enableWebSearch,
                     currentChatModel = currentChatModel,
                     bigScreen = true,
+                    onStartVoiceMode = startVoiceMode,
                     errors = errors,
                     onDismissError = { vm.dismissError(it) },
                     onClearAllErrors = { vm.clearAllErrors() },
@@ -260,6 +266,7 @@ fun ChatPage(
                     enableWebSearch = enableWebSearch,
                     currentChatModel = currentChatModel,
                     bigScreen = false,
+                    onStartVoiceMode = startVoiceMode,
                     errors = errors,
                     onDismissError = { vm.dismissError(it) },
                     onClearAllErrors = { vm.clearAllErrors() },
@@ -286,6 +293,7 @@ private fun ChatPageContent(
     chatListState: LazyListState,
     enableWebSearch: Boolean,
     currentChatModel: Model?,
+    onStartVoiceMode: () -> Unit,
     errors: List<ChatError>,
     onDismissError: (Uuid) -> Unit,
     onClearAllErrors: () -> Unit,
@@ -297,6 +305,9 @@ private fun ChatPageContent(
     val queuedMessages by vm.queuedMessages.collectAsStateWithLifecycle()
     val steeringEntries by vm.steeringEntries.collectAsStateWithLifecycle()
     val rewardFeedbackAvailable by vm.rewardFeedbackAvailable.collectAsStateWithLifecycle()
+    // 语音模式与消息队列（移植自 extv，batch 9）
+    val voiceState by vm.voiceSession.state.collectAsStateWithLifecycle()
+    val messageQueue by vm.messageQueue.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val workspaceRepository: WorkspaceRepository = koinInject()
     var previewMode by rememberSaveable { mutableStateOf(false) }
@@ -616,6 +627,14 @@ private fun ChatPageContent(
                     settings = setting,
                     hazeState = hazeState,
                     completionProviders = completionProviders,
+                    voiceState = voiceState,
+                    onStartVoiceMode = onStartVoiceMode,
+                    onStopVoiceMode = vm.voiceSession::stop,
+                    messageQueue = messageQueue,
+                    onRemoveQueuedMessage = vm::removeQueuedMessage,
+                    onBeginEditQueuedMessage = vm::beginEditQueuedMessage,
+                    onFinishEditQueuedMessage = vm::finishEditQueuedMessage,
+                    onResumeMessageQueue = vm::resumeMessageQueue,
                     onCancelClick = {
                         vm.stopGeneration()
                     },
@@ -901,6 +920,8 @@ private fun ChatPageContent(
                 conversation = conversation,
                 assistant = assistant,
                 vm = vm,
+                voiceState = voiceState,
+                onStartVoiceMode = onStartVoiceMode,
                 onDismiss = { showFilesSheet = false },
             )
         }
@@ -963,11 +984,15 @@ private fun ChatFilesPickerSheet(
     conversation: Conversation,
     assistant: Assistant,
     vm: ChatVM,
+    voiceState: VoiceSessionState,
+    onStartVoiceMode: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
     val toaster = LocalToaster.current
     val filesManager: FilesManager = koinInject()
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     var showInjectionSheet by remember { mutableStateOf(false) }
     var showCompressDialog by remember { mutableStateOf(false) }
 
@@ -1161,6 +1186,19 @@ private fun ChatFilesPickerSheet(
             onPickVideo = { videoPickerLauncher.launch("video/*") },
             onPickAudio = { audioPickerLauncher.launch("audio/*") },
             onPickFile = { filePickerLauncher.launch(arrayOf("*/*")) },
+            // 语音模式入口（移植自 extv，batch 9）：无 ASR 供应商或语音会话进行中时隐藏。
+            // 目标仓三种 ASR 供应商均为 realtime 断句，无 extv 的 supportsServerVadVoiceMode 位。
+            onStartVoiceMode = if (
+                setting.getSelectedASRProvider() != null &&
+                voiceState.phase == VoicePhase.Off
+            ) {
+                {
+                    dismissAll()
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
+                    onStartVoiceMode()
+                }
+            } else null,
         )
     }
 }
