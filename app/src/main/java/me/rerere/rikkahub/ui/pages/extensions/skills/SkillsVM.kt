@@ -30,6 +30,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.file.Files
 import kotlin.collections.iterator
+import me.rerere.rikkahub.R
 
 class SkillsVM(
     private val context: Context,

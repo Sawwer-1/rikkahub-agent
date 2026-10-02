@@ -27,6 +27,7 @@ import me.rerere.rikkahub.pet.profile.PetProfileIdlePoolDocument
 import me.rerere.rikkahub.pet.profile.PetProfileRepository
 import me.rerere.rikkahub.pet.profile.PetVisualProfileOverride
 import androidx.compose.ui.res.stringResource
+import me.rerere.rikkahub.R
 
 /** Safe visual editor: it exposes semantic choices only, never paths, JSON, scripts or classes. */
 @Composable

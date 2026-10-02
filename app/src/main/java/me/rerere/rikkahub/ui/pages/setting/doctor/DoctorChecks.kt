@@ -1333,17 +1333,16 @@ class DoctorChecks(
                         id = "storage.granted_directories",
                         category = DoctorCategory.Database,
                         label = context.getString(R.string.doctor_db_granted_directories_label),
-                        detail = when {
-                            !externalStorageEnabled && grants.isEmpty() ->
-                                context.getString(R.string.doctor_db_granted_directories_detail_disabled)
-                            grants.isEmpty() ->
-                                context.getString(R.string.doctor_db_granted_directories_detail_none)
-                            else ->
-                                context.getString(
-                                    R.string.doctor_db_granted_directories_detail_granted,
-                                    grants.size,
-                                    grants.joinToString(", ") { it.displayName },
-                                ),
+                        detail = if (!externalStorageEnabled && grants.isEmpty()) {
+                            context.getString(R.string.doctor_db_granted_directories_detail_disabled)
+                        } else if (grants.isEmpty()) {
+                            context.getString(R.string.doctor_db_granted_directories_detail_none)
+                        } else {
+                            context.getString(
+                                R.string.doctor_db_granted_directories_detail_granted,
+                                grants.size,
+                                grants.joinToString(", ") { it.displayName }
+                            )
                         },
                         severity = if (externalStorageEnabled && grants.isNotEmpty())
                             Severity.OK else Severity.INFO,

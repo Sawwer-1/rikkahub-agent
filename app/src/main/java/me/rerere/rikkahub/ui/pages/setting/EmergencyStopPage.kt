@@ -43,6 +43,7 @@ import me.rerere.rikkahub.data.ai.AgentSafetySettings
 import me.rerere.rikkahub.data.ai.EmergencyStopCoordinator
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import org.koin.compose.koinInject
+import me.rerere.rikkahub.R
 
 @Composable
 fun EmergencyStopPage() {
