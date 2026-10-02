@@ -67,7 +67,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.mutableLongStateOf
-import java.text.DateFormat
+import android.text.format.DateFormat
 import java.util.Date
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
