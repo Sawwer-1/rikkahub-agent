@@ -94,6 +94,23 @@ enum class SubAgentPromptSource {
     DEFAULT,
 }
 
+/**
+ * A named, reusable sub-agent configuration - a name, description, custom system
+ * prompt and model, defined once in settings so the dispatching model can pick a specialist by
+ * NAME instead of memorizing a model uuid. Persisted via PreferencesStore (`sub_agents`) and
+ * edited in SettingSubAgentsPage. `modelId` null means the profile itself defers to the
+ * parent's model, mirroring the "null = inherit" convention already used by [SubAgentRequest.modelId].
+ */
+@Serializable
+data class SubAgentProfile(
+    val id: Uuid = Uuid.random(),
+    val name: String = "",
+    val description: String = "",
+    val systemPrompt: String = "",
+    val modelId: Uuid? = null,
+    val enabled: Boolean = true,
+)
+
 /** Inputs available when a child run is dispatched from an already-authorized parent turn. */
 data class SubAgentExecutionInputs(
     val parentEffectiveModelId: Uuid,

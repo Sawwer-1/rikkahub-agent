@@ -57,6 +57,7 @@ import me.rerere.rikkahub.memory.dreaming.runtime.DreamingScopePreferenceMutatio
 import me.rerere.rikkahub.memory.dreaming.runtime.DreamingScopePreferences
 import me.rerere.rikkahub.memory.dreaming.runtime.decodeDreamingPreferencesOrDefault
 import me.rerere.rikkahub.memory.dreaming.runtime.encodeDreamingPreferencesFailClosed
+import me.rerere.rikkahub.subagent.SubAgentProfile
 import me.rerere.rikkahub.learning.model.LearningPreferencesV1
 import me.rerere.rikkahub.ui.theme.CustomTheme
 import me.rerere.rikkahub.ui.theme.PresetThemes
@@ -187,6 +188,13 @@ class SettingsStore(
 
         // MCP
         val MCP_SERVERS = stringPreferencesKey("mcp_servers")
+
+        // 子代理
+        val SUB_AGENTS = stringPreferencesKey("sub_agents")
+
+        // 网络
+        val NETWORK_SETTING = stringPreferencesKey("network_setting")
+        val RESPONSE_STREAM_MAX_RETRIES = intPreferencesKey("response_stream_max_retries")
 
         // WebDAV
         val WEBDAV_CONFIG = stringPreferencesKey("webdav_config")
@@ -355,6 +363,20 @@ class SettingsStore(
                 mcpServers = preferences[MCP_SERVERS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
+                subAgents = preferences[SUB_AGENTS]?.let { raw ->
+                    runCatching { JsonInstant.decodeFromString<List<SubAgentProfile>>(raw) }.getOrElse {
+                        Log.w(TAG, "Failed to decode subAgents, using default", it)
+                        emptyList()
+                    }
+                } ?: emptyList(),
+                networkSetting = runCatching {
+                    JsonInstant.decodeFromString<NetworkSetting>(preferences[NETWORK_SETTING] ?: "{}")
+                }.getOrElse {
+                    Log.w(TAG, "Failed to decode networkSetting, using default", it)
+                    NetworkSetting()
+                },
+                responseStreamMaxRetries = (preferences[RESPONSE_STREAM_MAX_RETRIES] ?: 5)
+                    .coerceIn(0, 10),
                 webDavConfig = preferences[WEBDAV_CONFIG]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: WebDavConfig(),
@@ -645,6 +667,9 @@ class SettingsStore(
                 settings.searchServiceSelected.coerceIn(0, maxOf(0, settings.searchServices.size - 1))
 
             preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers)
+            preferences[SUB_AGENTS] = JsonInstant.encodeToString(settings.subAgents)
+            preferences[NETWORK_SETTING] = JsonInstant.encodeToString(settings.networkSetting)
+            preferences[RESPONSE_STREAM_MAX_RETRIES] = settings.responseStreamMaxRetries.coerceIn(0, 10)
             preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
             preferences[S3_CONFIG] = JsonInstant.encodeToString(settings.s3Config)
             preferences[TTS_PROVIDERS] = JsonInstant.encodeToString(settings.ttsProviders)
@@ -855,6 +880,15 @@ data class CompressOpenAIConfig(
 )
 
 @Serializable
+data class NetworkSetting(
+    val userAgent: String = "",
+    val proxyUrl: String = "",
+    val proxyUsername: String = "",
+    val proxyPassword: String = "",
+    val enableAutoRetry: Boolean = true,
+)
+
+@Serializable
 data class Settings(
     @Transient
     val init: Boolean = false,
@@ -941,6 +975,15 @@ data class Settings(
     val launchCount: Int = 0,
     val usageReminderConfig: UsageReminderConfig = UsageReminderConfig(),
     val usageReminderState: UsageReminderState = UsageReminderState(),
+    /**
+     * Named sub-agent profiles editable in SettingSubAgentsPage. MUST default to an empty
+     * list so an install that predates this field decodes cleanly (same convention as
+     * [mcpServers]).
+     */
+    val subAgents: List<SubAgentProfile> = emptyList(),
+    val networkSetting: NetworkSetting = NetworkSetting(),
+    /** 流式请求失败重试上限。目标仓暂无消费点, 先持久化, 见 SettingPreferencesNetworkPage。 */
+    val responseStreamMaxRetries: Int = 5,
     val sponsorAlertDismissedAt: Int = 0,
 ) {
     companion object {

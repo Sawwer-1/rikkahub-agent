@@ -125,6 +125,7 @@ import me.rerere.rikkahub.data.ai.tools.local.callPhoneTool
 import me.rerere.rikkahub.data.ai.tools.local.batchCopyTool
 import me.rerere.rikkahub.data.ai.tools.local.batchMoveTool
 import me.rerere.rikkahub.data.ai.tools.local.batchDeleteTool
+import me.rerere.rikkahub.data.ai.tools.local.webExtractTool
 import me.rerere.rikkahub.data.ai.tools.local.webFetchTool
 import me.rerere.rikkahub.data.ai.tools.local.alarmCreateTool
 import me.rerere.rikkahub.data.ai.tools.local.alarmListTool
@@ -1555,6 +1556,14 @@ class LocalTools(
             )
             tools.add(me.rerere.rikkahub.data.ai.tools.local.listInstalledAppsTool(context))
             tools.add(me.rerere.rikkahub.data.ai.tools.local.openUrlTool(context, invocationContext, interactiveToolStreamer))
+            tools.add(me.rerere.rikkahub.data.ai.tools.local.listAppActivitiesTool(context))
+            tools.add(
+                me.rerere.rikkahub.data.ai.tools.local.launchActivityTool(
+                    context,
+                    invocationContext,
+                    interactiveToolStreamer,
+                )
+            )
         }
         if (options.contains(LocalToolOption.Termux)) {
             tools.addAll(linuxRuntimeTools(
@@ -1721,6 +1730,8 @@ class LocalTools(
         if (options.contains(LocalToolOption.WebFetch)) {
             // Lightweight HTTP GET/POST (item 1.2) — backed by the shared OkHttp singleton.
             tools.add(webFetchTool(okHttpClient))
+            // Readability wrapper over the same fetch path (web_extract): article/text/links/metadata.
+            tools.add(webExtractTool(okHttpClient))
         }
         // Phase 25 — Phase 3 second cut + ExternalStorage + Archive.
         if (options.contains(LocalToolOption.SmsSend)) {

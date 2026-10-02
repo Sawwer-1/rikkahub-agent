@@ -31,6 +31,9 @@ import me.rerere.rikkahub.data.codex.CodexCredentialStore
 import me.rerere.rikkahub.data.codex.CodexOAuthManager
 import me.rerere.rikkahub.data.codex.CodexProvider
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.data.network.SettingsProxyAuthenticator
+import me.rerere.rikkahub.data.network.SettingsProxySelector
+import me.rerere.rikkahub.data.network.SettingsSocks5Authenticator
 import me.rerere.rikkahub.data.db.AppDatabase
 import me.rerere.rikkahub.data.db.createAppSQLiteOpenHelperFactory
 import me.rerere.rikkahub.data.db.fts.MessageFtsManager
@@ -165,7 +168,9 @@ import me.rerere.rikkahub.data.alarm.AlarmRepository
 import me.rerere.rikkahub.data.alarm.AlarmScheduler
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import java.net.Authenticator
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.TimeUnit
 import java.util.UUID
 
@@ -1398,9 +1403,23 @@ val dataSourceModule = module {
     }
 
     single<OkHttpClient> {
+        val settingsStore: SettingsStore = get()
         val acceptLang = AcceptLanguageBuilder.fromAndroid(get())
             .build()
-        OkHttpClient.Builder()
+        // SOCKS5 需要用户名/密码时由 JVM 全局 Authenticator 处理; HTTP 代理走 proxyAuthenticator。
+        Authenticator.setDefault(SettingsSocks5Authenticator(settingsStore))
+        val initialNetworkSetting = settingsStore.settingsFlow.value.networkSetting
+        val appliedProxySetting = AtomicReference(
+            Triple(
+                initialNetworkSetting.proxyUrl,
+                initialNetworkSetting.proxyUsername,
+                initialNetworkSetting.proxyPassword,
+            )
+        )
+        lateinit var client: OkHttpClient
+        client = OkHttpClient.Builder()
+            .proxySelector(SettingsProxySelector(settingsStore))
+            .proxyAuthenticator(SettingsProxyAuthenticator(settingsStore))
             .connectionPool(get())
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS)
@@ -1409,12 +1428,26 @@ val dataSourceModule = module {
             .followRedirects(true)
             .retryOnConnectionFailure(true)
             .addInterceptor { chain ->
+                // 代理配置变更时清空连接池, 让既有连接按新代理重建。
+                val networkSetting = settingsStore.settingsFlow.value.networkSetting
+                val currentProxySetting = Triple(
+                    networkSetting.proxyUrl,
+                    networkSetting.proxyUsername,
+                    networkSetting.proxyPassword,
+                )
+                if (appliedProxySetting.getAndSet(currentProxySetting) != currentProxySetting) {
+                    client.connectionPool.evictAll()
+                }
+
                 val originalRequest = chain.request()
                 val requestBuilder = originalRequest.newBuilder()
                     .addHeader(HttpHeaders.AcceptLanguage, acceptLang)
 
                 if (originalRequest.header(HttpHeaders.UserAgent) == null) {
-                    requestBuilder.addHeader(HttpHeaders.UserAgent, "RikkaHub-Android/${BuildConfig.VERSION_NAME}")
+                    val userAgent = networkSetting.userAgent
+                        .trim()
+                        .ifEmpty { "RikkaHub-Android/${BuildConfig.VERSION_NAME}" }
+                    requestBuilder.addHeader(HttpHeaders.UserAgent, userAgent)
                 }
 
                 chain.proceed(requestBuilder.build())
@@ -1448,6 +1481,7 @@ val dataSourceModule = module {
                 }
             }
             .build().also { SearchService.init(it, get()) }
+        client
     }
 
     single<OkHttpClient>(named("codex")) {

@@ -153,6 +153,20 @@ class WorkspaceManager(
         outputStream.use { out -> file.inputStream().use { it.copyTo(out) } }
     }
 
+    /** 按 Rootfs 内绝对路径递归列出目录树, 支持 /workspace、bind mount 与 Rootfs 内部路径 */
+    fun rootfsTree(
+        root: String,
+        path: String,
+        maxDepth: Int = 10,
+        allowSharedStorage: Boolean = false,
+    ): WorkspaceTreeResult {
+        val file = mountResolver.resolve(filesDir(root), linuxDir(root), path, allowSharedStorage)
+        // tree() 内部 resolvePath 会对根目录 mkdirs, 先行校验避免把不存在的路径"读"成新目录
+        require(file.exists()) { "Path does not exist: $path" }
+        require(file.isDirectory) { "Path is not a directory: $path" }
+        return fileSystem.tree(file, "", maxDepth)
+    }
+
     fun deleteFile(
         root: String,
         path: String,

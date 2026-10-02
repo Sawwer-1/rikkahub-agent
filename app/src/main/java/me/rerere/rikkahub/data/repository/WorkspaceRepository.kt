@@ -22,6 +22,7 @@ import me.rerere.workspace.WorkspaceProcessManager
 import me.rerere.workspace.WorkspaceShellStatus
 import me.rerere.workspace.WorkspaceStorageArea
 import me.rerere.workspace.WorkspaceStorageMode
+import me.rerere.workspace.WorkspaceTreeResult
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.ByteArrayOutputStream
@@ -304,6 +305,17 @@ class WorkspaceRepository(
     ) = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         manager.exportRootfsFile(workspace.root, path, outputStream, allowSharedStorage)
+    }
+
+    /** 按 Rootfs 内绝对路径递归列出目录树, 支持 /workspace、bind mount 与 Rootfs 内部路径 */
+    suspend fun readFolderTree(
+        id: String,
+        path: String,
+        allowSharedStorage: Boolean = false,
+    ): WorkspaceTreeResult = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        manager.ensureWorkspace(workspace.root, workspace.storageModeValue())
+        manager.rootfsTree(workspace.root, path, allowSharedStorage = allowSharedStorage)
     }
 
     suspend fun deleteFile(

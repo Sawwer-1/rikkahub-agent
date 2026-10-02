@@ -115,7 +115,10 @@ object CapabilityCatalog {
             "tap", "long_press", "swipe", "read_window_tree", "find_node", "click_node",
             "set_text", "scroll", "global_action", "take_screenshot", "wake_screen",
         ),
-        LocalToolOption.AppLauncher to setOf("launch_app", "list_installed_apps", "open_url"),
+        LocalToolOption.AppLauncher to setOf(
+            "launch_app", "list_installed_apps", "open_url",
+            "launch_activity", "list_app_activities",
+        ),
         LocalToolOption.SystemIntents to setOf(
             "create_calendar_event", "create_contact", "send_email_intent", "send_sms_intent",
             "open_wifi_settings", "show_location_on_map",
@@ -165,7 +168,7 @@ object CapabilityCatalog {
             "external_automation_add_trusted_package",
             "external_automation_remove_trusted_package",
         ),
-        LocalToolOption.WebFetch to setOf("web_fetch"),
+        LocalToolOption.WebFetch to setOf("web_fetch", "web_extract"),
         LocalToolOption.Browser to me.rerere.rikkahub.browser.BrowserToolDefaults.ALL_TOOLS.toSet(),
         LocalToolOption.NotificationListener to setOf(
             "list_recent_notifications", "list_active_notifications", "dismiss_notification",
@@ -203,6 +206,7 @@ object CapabilityCatalog {
     private val activityToolNames: Set<String> = setOf(
         "share",
         "launch_app",
+        "launch_activity",
         "open_url",
         "show_image",
         "open_file",
@@ -389,6 +393,7 @@ object CapabilityCatalog {
         "telegram_status",
         "transcribe_audio_file",
         "web_fetch",
+        "web_extract",
         "whisper_status",
         "clipboard_tool",
         "text_to_speech",
@@ -439,6 +444,7 @@ object CapabilityCatalog {
         "list_jobs",
         "get_job_history",
         "list_installed_apps",
+        "list_app_activities",
         "list_files",
         "read_file",
         "file_info",
