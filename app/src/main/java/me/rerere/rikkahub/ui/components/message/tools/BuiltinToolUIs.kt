@@ -322,7 +322,11 @@ object UseSkillToolUI : ToolUIRenderer {
     override fun title(context: ToolUIContext): String {
         val skillName = context.arguments.getStringContent("name") ?: ""
         val path = context.arguments.getStringContent("path")
-        return if (path != null) "Skill: $skillName / $path" else "Skill: $skillName"
+        return if (path != null) {
+            stringResource(R.string.ui2_tool_skill_with_path, skillName, path)
+        } else {
+            stringResource(R.string.ui2_tool_skill, skillName)
+        }
     }
 }
 
@@ -475,7 +479,11 @@ object RunJsToolUI : ToolUIRenderer {
     @Composable
     override fun title(context: ToolUIContext): String {
         val skillName = context.arguments.getStringContent("skill_name").orEmpty()
-        return if (skillName.isNotBlank()) "JS skill: $skillName" else "JS skill"
+        return if (skillName.isNotBlank()) {
+            stringResource(R.string.ui2_tool_js_skill_named, skillName)
+        } else {
+            stringResource(R.string.ui2_tool_js_skill)
+        }
     }
 }
 
@@ -492,7 +500,11 @@ object CreateCalendarEventToolUI : ToolUIRenderer {
     override fun title(context: ToolUIContext): String {
         context.content.getStringContent("summary")?.let { return it }
         val t = context.arguments.getStringContent("title").orEmpty()
-        return if (t.isNotBlank()) "Calendar event: $t" else "Create calendar event"
+        return if (t.isNotBlank()) {
+            stringResource(R.string.ui2_tool_calendar_event_named, t)
+        } else {
+            stringResource(R.string.ui2_tool_create_calendar_event)
+        }
     }
 }
 
@@ -507,7 +519,11 @@ object CreateContactToolUI : ToolUIRenderer {
         val first = context.arguments.getStringContent("first_name").orEmpty()
         val last = context.arguments.getStringContent("last_name").orEmpty()
         val name = listOf(first, last).filter { it.isNotBlank() }.joinToString(" ")
-        return if (name.isNotBlank()) "Contact: $name" else "Create contact"
+        return if (name.isNotBlank()) {
+            stringResource(R.string.ui2_tool_contact_named, name)
+        } else {
+            stringResource(R.string.ui2_tool_create_contact)
+        }
     }
 }
 
@@ -520,7 +536,11 @@ object SendSmsIntentToolUI : ToolUIRenderer {
     override fun title(context: ToolUIContext): String {
         context.content.getStringContent("summary")?.let { return it }
         val ph = context.arguments.getStringContent("phone_number").orEmpty()
-        return if (ph.isNotBlank()) "SMS to $ph" else "Compose SMS"
+        return if (ph.isNotBlank()) {
+            stringResource(R.string.ui2_tool_sms_to, ph)
+        } else {
+            stringResource(R.string.ui2_tool_compose_sms)
+        }
     }
 }
 
@@ -533,7 +553,11 @@ object SendEmailIntentToolUI : ToolUIRenderer {
     override fun title(context: ToolUIContext): String {
         context.content.getStringContent("summary")?.let { return it }
         val to = context.arguments.getStringContent("to").orEmpty()
-        return if (to.isNotBlank()) "Email to $to" else "Compose email"
+        return if (to.isNotBlank()) {
+            stringResource(R.string.ui2_tool_email_to, to)
+        } else {
+            stringResource(R.string.ui2_tool_compose_email)
+        }
     }
 }
 
@@ -544,7 +568,7 @@ object OpenWifiSettingsToolUI : ToolUIRenderer {
 
     @Composable
     override fun title(context: ToolUIContext): String =
-        context.content.getStringContent("summary") ?: "WiFi Settings"
+        context.content.getStringContent("summary") ?: stringResource(R.string.ui2_tool_wifi_settings)
 }
 
 object ShowLocationOnMapToolUI : ToolUIRenderer {
@@ -556,6 +580,10 @@ object ShowLocationOnMapToolUI : ToolUIRenderer {
     override fun title(context: ToolUIContext): String {
         context.content.getStringContent("summary")?.let { return it }
         val q = context.arguments.getStringContent("query").orEmpty()
-        return if (q.isNotBlank()) "Map: $q" else "Open map"
+        return if (q.isNotBlank()) {
+            stringResource(R.string.ui2_tool_map_named, q)
+        } else {
+            stringResource(R.string.ui2_tool_open_map)
+        }
     }
 }

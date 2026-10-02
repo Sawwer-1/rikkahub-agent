@@ -44,6 +44,7 @@ import me.rerere.rikkahub.ui.components.webview.rememberWebViewState
 import me.rerere.rikkahub.ui.components.webview.rememberRikkaHubAssetWebViewClient
 import me.rerere.rikkahub.ui.theme.JetbrainsMono
 import me.rerere.rikkahub.utils.base64Decode
+import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,28 +113,28 @@ fun WebViewPage(url: String, content: String) {
                 },
                 actions = {
                     IconButton(onClick = { state.reload() }) {
-                        Icon(HugeIcons.Refresh01, contentDescription = "Refresh")
+                        Icon(HugeIcons.Refresh01, contentDescription = stringResource(R.string.ui3_web_refresh))
                     }
 
                     IconButton(
                         onClick = { state.goForward() },
                         enabled = state.canGoForward
                     ) {
-                        Icon(HugeIcons.ArrowRight01, contentDescription = "Forward")
+                        Icon(HugeIcons.ArrowRight01, contentDescription = stringResource(R.string.ui3_web_forward))
                     }
 
                     val urlHandler = LocalUriHandler.current
                     IconButton(
                         onClick = { showDropdown = true }
                     ) {
-                        Icon(HugeIcons.MoreVertical, contentDescription = "More options")
+                        Icon(HugeIcons.MoreVertical, contentDescription = stringResource(R.string.ui3_web_more_options))
 
                         DropdownMenu(
                             expanded = showDropdown,
                             onDismissRequest = { showDropdown = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Open in Browser") },
+                                text = { Text(stringResource(R.string.ui3_web_open_in_browser)) },
                                 leadingIcon = { Icon(HugeIcons.Earth, contentDescription = null) },
                                 onClick = {
                                     showDropdown = false
@@ -145,7 +146,7 @@ fun WebViewPage(url: String, content: String) {
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Console Logs") },
+                                text = { Text(stringResource(R.string.ui3_web_console_logs_action)) },
                                 leadingIcon = { Icon(HugeIcons.Bug01, contentDescription = null) },
                                 onClick = {
                                     showDropdown = false
@@ -178,7 +179,7 @@ fun WebViewPage(url: String, content: String) {
                     .padding(16.dp)
             ) {
                 Text(
-                    text = "Console Logs",
+                    text = stringResource(R.string.ui3_web_console_logs_title),
                     style = MaterialTheme.typography.headlineSmall,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
@@ -206,7 +207,7 @@ fun WebViewPage(url: String, content: String) {
 
                 if (state.consoleMessages.isEmpty()) {
                     Text(
-                        text = "No console messages",
+                        text = stringResource(R.string.ui3_web_no_console_messages),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(16.dp)

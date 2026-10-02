@@ -460,8 +460,8 @@ private fun AssistantLocalToolContent(
                 }
             )
             item(
-                headlineContent = { Text("Health Sensors") },
-                supportingContent = { Text("Read heart-rate and heart-beat body sensors.") },
+                headlineContent = { Text(stringResource(R.string.ui3_tool_health_sensors_title)) },
+                supportingContent = { Text(stringResource(R.string.ui3_tool_health_sensors_desc)) },
                 trailingContent = {
                     PermissionedSwitch(
                         checked = assistant.localTools.contains(LocalToolOption.HealthSensors),
@@ -774,8 +774,8 @@ private fun AssistantLocalToolContent(
                 }
             )
             item(
-                headlineContent = { Text("Screen Time") },
-                supportingContent = { Text("Query app usage statistics and screen time. Enable in Settings → Usage access.") },
+                headlineContent = { Text(stringResource(R.string.ui3_tool_screen_time_title)) },
+                supportingContent = { Text(stringResource(R.string.ui3_tool_screen_time_desc)) },
                 trailingContent = {
                     Switch(
                         checked = assistant.localTools.contains(LocalToolOption.ScreenTime),
@@ -793,8 +793,8 @@ private fun AssistantLocalToolContent(
                 }
             )
             item(
-                headlineContent = { Text("Calendar") },
-                supportingContent = { Text("Query, create, delete, and update calendar events.") },
+                headlineContent = { Text(stringResource(R.string.ui3_tool_calendar_title)) },
+                supportingContent = { Text(stringResource(R.string.ui3_tool_calendar_desc)) },
                 trailingContent = {
                     PermissionedSwitch(
                         checked = assistant.localTools.contains(LocalToolOption.Calendar),
@@ -873,8 +873,8 @@ private fun AssistantLocalToolContent(
                 }
             )
             item(
-                headlineContent = { Text("Media Library") },
-                supportingContent = { Text("List images and audio files on the device.") },
+                headlineContent = { Text(stringResource(R.string.ui3_tool_media_library_title)) },
+                supportingContent = { Text(stringResource(R.string.ui3_tool_media_library_desc)) },
                 trailingContent = {
                     PermissionedSwitch(
                         checked = assistant.localTools.contains(LocalToolOption.MediaLibrary),
@@ -887,8 +887,8 @@ private fun AssistantLocalToolContent(
                 }
             )
             item(
-                headlineContent = { Text("Media Write") },
-                supportingContent = { Text("Copy files into MediaStore and organize media albums (Android 10+).") },
+                headlineContent = { Text(stringResource(R.string.ui3_tool_media_write_title)) },
+                supportingContent = { Text(stringResource(R.string.ui3_tool_media_write_desc)) },
                 trailingContent = {
                     PermissionedSwitch(
                         checked = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q &&
@@ -900,8 +900,8 @@ private fun AssistantLocalToolContent(
                 }
             )
             item(
-                headlineContent = { Text("Nearby Devices") },
-                supportingContent = { Text("Scan for Bluetooth devices and list paired devices.") },
+                headlineContent = { Text(stringResource(R.string.ui3_tool_nearby_devices_title)) },
+                supportingContent = { Text(stringResource(R.string.ui3_tool_nearby_devices_desc)) },
                 trailingContent = {
                     PermissionedSwitch(
                         checked = assistant.localTools.contains(LocalToolOption.NearbyDevices) ||
@@ -932,15 +932,15 @@ private fun AssistantLocalToolContent(
                 }
             )
             item(
-                headlineContent = { Text("Shizuku / External Privilege Bridge") },
+                headlineContent = { Text(stringResource(R.string.ui3_tool_privileged_bridge_title)) },
                 supportingContent = {
                     Text(when {
-                        !shizukuStatus.installed -> "Install Shizuku or Sui before enabling privileged tools."
-                        !shizukuStatus.binderAvailable -> "Shizuku is installed but its Binder service is not running."
-                        shizukuStatus.permissionPermanentlyDenied -> "Shizuku permission was denied; grant it from the Shizuku app."
-                        !shizukuStatus.permissionGranted -> "Tap the switch to request Shizuku permission locally."
-                        shizukuStatus.privilege == me.rerere.rikkahub.data.ai.tools.local.ExternalPrivilegeBridgePrivilege.Root -> "Ready with root identity."
-                        else -> "Ready with ADB shell identity."
+                        !shizukuStatus.installed -> stringResource(R.string.ui3_shizuku_not_installed)
+                        !shizukuStatus.binderAvailable -> stringResource(R.string.ui3_shizuku_binder_down)
+                        shizukuStatus.permissionPermanentlyDenied -> stringResource(R.string.ui3_shizuku_denied)
+                        !shizukuStatus.permissionGranted -> stringResource(R.string.ui3_shizuku_request_hint)
+                        shizukuStatus.privilege == me.rerere.rikkahub.data.ai.tools.local.ExternalPrivilegeBridgePrivilege.Root -> stringResource(R.string.ui3_shizuku_ready_root)
+                        else -> stringResource(R.string.ui3_shizuku_ready_adb)
                     })
                 },
                 trailingContent = {
@@ -967,8 +967,8 @@ private fun AssistantLocalToolContent(
                 },
             )
             item(
-                headlineContent = { Text("Step Counter") },
-                supportingContent = { Text("Read step count from the device sensor.") },
+                headlineContent = { Text(stringResource(R.string.ui3_tool_step_counter_title)) },
+                supportingContent = { Text(stringResource(R.string.ui3_tool_step_counter_desc)) },
                 trailingContent = {
                     PermissionedSwitch(
                         checked = assistant.localTools.contains(LocalToolOption.StepCounter),
@@ -980,8 +980,8 @@ private fun AssistantLocalToolContent(
                 }
             )
             item(
-                headlineContent = { Text("Export Conversation") },
-                supportingContent = { Text("Export a conversation as a Markdown file.") },
+                headlineContent = { Text(stringResource(R.string.ui3_tool_export_title)) },
+                supportingContent = { Text(stringResource(R.string.ui3_tool_export_desc)) },
                 trailingContent = {
                     Switch(
                         checked = assistant.localTools.contains(LocalToolOption.ExportConversation),
@@ -1066,8 +1066,8 @@ private fun AssistantLocalToolContent(
                 }
             )
             item(
-                headlineContent = { Text("Alarm") },
-                supportingContent = { Text("Create, list, and delete app-owned alarms.") },
+                headlineContent = { Text(stringResource(R.string.ui3_tool_alarm_title)) },
+                supportingContent = { Text(stringResource(R.string.ui3_tool_alarm_desc)) },
                 trailingContent = {
                     PermissionedSwitch(
                         checked = assistant.localTools.contains(LocalToolOption.Alarm),
@@ -1671,11 +1671,11 @@ private fun PermissionedSwitch(
                     } else {
                         val name = when {
                             requiresWriteSettings -> "WRITE_SETTINGS"
-                            requiresDndAccess -> "DND access"
-                            requiresAccessibilityService -> "Accessibility service"
-                            requiresNotificationListener -> "Notification access"
-                            requiresAllFilesAccess -> "All files access"
-                            requiresExactAlarm -> "Exact alarm"
+                            requiresDndAccess -> ctx.getString(R.string.ui3_perm_name_dnd)
+                            requiresAccessibilityService -> ctx.getString(R.string.ui3_perm_name_accessibility)
+                            requiresNotificationListener -> ctx.getString(R.string.ui3_perm_name_notification_listener)
+                            requiresAllFilesAccess -> ctx.getString(R.string.ui3_perm_name_all_files)
+                            requiresExactAlarm -> ctx.getString(R.string.ui3_perm_name_exact_alarm)
                             else -> ""
                         }
                         toaster.show(

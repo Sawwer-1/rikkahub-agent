@@ -226,11 +226,17 @@ fun SettingNotificationsPage() {
                     recent.asReversed().take(50).forEach { entry ->
                         item(
                             headlineContent = {
-                                Text("${entry.label}: ${entry.title.ifBlank { "(no title)" }}")
+                                val title = entry.title.ifBlank {
+                                    stringResource(R.string.ui2_notifications_no_title)
+                                }
+                                Text("${entry.label}: $title")
                             },
                             supportingContent = {
+                                val preview = entry.text.take(120).ifBlank {
+                                    stringResource(R.string.ui2_notifications_no_text)
+                                }
                                 Text(
-                                    text = entry.text.take(120).ifBlank { "(no text)" } + " · " +
+                                    text = preview + " · " +
                                         formatRelativeTime(System.currentTimeMillis() - entry.postTimeMs),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,

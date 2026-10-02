@@ -216,29 +216,47 @@ fun SettingAgentRuntimePage(
                 ) {
                     val authority = me.rerere.rikkahub.assistant.SecondUserAuthorityRegistry.current()
                     Text(
-                        text = "Authority: ${if (authority == null) "NOT_ACTIVE" else "ACTIVE (epoch ${authority.authorityEpoch})"}",
+                        text = stringResource(
+                            if (authority == null) R.string.ui2_owner_runtime_authority_inactive
+                            else R.string.ui2_owner_runtime_authority_active,
+                            authority?.authorityEpoch ?: 0,
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
-                        text = "Direct Owner tools: ${me.rerere.rikkahub.owner.OwnerToolFamily.entries.size}",
+                        text = stringResource(
+                            R.string.ui2_owner_runtime_direct_tools,
+                            me.rerere.rikkahub.owner.OwnerToolFamily.entries.size,
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
-                        text = "Plaintext session: ${if (plaintextState is me.rerere.rikkahub.security.SecretPlaintextSessionState.Open) "OPEN" else "CLOSED"}",
+                        text = stringResource(
+                            if (plaintextState is me.rerere.rikkahub.security.SecretPlaintextSessionState.Open) {
+                                R.string.ui2_owner_runtime_plaintext_open
+                            } else {
+                                R.string.ui2_owner_runtime_plaintext_closed
+                            },
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
-                        text = "Enabled local services: ${ownerServices.size}",
+                        text = stringResource(
+                            R.string.ui2_owner_runtime_enabled_services,
+                            ownerServices.size,
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     if (ownerOperations.isEmpty()) {
-                        Text("No Owner operation has been recorded.", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.ui2_owner_runtime_no_operations), style = MaterialTheme.typography.bodySmall)
                     } else {
                         ownerOperations.take(5).forEachIndexed { index, operation ->
                             if (index > 0) HorizontalDivider()
+                            val statusCode = operation.resultCode ?: operation.recoveryCode
+                                ?: stringResource(R.string.ui2_owner_runtime_operation_in_progress)
                             Text("${operation.toolFamily} · ${operation.state}", fontWeight = FontWeight.Medium)
                             Text(
-                                "${operation.resultCode ?: operation.recoveryCode ?: "IN_PROGRESS"} · ${operation.requestId.take(12)}",
+                                "$statusCode · ${operation.requestId.take(12)}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

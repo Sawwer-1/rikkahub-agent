@@ -398,6 +398,7 @@ private fun ModelList(
 ) {
     val providerManager = koinInject<ProviderManager>()
     val toaster = LocalToaster.current
+    val loadModelsFailedMsg = stringResource(R.string.ui2_model_list_load_failed)
     val modelList by produceState(emptyList(), providerSetting) {
         runCatching {
             value = providerManager.getProviderByType(providerSetting)
@@ -414,7 +415,7 @@ private fun ModelList(
             // Surface real failures (missing/invalid API key, providers like
             // Minimax that return an HTTP 200 error envelope instead of a 4xx).
             toaster.show(
-                error.message ?: "Failed to load models",
+                error.message ?: loadModelsFailedMsg,
                 type = ToastType.Error
             )
         }
@@ -1366,7 +1367,7 @@ private fun ModelCard(
                         dialogState.open(model.copy())
                     }
                 ) {
-                    Icon(HugeIcons.Tools, "Edit")
+                    Icon(HugeIcons.Tools, stringResource(R.string.ui2_provider_edit))
                 }
             }
         }
@@ -1495,7 +1496,7 @@ private fun ProviderOverrideSettings(
                             modifier = Modifier.size(24.dp)
                         )
                         Text(
-                            text = "${providerOverride.name} (Override)",
+                            text = stringResource(R.string.ui2_provider_override_name, providerOverride.name),
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.weight(1f)
                         )
@@ -1505,14 +1506,14 @@ private fun ProviderOverrideSettings(
                                 showProviderConfig = true
                             }
                         ) {
-                            Icon(HugeIcons.Tools, contentDescription = "Edit override")
+                            Icon(HugeIcons.Tools, contentDescription = stringResource(R.string.ui2_provider_edit_override))
                         }
                         IconButton(
                             onClick = {
                                 onUpdateProviderOverride(null)
                             }
                         ) {
-                            Icon(HugeIcons.Cancel01, contentDescription = "Remove override")
+                            Icon(HugeIcons.Cancel01, contentDescription = stringResource(R.string.ui2_provider_remove_override))
                         }
                     }
                 }

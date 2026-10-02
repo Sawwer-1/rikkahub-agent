@@ -1240,7 +1240,7 @@ private fun TopBar(
                         scope.launch { drawerState.open() }
                     }
                 ) {
-                    Icon(HugeIcons.Menu03, "Messages")
+                    Icon(HugeIcons.Menu03, stringResource(R.string.ui3_chat_drawer_messages))
                 }
             }
         },
@@ -1286,9 +1286,9 @@ private fun TopBar(
                     Icon(
                         imageVector = if (showCompressedMessages) HugeIcons.ViewOff else HugeIcons.View,
                         contentDescription = if (showCompressedMessages) {
-                            "Hide compressed messages"
+                            stringResource(R.string.ui3_chat_hide_compressed)
                         } else {
-                            "Show compressed messages"
+                            stringResource(R.string.ui3_chat_show_compressed)
                         }
                     )
                 }
@@ -1315,7 +1315,7 @@ private fun TopBar(
             )
 
             IconButton(onClick = onOpenDiagnostics) {
-                Icon(HugeIcons.Activity01, "Runtime Diagnostics")
+                Icon(HugeIcons.Activity01, stringResource(R.string.ui3_chat_runtime_diagnostics))
             }
 
             IconButton(
@@ -1323,7 +1323,7 @@ private fun TopBar(
                     onClickMenu()
                 }
             ) {
-                Icon(if (previewMode) HugeIcons.Cancel01 else HugeIcons.LeftToRightListBullet, "Chat Options")
+                Icon(if (previewMode) HugeIcons.Cancel01 else HugeIcons.LeftToRightListBullet, stringResource(R.string.ui3_chat_options))
             }
 
             IconButton(
@@ -1331,7 +1331,7 @@ private fun TopBar(
                     onNewChat()
                 }
             ) {
-                Icon(HugeIcons.MessageAdd01, "New Message")
+                Icon(HugeIcons.MessageAdd01, stringResource(R.string.ui3_chat_new_message))
             }
         },
     )

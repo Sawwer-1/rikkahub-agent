@@ -189,34 +189,37 @@ fun SecondUserToolLibraryPage(
                         value = editTitle,
                         onValueChange = { editTitle = it.take(120) },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Title") },
+                        label = { Text(stringResource(R.string.ui2_tool_library_edit_title)) },
                         singleLine = true,
                     )
                     OutlinedTextField(
                         value = editBody,
                         onValueChange = { editBody = it.take(1_200) },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Redacted procedure") },
+                        label = { Text(stringResource(R.string.ui2_tool_library_redacted_procedure)) },
                         minLines = 4,
                     )
                     OutlinedTextField(
                         value = editTags,
                         onValueChange = { editTags = it.take(240) },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Tags (comma separated)") },
+                        label = { Text(stringResource(R.string.ui2_tool_library_tags)) },
                         singleLine = true,
                     )
                     Text(
-                        "Bindings, schema fingerprint, authority ownership, and evidence cannot be edited.",
+                        stringResource(R.string.ui2_tool_library_readonly_hint),
                         style = MaterialTheme.typography.labelSmall,
                     )
                     Text(
-                        "Evidence: ${evidence.size} host-confirmed event(s); " +
+                        stringResource(
+                            R.string.ui2_tool_library_evidence_format,
+                            evidence.size,
                             evidence.take(3).joinToString { it.outcomeKind },
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                     )
                     if (revisions.isNotEmpty()) {
-                        Text("Recent revisions", style = MaterialTheme.typography.labelMedium)
+                        Text(stringResource(R.string.ui2_tool_library_recent_revisions), style = MaterialTheme.typography.labelMedium)
                         revisions.take(5).forEach { revision ->
                             Text(
                                 "v${revision.revision} · ${revision.actor}",
@@ -248,7 +251,7 @@ fun SecondUserToolLibraryPage(
                 }) { Text(stringResource(R.string.second_user_tool_library_save)) }
             },
             dismissButton = {
-                TextButton(onClick = { editing = null }) { Text("Close") }
+                TextButton(onClick = { editing = null }) { Text(stringResource(R.string.ui2_common_close)) }
             },
         )
     }
@@ -323,8 +326,7 @@ private fun ToolCatalogContent(entries: List<ToolLibraryEntry>) {
     ) {
         item {
             Text(
-                "The runtime directory is authoritative. This view is the source/configuration baseline; " +
-                    "a tool is injected only when its current permission, bridge, and entry checks pass.",
+                stringResource(R.string.ui2_tool_library_runtime_baseline),
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -347,7 +349,7 @@ private fun ToolCatalogContent(entries: List<ToolLibraryEntry>) {
                             style = MaterialTheme.typography.labelMedium,
                         )
                         Text(
-                            entry.requirements.joinToString().ifBlank { "No additional declared requirement." },
+                            entry.requirements.joinToString().ifBlank { stringResource(R.string.ui2_tool_library_no_requirement) },
                             style = MaterialTheme.typography.bodySmall,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
@@ -384,7 +386,7 @@ private fun ExperienceContent(
     ) {
         if (subjectId == null) {
             item {
-                Text("This library is available only while the configured second user is active.")
+                Text(stringResource(R.string.ui2_tool_library_second_user_inactive))
             }
         } else if (experiences.isEmpty()) {
             item { Text(stringResource(R.string.second_user_tool_library_empty)) }
@@ -409,7 +411,7 @@ private fun ExperienceContent(
                         }
                         Text(experience.body, style = MaterialTheme.typography.bodySmall, maxLines = 5)
                         Row {
-                            TextButton(onClick = { onEdit(experience) }) { Text("Edit") }
+                            TextButton(onClick = { onEdit(experience) }) { Text(stringResource(R.string.ui2_tool_library_edit_action)) }
                             when (experience.state) {
                                 ToolExperienceState.ACTIVE.name -> {
                                     TextButton(onClick = {

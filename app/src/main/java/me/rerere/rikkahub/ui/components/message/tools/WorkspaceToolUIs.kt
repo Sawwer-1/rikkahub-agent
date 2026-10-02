@@ -370,7 +370,11 @@ object ShellToolUI : ToolUIRenderer {
                 ShellExitStatus(content, MaterialTheme.typography.labelMedium)
             }
             HighlightCodeBlock(
-                code = if (cwd.isNullOrBlank()) command else "# cwd: $cwd\n$command",
+                code = if (cwd.isNullOrBlank()) {
+                    command
+                } else {
+                    stringResource(R.string.ui2_shell_cwd_prefix, cwd) + "\n" + command
+                },
                 language = "bash",
                 modifier = Modifier.fillMaxWidth(),
             )

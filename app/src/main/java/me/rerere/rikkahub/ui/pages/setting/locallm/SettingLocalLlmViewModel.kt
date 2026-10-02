@@ -226,7 +226,7 @@ class SettingLocalLlmViewModel(
                 }
             }
             _errorMessage.value =
-                "Removed ${brokenFiles.size} broken model file(s) (HTML response or invalid magic bytes). Re-download to retry."
+                context.getString(R.string.ui3_local_llm_broken_files_removed, brokenFiles.size)
             return
         }
 

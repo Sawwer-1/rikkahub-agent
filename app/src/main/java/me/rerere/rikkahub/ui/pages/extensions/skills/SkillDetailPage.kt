@@ -300,7 +300,7 @@ private fun SkillTesterSheet(skillId: String, displayName: String, onDismiss: ()
                         )
                         if (s.imageUrls.isNotEmpty()) {
                             Text(
-                                text = "[${s.imageUrls.size} image part(s)]",
+                                text = stringResource(R.string.ui2_skill_detail_image_parts, s.imageUrls.size),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

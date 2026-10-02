@@ -24,6 +24,7 @@ import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.ui.ImageAspectRatio
 import me.rerere.ai.ui.ImageGenerationItem
 import me.rerere.common.android.appTempFolder
+import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
@@ -144,13 +145,19 @@ class ImgGenVM(
 
                 val settings = settingsStore.settingsFlow.first()
                 val model = settings.findModelById(settings.imageGenerationModelId)
-                    ?: throw IllegalStateException("No model selected")
+                    ?: throw IllegalStateException(
+                        getApplication<Application>().getString(R.string.ui2_imggen_no_model_selected)
+                    )
 
                 val provider = model.findProvider(settings.providers)
-                    ?: throw IllegalStateException("Provider not found")
+                    ?: throw IllegalStateException(
+                        getApplication<Application>().getString(R.string.ui2_imggen_provider_not_found)
+                    )
 
                 val providerSetting = settings.providers.find { it.id == provider.id }
-                    ?: throw IllegalStateException("Provider setting not found")
+                    ?: throw IllegalStateException(
+                        getApplication<Application>().getString(R.string.ui2_imggen_provider_setting_not_found)
+                    )
 
                 val requestPrompt = _prompt.value
                 val params = ImageGenerationParams(
@@ -173,7 +180,8 @@ class ImgGenVM(
             } catch (e: Exception) {
                 if(e is CancellationException) return@launch
                 Log.e(TAG, "Failed to generate image", e)
-                _error.value = e.message ?: "Unknown error occurred"
+                _error.value = e.message
+                    ?: getApplication<Application>().getString(R.string.ui2_imggen_unknown_error)
             } finally {
                 _isGenerating.value = false
             }
@@ -191,13 +199,19 @@ class ImgGenVM(
 
                 val settings = settingsStore.settingsFlow.first()
                 val model = settings.findModelById(settings.imageGenerationModelId)
-                    ?: throw IllegalStateException("No model selected")
+                    ?: throw IllegalStateException(
+                        getApplication<Application>().getString(R.string.ui2_imggen_no_model_selected)
+                    )
 
                 val provider = model.findProvider(settings.providers)
-                    ?: throw IllegalStateException("Provider not found")
+                    ?: throw IllegalStateException(
+                        getApplication<Application>().getString(R.string.ui2_imggen_provider_not_found)
+                    )
 
                 val providerSetting = settings.providers.find { it.id == provider.id }
-                    ?: throw IllegalStateException("Provider setting not found")
+                    ?: throw IllegalStateException(
+                        getApplication<Application>().getString(R.string.ui2_imggen_provider_setting_not_found)
+                    )
 
                 val requestPrompt = _prompt.value
                 val sourceImages = _referenceImages.value
@@ -224,7 +238,8 @@ class ImgGenVM(
             } catch (e: Exception) {
                 if (e is CancellationException) return@launch
                 Log.e(TAG, "Failed to edit image", e)
-                _error.value = e.message ?: "Unknown error occurred"
+                _error.value = e.message
+                    ?: getApplication<Application>().getString(R.string.ui2_imggen_unknown_error)
             } finally {
                 _isGenerating.value = false
             }
@@ -342,7 +357,7 @@ class ImgGenVM(
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to delete image", e)
-                _error.value = "Failed to delete image"
+                _error.value = getApplication<Application>().getString(R.string.ui2_imggen_delete_failed)
             }
         }
     }

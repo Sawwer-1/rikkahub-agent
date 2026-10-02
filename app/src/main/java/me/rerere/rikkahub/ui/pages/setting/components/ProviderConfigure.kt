@@ -405,11 +405,16 @@ private fun OpenRouterRoutingSection(
     fun textToList(text: String) = text.split(",").map { it.trim() }.filter { it.isNotEmpty() }
 
     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-    Text("OpenRouter routing", style = MaterialTheme.typography.titleSmall)
+    Text(stringResource(R.string.ui2_openrouter_routing), style = MaterialTheme.typography.titleSmall)
 
     // Sort
     val sortOptions = listOf(null, "price", "throughput", "latency")
-    val sortLabels = listOf("Auto", "Price", "Throughput", "Latency")
+    val sortLabels = listOf(
+        stringResource(R.string.ui2_openrouter_sort_auto),
+        stringResource(R.string.ui2_openrouter_sort_price),
+        stringResource(R.string.ui2_openrouter_sort_throughput),
+        stringResource(R.string.ui2_openrouter_sort_latency),
+    )
     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
         sortOptions.forEachIndexed { index, option ->
             SegmentedButton(
@@ -438,38 +443,38 @@ private fun OpenRouterRoutingSection(
     OutlinedTextField(
         value = listToText(routing.order),
         onValueChange = { onChange(routing.copy(order = textToList(it))) },
-        label = { Text("Provider order (slugs, comma-separated)") },
+        label = { Text(stringResource(R.string.ui2_openrouter_provider_order)) },
         placeholder = { Text("anthropic, google-vertex") },
         modifier = Modifier.fillMaxWidth(),
     )
     OutlinedTextField(
         value = listToText(routing.only),
         onValueChange = { onChange(routing.copy(only = textToList(it))) },
-        label = { Text("Only these providers") },
+        label = { Text(stringResource(R.string.ui2_openrouter_only_providers)) },
         modifier = Modifier.fillMaxWidth(),
     )
     OutlinedTextField(
         value = listToText(routing.ignore),
         onValueChange = { onChange(routing.copy(ignore = textToList(it))) },
-        label = { Text("Ignore these providers") },
+        label = { Text(stringResource(R.string.ui2_openrouter_ignore_providers)) },
         modifier = Modifier.fillMaxWidth(),
     )
 
-    RoutingToggle("Allow fallbacks beyond the list", routing.allowFallbacks) {
+    RoutingToggle(stringResource(R.string.ui2_openrouter_allow_fallbacks), routing.allowFallbacks) {
         onChange(routing.copy(allowFallbacks = it))
     }
-    RoutingToggle("Require providers to support all parameters", routing.requireParameters) {
+    RoutingToggle(stringResource(R.string.ui2_openrouter_require_parameters), routing.requireParameters) {
         onChange(routing.copy(requireParameters = it))
     }
-    RoutingToggle("Block data-collecting providers", routing.dataCollection == "deny") {
+    RoutingToggle(stringResource(R.string.ui2_openrouter_block_data_collection), routing.dataCollection == "deny") {
         onChange(routing.copy(dataCollection = if (it) "deny" else null))
     }
-    RoutingToggle("Zero Data Retention only", routing.zdr) {
+    RoutingToggle(stringResource(R.string.ui2_openrouter_zdr_only), routing.zdr) {
         onChange(routing.copy(zdr = it))
     }
 
     Text(
-        "Max price (USD per 1M tokens). Leave empty or tap the clear icon for no price limit.",
+        stringResource(R.string.ui2_openrouter_max_price_hint),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -484,7 +489,7 @@ private fun OpenRouterRoutingSection(
                 promptPriceText = it
                 onChange(routing.copy(maxPricePrompt = it.toDoubleOrNull()))
             },
-            label = { Text("Max $/1M prompt") },
+            label = { Text(stringResource(R.string.ui2_openrouter_max_price_prompt)) },
             singleLine = true,
             trailingIcon = {
                 if (promptPriceText.isNotEmpty()) {
@@ -492,7 +497,7 @@ private fun OpenRouterRoutingSection(
                         promptPriceText = ""
                         onChange(routing.copy(maxPricePrompt = null))
                     }) {
-                        Icon(HugeIcons.Cancel01, contentDescription = "Clear")
+                        Icon(HugeIcons.Cancel01, contentDescription = stringResource(R.string.ui2_openrouter_clear))
                     }
                 }
             },
@@ -504,7 +509,7 @@ private fun OpenRouterRoutingSection(
                 completionPriceText = it
                 onChange(routing.copy(maxPriceCompletion = it.toDoubleOrNull()))
             },
-            label = { Text("Max $/1M completion") },
+            label = { Text(stringResource(R.string.ui2_openrouter_max_price_completion)) },
             singleLine = true,
             trailingIcon = {
                 if (completionPriceText.isNotEmpty()) {
@@ -512,7 +517,7 @@ private fun OpenRouterRoutingSection(
                         completionPriceText = ""
                         onChange(routing.copy(maxPriceCompletion = null))
                     }) {
-                        Icon(HugeIcons.Cancel01, contentDescription = "Clear")
+                        Icon(HugeIcons.Cancel01, contentDescription = stringResource(R.string.ui2_openrouter_clear))
                     }
                 }
             },
@@ -523,7 +528,7 @@ private fun OpenRouterRoutingSection(
     OutlinedTextField(
         value = listToText(routing.quantizations),
         onValueChange = { onChange(routing.copy(quantizations = textToList(it))) },
-        label = { Text("Quantizations (e.g. fp8, fp16)") },
+        label = { Text(stringResource(R.string.ui2_openrouter_quantizations)) },
         modifier = Modifier.fillMaxWidth(),
     )
 }
@@ -634,6 +639,8 @@ private fun ProviderConfigureGoogle(
 ) {
     val context = LocalContext.current
     val toaster = LocalToaster.current
+    val serviceAccountImportedMsg = stringResource(R.string.ui2_google_service_account_imported)
+    val importFailedFormat = stringResource(R.string.ui2_google_import_failed)
     val serviceAccountJsonLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -651,9 +658,9 @@ private fun ProviderConfigureGoogle(
                     privateKey = json["private_key"]?.jsonPrimitive?.contentOrNull?.ifEmpty { null } ?: provider.privateKey,
                 )
             )
-            toaster.show("Service account imported", type = ToastType.Success)
+            toaster.show(serviceAccountImportedMsg, type = ToastType.Success)
         } catch (e: Exception) {
-            toaster.show("Failed to import: ${e.message}", type = ToastType.Error)
+            toaster.show(importFailedFormat.format(e.message ?: ""), type = ToastType.Error)
         }
     }
 
@@ -693,7 +700,7 @@ private fun ProviderConfigureGoogle(
                 !provider.baseUrl.isValidBaseUrl() || !provider.baseUrl.endsWith("/v1beta")
                 ),
             supportingText = if (!provider.baseUrl.endsWith("/v1beta")) {
-                { Text("The base URL usually ends with `/v1beta`") }
+                { Text(stringResource(R.string.ui2_google_base_url_hint)) }
             } else null,
         )
     }

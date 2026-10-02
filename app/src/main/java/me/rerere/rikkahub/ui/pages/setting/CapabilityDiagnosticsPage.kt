@@ -115,7 +115,7 @@ fun CapabilityDiagnosticsPage(conversationId: String? = null) {
     Scaffold(
         topBar = {
             LargeTopAppBar(
-                title = { Text("Capability Diagnostics") },
+                title = { Text(stringResource(R.string.ui3_cap_diag_title)) },
                 navigationIcon = { BackButton() },
                 actions = {
                     IconButton(onClick = { refreshGeneration++ }) {
@@ -144,7 +144,7 @@ fun CapabilityDiagnosticsPage(conversationId: String? = null) {
         ) {
             item {
                 Text(
-                    text = "Runtime Diagnostics",
+                    text = stringResource(R.string.ui3_runtime_diag_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
@@ -204,13 +204,13 @@ fun CapabilityDiagnosticsPage(conversationId: String? = null) {
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "Capability Catalog Summary",
+                            text = stringResource(R.string.ui3_cap_catalog_summary),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "$implemented implemented · $reserved reserved · ${capabilities.size} total",
+                            text = stringResource(R.string.ui3_cap_summary_counts, implemented, reserved, capabilities.size),
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
@@ -224,11 +224,11 @@ fun CapabilityDiagnosticsPage(conversationId: String? = null) {
                     Spacer(Modifier.height(8.dp))
                     Text(
                         text = when (state) {
-                            ImplementationState.Implemented -> "✅ Implemented"
-                            ImplementationState.Reserved -> "🔒 Reserved (not yet implemented)"
-                            ImplementationState.SystemRestricted -> "⚠️ System Restricted"
-                            ImplementationState.ExternalBridgeRequired -> "🔗 External Bridge Required"
-                            ImplementationState.ManualOnly -> "👤 Manual Only"
+                            ImplementationState.Implemented -> stringResource(R.string.ui3_state_implemented)
+                            ImplementationState.Reserved -> stringResource(R.string.ui3_state_reserved)
+                            ImplementationState.SystemRestricted -> stringResource(R.string.ui3_state_system_restricted)
+                            ImplementationState.ExternalBridgeRequired -> stringResource(R.string.ui3_state_external_bridge)
+                            ImplementationState.ManualOnly -> stringResource(R.string.ui3_state_manual_only)
                         },
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
@@ -465,12 +465,13 @@ private fun RuntimeDiagnosticCard(item: RuntimeDiagnosticItem) {
     }
 }
 
+@Composable
 private fun runtimeStatusLabel(status: RuntimeDiagnosticStatus): String = when (status) {
-    RuntimeDiagnosticStatus.READY -> "READY"
-    RuntimeDiagnosticStatus.SERVICE_OFFLINE -> "OFFLINE"
-    RuntimeDiagnosticStatus.IMPLEMENTED_BUT_NOT_AUTHORIZED -> "NEEDS AUTH"
-    RuntimeDiagnosticStatus.OEM_RESTRICTED -> "OEM LIMITED"
-    RuntimeDiagnosticStatus.NOT_SUPPORTED -> "NOT SUPPORTED"
+    RuntimeDiagnosticStatus.READY -> stringResource(R.string.ui3_status_ready)
+    RuntimeDiagnosticStatus.SERVICE_OFFLINE -> stringResource(R.string.ui3_status_offline)
+    RuntimeDiagnosticStatus.IMPLEMENTED_BUT_NOT_AUTHORIZED -> stringResource(R.string.ui3_status_needs_auth)
+    RuntimeDiagnosticStatus.OEM_RESTRICTED -> stringResource(R.string.ui3_status_oem_limited)
+    RuntimeDiagnosticStatus.NOT_SUPPORTED -> stringResource(R.string.ui3_status_not_supported)
 }
 
 private fun shareRuntimeDiagnostics(context: Context, snapshot: RuntimeDiagnosticsSnapshot) {
@@ -551,7 +552,7 @@ private fun CapabilityCard(
             // Requirements
             if (cap.requirements.isNotEmpty()) {
                 Text(
-                    text = "Requirements:",
+                    text = stringResource(R.string.ui3_requirements),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -577,7 +578,7 @@ private fun CapabilityCard(
                 }
             } else {
                 Text(
-                    text = "No special requirements",
+                    text = stringResource(R.string.ui3_no_requirements),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -587,7 +588,7 @@ private fun CapabilityCard(
 
             // Allowed origins
             Text(
-                text = "Allowed from: ${cap.allowedOrigins.joinToString(", ") { it.name }}",
+                text = stringResource(R.string.ui3_cap_allowed_from, cap.allowedOrigins.joinToString(", ") { it.name }),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -597,7 +598,7 @@ private fun CapabilityCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (cap.requiresUnlockedDevice) {
                         Text(
-                            text = "🔓 Device must be unlocked",
+                            text = stringResource(R.string.ui3_req_device_unlocked),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -609,7 +610,7 @@ private fun CapabilityCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            text = "📱 App must be in foreground",
+                            text = stringResource(R.string.ui3_req_app_foreground),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -623,10 +624,10 @@ private fun CapabilityCard(
 @Composable
 private fun RiskBadge(risk: RiskLevel) {
     val (text, bg) = when (risk) {
-        RiskLevel.Low -> "Low" to Color(0xFF4CAF50).copy(alpha = 0.15f)
-        RiskLevel.Medium -> "Med" to Color(0xFFFFC107).copy(alpha = 0.15f)
-        RiskLevel.High -> "High" to Color(0xFFFF9800).copy(alpha = 0.15f)
-        RiskLevel.Critical -> "Crit" to Color(0xFFFF5252).copy(alpha = 0.15f)
+        RiskLevel.Low -> stringResource(R.string.ui3_risk_low) to Color(0xFF4CAF50).copy(alpha = 0.15f)
+        RiskLevel.Medium -> stringResource(R.string.ui3_risk_med) to Color(0xFFFFC107).copy(alpha = 0.15f)
+        RiskLevel.High -> stringResource(R.string.ui3_risk_high) to Color(0xFFFF9800).copy(alpha = 0.15f)
+        RiskLevel.Critical -> stringResource(R.string.ui3_risk_crit) to Color(0xFFFF5252).copy(alpha = 0.15f)
     }
     val textColor = when (risk) {
         RiskLevel.Low -> Color(0xFF4CAF50)
@@ -651,9 +652,9 @@ private fun RiskBadge(risk: RiskLevel) {
 @Composable
 private fun ApprovalBadge(policy: ApprovalPolicy) {
     val (text, bg) = when (policy) {
-        ApprovalPolicy.AlwaysAsk -> "Ask" to MaterialTheme.colorScheme.errorContainer
-        ApprovalPolicy.AskOnRemote -> "Remote" to MaterialTheme.colorScheme.tertiaryContainer
-        ApprovalPolicy.Default -> "Free" to MaterialTheme.colorScheme.primaryContainer
+        ApprovalPolicy.AlwaysAsk -> stringResource(R.string.ui3_approval_ask) to MaterialTheme.colorScheme.errorContainer
+        ApprovalPolicy.AskOnRemote -> stringResource(R.string.ui3_approval_remote) to MaterialTheme.colorScheme.tertiaryContainer
+        ApprovalPolicy.Default -> stringResource(R.string.ui3_approval_free) to MaterialTheme.colorScheme.primaryContainer
     }
     Box(
         modifier = Modifier
@@ -682,20 +683,21 @@ private fun riskLevelColor(risk: RiskLevel) = when (risk) {
     RiskLevel.Critical -> Color(0xFFFF5252)
 }
 
+@Composable
 private fun requirementDescription(req: CapabilityRequirement): String = when (req) {
-    is CapabilityRequirement.ManifestPermission -> "Manifest: ${req.permission.substringAfterLast('.')}"
+    is CapabilityRequirement.ManifestPermission -> stringResource(R.string.ui3_req_manifest, req.permission.substringAfterLast('.'))
     is CapabilityRequirement.RuntimePermission -> buildString {
-        append("Runtime: ${req.permission.substringAfterLast('.')}")
+        append(stringResource(R.string.ui3_req_runtime, req.permission.substringAfterLast('.')))
         if (req.minSdk > 1 || req.maxSdk < Int.MAX_VALUE) {
             append(" (SDK ${req.minSdk}..${if (req.maxSdk == Int.MAX_VALUE) "latest" else req.maxSdk})")
         }
     }
-    is CapabilityRequirement.SpecialAccess -> "Special: ${req.type.name}"
-    is CapabilityRequirement.EnabledService -> "Service: ${req.component.shortClassName.substringAfterLast('.')}"
-    is CapabilityRequirement.Role -> "Role: ${req.roleName}"
-    is CapabilityRequirement.ExternalBridge -> "Bridge: ${req.type.name}"
-    is CapabilityRequirement.MediaProjectionConsent -> "MediaProjection consent"
-    is CapabilityRequirement.VpnConsent -> "VPN consent"
+    is CapabilityRequirement.SpecialAccess -> stringResource(R.string.ui3_req_special, req.type.name)
+    is CapabilityRequirement.EnabledService -> stringResource(R.string.ui3_req_service, req.component.shortClassName.substringAfterLast('.'))
+    is CapabilityRequirement.Role -> stringResource(R.string.ui3_req_role, req.roleName)
+    is CapabilityRequirement.ExternalBridge -> stringResource(R.string.ui3_req_bridge, req.type.name)
+    is CapabilityRequirement.MediaProjectionConsent -> stringResource(R.string.ui3_req_media_projection)
+    is CapabilityRequirement.VpnConsent -> stringResource(R.string.ui3_req_vpn_consent)
 }
 
 private fun String.humanize(): String {

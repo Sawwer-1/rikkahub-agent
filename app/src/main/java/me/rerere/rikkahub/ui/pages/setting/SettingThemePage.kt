@@ -323,7 +323,7 @@ private fun CustomThemeItem(
             .padding(horizontal = 8.dp)
             .clip(RoundedCornerShape(16.dp))
             .clickable { onSelect() },
-        headlineContent = { Text(theme.name.ifEmpty { "Unnamed" }) },
+        headlineContent = { Text(theme.name.ifEmpty { stringResource(R.string.ui2_theme_unnamed) }) },
         leadingContent = {
             Box(contentAlignment = Alignment.Center) {
                 Canvas(

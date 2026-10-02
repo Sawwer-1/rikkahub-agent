@@ -32,6 +32,7 @@ import kotlinx.coroutines.launch
 import me.rerere.rikkahub.data.ai.AILogging
 import me.rerere.rikkahub.data.datastore.AiLogLevel
 import org.koin.androidx.compose.koinViewModel
+import androidx.compose.ui.res.stringResource
 
 @Composable
 fun DeveloperPage(vm: DeveloperVM = koinViewModel()) {
@@ -42,7 +43,7 @@ fun DeveloperPage(vm: DeveloperVM = koinViewModel()) {
             TopAppBar(
                 title = {
                     Text(
-                        text = "Developer Page",
+                        text = stringResource(R.string.ui3_developer_page_title),
                         maxLines = 1,
                     )
                 }
@@ -88,7 +89,7 @@ fun LoggingPaging(vm: DeveloperVM) {
         items(1) {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "AI Log Level")
+                    Text(text = stringResource(R.string.ui3_developer_log_level))
                     AiLogLevel.entries.forEach { item ->
                         Row(
                             modifier = Modifier

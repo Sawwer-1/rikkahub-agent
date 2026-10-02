@@ -26,6 +26,7 @@ import me.rerere.rikkahub.pet.overlay.DesktopPetService
 import me.rerere.rikkahub.pet.profile.PetProfileIdlePoolDocument
 import me.rerere.rikkahub.pet.profile.PetProfileRepository
 import me.rerere.rikkahub.pet.profile.PetVisualProfileOverride
+import androidx.compose.ui.res.stringResource
 
 /** Safe visual editor: it exposes semantic choices only, never paths, JSON, scripts or classes. */
 @Composable
@@ -85,7 +86,7 @@ fun PetVisualProfileEditorDialog(
                 optionRow("说话缺失动作时的回退", speakingFallback) { speakingFallback = it }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Column {
-                        Text("Idle Pool")
+                        Text(stringResource(R.string.ui2_pet_idle_pool))
                         Text("仅在真正空闲、亮屏且非省电/低电量时生效", style = MaterialTheme.typography.bodySmall)
                     }
                     Switch(checked = idlePoolEnabled, onCheckedChange = { idlePoolEnabled = it })

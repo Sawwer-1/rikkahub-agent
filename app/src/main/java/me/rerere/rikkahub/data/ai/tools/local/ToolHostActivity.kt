@@ -14,6 +14,7 @@ import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
+import me.rerere.rikkahub.R
 import org.koin.android.ext.android.inject
 
 class ToolHostActivity : AppCompatActivity() {
@@ -197,7 +198,7 @@ class ToolHostActivity : AppCompatActivity() {
     }
 
     private fun launchBiometric() {
-        val title = intent.getStringExtra(EXTRA_BIO_TITLE) ?: "Authenticate"
+        val title = intent.getStringExtra(EXTRA_BIO_TITLE) ?: getString(R.string.ui2_tool_host_authenticate)
         val subtitle = intent.getStringExtra(EXTRA_BIO_SUBTITLE)
         val allowDeviceCredential = intent.getBooleanExtra(EXTRA_BIO_ALLOW_CRED, false)
 
@@ -245,7 +246,7 @@ class ToolHostActivity : AppCompatActivity() {
             .setTitle(title)
             .setAllowedAuthenticators(authenticators)
         if (subtitle != null) infoBuilder.setSubtitle(subtitle)
-        if (!allowDeviceCredential) infoBuilder.setNegativeButtonText("Cancel")
+        if (!allowDeviceCredential) infoBuilder.setNegativeButtonText(getString(R.string.ui2_tool_host_cancel))
 
         prompt.authenticate(infoBuilder.build())
     }
