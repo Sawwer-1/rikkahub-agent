@@ -639,9 +639,10 @@ class RepositoryPrivilegedManagementBackend(
                 webServerEnabled = request.webServerEnabled ?: settings.webServerEnabled,
                 webServerPort = request.webServerPort ?: settings.webServerPort,
                 webServerJwtEnabled = request.webServerJwtEnabled ?: settings.webServerJwtEnabled,
-                // Do not let an assistant re-enable plaintext LAN exposure through the
-                // management surface. Paired HTTPS will own this setting in a later phase.
-                webServerLocalhostOnly = true,
+                // extv parity: the management surface may toggle LAN exposure like any other
+                // web-server field. The transport stays plaintext HTTP; users opt in via the
+                // same switch the assistant writes here.
+                webServerLocalhostOnly = request.webServerLocalhostOnly ?: settings.webServerLocalhostOnly,
                 aiLogLevel = logLevel ?: settings.aiLogLevel,
             )
             request.enableWebSearch?.let { enabled ->
