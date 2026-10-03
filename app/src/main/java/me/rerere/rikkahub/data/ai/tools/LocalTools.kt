@@ -288,6 +288,7 @@ sealed class LocalToolOption {
             ExternalStorage, Archive, Alarm, MediaLibrary, MediaWrite, BluetoothDevices,
             NearbyDevices, ExternalPrivilegeBridge, StepCounter, ExportConversation,
             PhoneActions, KeyboardControl, PackageManagement, Moments, QuestionBox,
+            VoiceCall,
             )
     }
 }

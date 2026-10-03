@@ -111,6 +111,7 @@ enum class CapabilityId {
     PackageManagement,
     Moments,
     QuestionBox,
+    VoiceCall,
     DeviceAdmin,
     VpnControl,
     MediaProjection,

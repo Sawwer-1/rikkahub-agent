@@ -13,6 +13,8 @@ class WorkspaceAndKeyboardCapabilityCatalogTest {
             "workspace_read_file" to ToolInvocationSurface.Background,
             "workspace_write_file" to ToolInvocationSurface.FileMutation,
             "workspace_edit_file" to ToolInvocationSurface.FileMutation,
+            "workspace_create_folder" to ToolInvocationSurface.FileMutation,
+            "workspace_read_folder" to ToolInvocationSurface.Background,
             "workspace_shell" to ToolInvocationSurface.UnboundedExecution,
         )
 

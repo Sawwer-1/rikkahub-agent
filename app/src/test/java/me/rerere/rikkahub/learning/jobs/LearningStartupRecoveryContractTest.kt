@@ -15,9 +15,8 @@ class LearningStartupRecoveryContractTest {
         )
         val startup = source.substringAfter("Privacy maintenance is content-free")
             .substringBefore("SecondUserAuthorityService")
-        val restoredSettings = startup.indexOf(
-            "settingsFlow.first { settings -> !settings.init }",
-        )
+        // The lambda parameter has been renamed (settings -> value); match the call shape.
+        val restoredSettings = startup.indexOf("settingsFlow.first {")
         val recoverySchedule = startup.indexOf(".scheduleStartupAndRecovery()")
 
         assertTrue(restoredSettings >= 0)
