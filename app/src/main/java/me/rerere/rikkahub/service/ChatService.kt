@@ -2322,7 +2322,11 @@ class ChatService(
                     } else {
                         ChatRequestMode.Normal
                     },
-                    includeVoiceCallConnectedEvent = voiceCallResume,
+                    voiceCallUserEventState = if (voiceCallResume) {
+                        VoiceCallRuntimeState.ACTIVE
+                    } else {
+                        null
+                    },
                 )
                 val pending = pendingToolIds(envelope.conversationId)
                 if (pending.isNotEmpty()) {
@@ -3853,6 +3857,9 @@ class ChatService(
         val nextTagIndexByMessageId = mutableMapOf<Uuid, Int>()
         val tagProjectionLock = Any()
         var latestPrimaryMessages: List<UIMessage>? = null
+        // Set inside the generation block below, read by the onSuccess materialization step
+        // (which lives outside the runCatching lambda and therefore cannot see its locals).
+        var materializationBaseMessageIds: Set<Uuid>? = null
         val generationResult = runCatching {
             // reset suggestions
             updateConversation(conversationId, initialConversation.copy(chatSuggestions = emptyList()))
@@ -4151,6 +4158,7 @@ class ChatService(
             val generationInputMessages = conversation.messagesForGeneration(messageRange)
             // Voice-call generation context (ported from jude handleMessageComplete).
             val generationBaseMessageIds = conversation.currentMessages.mapTo(mutableSetOf()) { it.id }
+            materializationBaseMessageIds = generationBaseMessageIds
             val generationMessages = when (requestMode) {
                 ChatRequestMode.Normal ->
                     generationInputMessages.map(UIMessage::withoutVoiceCallAudioTagsForNormalContext)
@@ -4251,6 +4259,36 @@ class ChatService(
                 }
             }
             agentTiming?.mark(AgentTimingEventKind.TOOL_SURFACE_STARTED)
+            // MCP discovery + upstream name validation happen OUTSIDE the generation
+            // coroutineScope below: the invalid-name guard aborts the turn with a plain
+            // `return`, which suspend lambdas prohibit.
+            agentTiming?.mark(AgentTimingEventKind.MCP_DISCOVERY_STARTED)
+            val availableMcpTools = try {
+                mcpManager.getAvailableToolsForAssistant(assistant.id)
+            } finally {
+                agentTiming?.mark(AgentTimingEventKind.MCP_DISCOVERY_FINISHED)
+            }
+            run {
+                // Upstream name validation: a server name that isn't pure English+digits
+                // would produce an invalid `mcp__<name>__tool` surface, so surface it as an
+                // error rather than emit a tool the model can't address.
+                val invalidNames = availableMcpTools
+                    .map { it.second }
+                    .distinct()
+                    .filter { name -> name.isEmpty() || !name.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' } }
+                if (invalidNames.isNotEmpty()) {
+                    addError(
+                        error = IllegalStateException(
+                            context.getString(
+                                R.string.error_mcp_invalid_server_name,
+                                invalidNames.joinToString(", ")
+                            )
+                        ),
+                        conversationId = conversationId,
+                    )
+                    return
+                }
+            }
             // Voice-call incremental tagging (jude L1004-1248 port). The generation flow runs
             // inside a coroutine scope so that per-sentence SECOND_PASS tagging jobs are
             // children of this turn: they are cancelled with the turn and joined before the
@@ -4559,34 +4597,7 @@ class ChatService(
                             )
                         )
                     }
-                    agentTiming?.mark(AgentTimingEventKind.MCP_DISCOVERY_STARTED)
-                    val availableMcpTools = try {
-                        mcpManager.getAvailableToolsForAssistant(assistant.id)
-                    } finally {
-                        agentTiming?.mark(AgentTimingEventKind.MCP_DISCOVERY_FINISHED)
-                    }
-                    availableMcpTools.also { allTools ->
-                        // Upstream name validation: a server name that isn't pure
-                        // English+digits would produce an invalid `mcp__<name>__tool`
-                        // surface, so surface it as an error rather than emit a tool the
-                        // model can't address.
-                        val invalidNames = allTools
-                            .map { it.second }
-                            .distinct()
-                            .filter { name -> name.isEmpty() || !name.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' } }
-                        if (invalidNames.isNotEmpty()) {
-                            addError(
-                                error = IllegalStateException(
-                                    context.getString(
-                                        R.string.error_mcp_invalid_server_name,
-                                        invalidNames.joinToString(", ")
-                                    )
-                                ),
-                                conversationId = conversationId,
-                            )
-                            return
-                        }
-                    }.forEach { (serverId, serverName, tool) ->
+                    availableMcpTools.forEach { (serverId, serverName, tool) ->
                         // Namespace MCP tools by a server-id slug so two enabled servers that
                         // each expose a tool of the same name don't collide (which would 400 or
                         // mis-route to whichever server registered last). Keep the `mcp__` prefix
@@ -5121,11 +5132,11 @@ class ChatService(
             // materialize any 【语音条】 segments in the assistant message into voice
             // bubbles and persist the rewrite. Failures are survivable — the text stays,
             // only the audio artifacts are missing — so they must not fail the turn.
-            if (requestMode == ChatRequestMode.Normal) {
+            if (requestMode == ChatRequestMode.Normal && materializationBaseMessageIds != null) {
                 runCatching {
                     chatVoiceReplyMaterializer.materialize(
                         conversation = getConversationFlow(conversationId).value,
-                        generationBaseMessageIds = generationBaseMessageIds,
+                        generationBaseMessageIds = materializationBaseMessageIds.orEmpty(),
                         settings = settings,
                         onUpdate = { materialized ->
                             updateConversation(conversationId, materialized)

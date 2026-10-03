@@ -96,6 +96,25 @@ sealed class TTSProviderSetting {
                 name = name,
             )
         }
+
+        companion object {
+            /**
+             * Emotion markers accepted by MiniMax speech models (ported verbatim from jude;
+             * the voice-call emotion catalog and the audio-tag prompt both consume this list,
+             * including its original "whipser" spelling).
+             */
+            val GLOBAL_EMOTION_OPTIONS = listOf(
+                "happy",
+                "sad",
+                "angry",
+                "fearful",
+                "disgusted",
+                "surprised",
+                "calm",
+                "fluent",
+                "whipser",
+            )
+        }
     }
 
     @Serializable

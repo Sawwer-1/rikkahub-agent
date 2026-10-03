@@ -182,9 +182,12 @@ class RouteActivity : ComponentActivity() {
     // Volume key listener registry — last registered handler wins
     internal val volumeKeyListeners = mutableListOf<(isVolumeUp: Boolean) -> Boolean>()
 
+    /** Voice-call overlay sets this while a call is live so volume keys reach the system. */
+    internal var suppressVolumeKeyListeners = false
+
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_DOWN) {
+        if (event.action == KeyEvent.ACTION_DOWN && !suppressVolumeKeyListeners) {
             val isVolumeUp = when (event.keyCode) {
                 KeyEvent.KEYCODE_VOLUME_UP -> true
                 KeyEvent.KEYCODE_VOLUME_DOWN -> false
