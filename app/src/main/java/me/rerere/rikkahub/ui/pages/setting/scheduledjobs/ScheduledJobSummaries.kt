@@ -48,9 +48,6 @@ internal fun describeSchedule(job: ScheduledJobEntity): ScheduleSummary = when (
     else -> ScheduleSummary.Custom(job.scheduleType)
 }
 
-fun summariseSchedule(context: Context, job: ScheduledJobEntity): String =
-    renderSchedule(context, describeSchedule(job))
-
 internal fun renderSchedule(context: Context, summary: ScheduleSummary): String = when (summary) {
     is ScheduleSummary.OnceNoTime -> context.getString(R.string.ui2_jobs_once_no_time)
     is ScheduleSummary.OnceAt -> context.getString(R.string.ui2_jobs_once_at, formatAbsoluteTime(summary.atUnixMs))
@@ -107,20 +104,20 @@ internal fun describeCron(expr: String): ScheduleSummary? {
     if (hour == "*" && dom == "*" && month == "*" && dow == "*" && minute.matches(Regex("\\*/\\d+"))) {
         val n = minute.removePrefix("*/").toIntOrNull() ?: return null
         return if (n == 1) ScheduleSummary.CronRes(R.string.ui2_jobs_every_minute)
-        else ScheduleSummary.CronRes(R.string.ui2_jobs_every_n_min, n)
+        else ScheduleSummary.CronRes(R.string.ui2_jobs_every_n_min, listOf(n))
     }
     // every N hours — "0 */N * * *"
     if (minute == "0" && dom == "*" && month == "*" && dow == "*" && hour.matches(Regex("\\*/\\d+"))) {
         val n = hour.removePrefix("*/").toIntOrNull() ?: return null
         return if (n == 1) ScheduleSummary.CronRes(R.string.ui2_jobs_every_hour)
-        else ScheduleSummary.CronRes(R.string.ui2_jobs_every_n_hours, n)
+        else ScheduleSummary.CronRes(R.string.ui2_jobs_every_n_hours, listOf(n))
     }
     // every day at HH:MM — "M H * * *"
     if (dom == "*" && month == "*" && minute.toIntOrNull() in 0..59 && hour.toIntOrNull() in 0..23) {
         val hh = hour.toInt()
         val mm = minute.toInt()
         val time = "%02d:%02d".format(hh, mm)
-        if (dow == "*") return ScheduleSummary.CronRes(R.string.ui2_jobs_every_day_at, time)
+        if (dow == "*") return ScheduleSummary.CronRes(R.string.ui2_jobs_every_day_at, listOf(time))
         // specific weekdays — "MON,WED,FRI" or "1,3,5"
         val dayKeys = parseDowKeys(dow) ?: return null
         if (dayKeys.size in 1..6) {
