@@ -31,6 +31,7 @@ import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_COMPRESS_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_FINAL_ANSWER_REMINDER_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.resolveFinalAnswerReminderPrompt
+import me.rerere.rikkahub.data.ai.tools.LocalToolOption
 import me.rerere.rikkahub.data.voice.VoiceCallAudioTagMode
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_OCR_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_SUGGESTION_PROMPT
@@ -502,6 +503,23 @@ class SettingsStore(
                 }.toMutableList()
             }
             val newAutoEnabled = it.autoEnabledDefaultSkills + DEFAULT_AUTO_ENABLED_SKILLS
+            // One-shot additive enable for the per-assistant social surfaces (Moments +
+            // anonymous question box, jude batch 3). jude shipped these default-enabled;
+            // seeding keeps that behaviour now that they are visible local-tool switches.
+            // A user who turns either off afterwards stays off (tracked by the flag).
+            val assistantsAfterSocial = if (!it.socialToolsSeeded) {
+                assistants.map { assistant ->
+                    if (assistant.localTools.none {
+                            it == LocalToolOption.Moments || it == LocalToolOption.QuestionBox
+                        }
+                    ) {
+                        assistant.copy(
+                            localTools = assistant.localTools +
+                                LocalToolOption.Moments + LocalToolOption.QuestionBox
+                        )
+                    } else assistant
+                }.toMutableList()
+            } else assistants
             val ttsProviders = it.ttsProviders.ifEmpty { DEFAULT_TTS_PROVIDERS }.toMutableList()
             DEFAULT_TTS_PROVIDERS.forEach { defaultTTSProvider ->
                 if (ttsProviders.none { provider -> provider.id == defaultTTSProvider.id }) {
@@ -510,8 +528,9 @@ class SettingsStore(
             }
             it.copy(
                 providers = providers,
-                assistants = assistants,
+                assistants = assistantsAfterSocial,
                 autoEnabledDefaultSkills = newAutoEnabled,
+                socialToolsSeeded = true,
                 ttsProviders = ttsProviders,
             )
         }
@@ -977,6 +996,15 @@ data class Settings(
      * never re-added, so toggling it off sticks across launches.
      */
     val autoEnabledDefaultSkills: Set<String> = emptySet(),
+    /** One-shot guard: social local tools (Moments/QuestionBox) seeded into assistants. */
+    val socialToolsSeeded: Boolean = false,
+    /**
+     * Master switch for voice features. When off, voice quick entries (chat top-bar voice
+     * call, attachment-sheet voice item, input-bar ASR mic) are hidden; provider config
+     * pages stay reachable from settings.
+     */
+    val voiceFeaturesEnabled: Boolean = true,
+    val socialToolsSeeded: Boolean = false,
     val assistantTags: List<Tag> = emptyList(),
     val searchServices: List<SearchServiceOptions> = listOf(SearchServiceOptions.DEFAULT),
     val searchCommonOptions: SearchCommonOptions = SearchCommonOptions(),

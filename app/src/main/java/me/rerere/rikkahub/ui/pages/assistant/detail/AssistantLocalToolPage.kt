@@ -1534,6 +1534,44 @@ private fun AssistantLocalToolContent(
                 }
             )
         }
+
+        // Social surfaces section (jude batch 3): per-assistant Moments timeline and the
+        // anonymous question box. Tools resolve against the calling assistant's id.
+        Text(
+            text = stringResource(R.string.assistant_page_local_tools_section_social),
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.padding(start = 16.dp, top = 8.dp)
+        )
+        CardGroup {
+            item(
+                headlineContent = {
+                    Text(stringResource(R.string.assistant_page_local_tools_moments_title))
+                },
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_local_tools_moments_desc))
+                },
+                trailingContent = {
+                    Switch(
+                        checked = assistant.localTools.contains(LocalToolOption.Moments),
+                        onCheckedChange = { toggleLocalTool(LocalToolOption.Moments, it) }
+                    )
+                }
+            )
+            item(
+                headlineContent = {
+                    Text(stringResource(R.string.assistant_page_local_tools_question_box_title))
+                },
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_local_tools_question_box_desc))
+                },
+                trailingContent = {
+                    Switch(
+                        checked = assistant.localTools.contains(LocalToolOption.QuestionBox),
+                        onCheckedChange = { toggleLocalTool(LocalToolOption.QuestionBox, it) }
+                    )
+                }
+            )
+        }
     }
 }
 

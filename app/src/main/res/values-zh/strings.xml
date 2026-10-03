@@ -3139,4 +3139,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_tts_generic_response_mode">响应模式</string>
   <string name="setting_tts_generic_response_path">响应 JSON 路径</string>
   <string name="setting_tts_generic_secret_hint">{{secret}} 只能用在敏感请求头的值中。</string>
+  <string name="assistant_page_local_tools_section_social">社交</string>
+  <string name="assistant_page_local_tools_moments_title">朋友圈</string>
+  <string name="assistant_page_local_tools_moments_desc">允许该助手在自己的朋友圈时间线上发布或删除动态（post_moment / delete_moment）。动态会显示在该助手的朋友圈视图中。</string>
+  <string name="assistant_page_local_tools_question_box_title">私信提问</string>
+  <string name="assistant_page_local_tools_question_box_desc">允许该助手在提问箱中发布或移除匿名提问（post_anonymous_question / delete_anonymous_question）。</string>
+  <string name="voice_master_title">启用语音功能</string>
+  <string name="voice_master_desc">语音合成 / 语音识别与各语音入口的总开关。关闭后隐藏语音快捷入口（聊天页顶栏语音通话、附件面板语音、输入栏麦克风）。</string>
 </resources>

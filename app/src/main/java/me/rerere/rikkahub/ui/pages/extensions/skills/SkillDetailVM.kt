@@ -42,7 +42,7 @@ class SkillDetailVM(
     fun init(id: String) {
         if (skillId == id) return
         skillId = id
-        _displayName.value = skillManager.getContent(id)?.name ?: id
+        _displayName.value = skillManager.getContent(id)?.let { it.displayName ?: it.name } ?: id
         loadFiles()
     }
 

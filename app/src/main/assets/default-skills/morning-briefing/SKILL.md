@@ -1,5 +1,6 @@
 ---
 name: morning-briefing
+display_name: 晨间简报
 description: 汇总用户的晨间简报——当前天气、今日日程、未读邮件数、接下来的计划任务，以及任何电量/存储警告。输出一个短段落，让用户能在 10 秒内读完。
 allowed-tools: get_time_info get_battery_status get_storage_info list_active_notifications list_recent_notifications get_jobs_history list_call_log get_location launch_app read_window_tree
 ---

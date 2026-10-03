@@ -141,12 +141,14 @@ internal fun FilesPicker(
 
             FilePickButton(onClick = onPickFile)
 
-            onStartVoiceMode?.let { start ->
-                BigIconTextButton(
-                    icon = { Icon(HugeIcons.Voice, contentDescription = null) },
-                    text = { Text(stringResource(R.string.chat_page_voice_title)) },
-                    onClick = start,
-                )
+            if (settings.voiceFeaturesEnabled) {
+                onStartVoiceMode?.let { start ->
+                    BigIconTextButton(
+                        icon = { Icon(HugeIcons.Voice, contentDescription = null) },
+                        text = { Text(stringResource(R.string.chat_page_voice_title)) },
+                        onClick = start,
+                    )
+                }
             }
         }
 

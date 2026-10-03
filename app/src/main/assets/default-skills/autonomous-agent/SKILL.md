@@ -1,5 +1,6 @@
 ---
 name: autonomous-agent
+display_name: 自主代理
 description: 安全、持久的 RikkaHub 代理运行准则。使用宿主提供的持久记忆、工具目录和脱敏经验库，而不是把原始操作日志写进工作区。
 auto_load: true
 ---

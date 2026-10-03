@@ -1,5 +1,6 @@
 ---
 name: calculate-hash
+display_name: 计算哈希
 description: 通过 WebView 的 WebCrypto API 计算给定文本的 SHA-1 哈希值。
 compatibility: js
 auto_load: false

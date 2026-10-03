@@ -1,5 +1,6 @@
 ---
 name: deep-research
+display_name: 深度研究
 description: 使用受限的只读子代理，规划并协调有边界、可溯源的研究。
 auto_load: false
 ---

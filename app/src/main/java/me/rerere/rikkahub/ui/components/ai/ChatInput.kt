@@ -349,7 +349,7 @@ fun ChatInput(
                             )
                         }
 
-                        if (asrState.isAvailable || asrState.isRecording) {
+                        if (settings.voiceFeaturesEnabled && (asrState.isAvailable || asrState.isRecording)) {
                             AsrButton(
                                 state = asrState,
                                 onClick = {

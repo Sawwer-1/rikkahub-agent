@@ -1393,8 +1393,10 @@ private fun TopBar(
             }
         },
         actions = {
-            IconButton(onClick = onOpenVoiceCall) {
-                Icon(HugeIcons.Voice, stringResource(R.string.vc_entry))
+            if (settings.voiceFeaturesEnabled) {
+                IconButton(onClick = onOpenVoiceCall) {
+                    Icon(HugeIcons.Voice, stringResource(R.string.vc_entry))
+                }
             }
             if (conversation.hasCompressedMessages && !summaryEditorVisible) {
                 IconButton(onClick = onToggleCompressedMessages) {

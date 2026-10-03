@@ -1,5 +1,6 @@
 ---
 name: query-wikipedia
+display_name: 维基百科查询
 description: 在维基百科上模糊搜索某个主题，返回引言及信息框摘要。需要联网。
 compatibility: js
 auto_load: false

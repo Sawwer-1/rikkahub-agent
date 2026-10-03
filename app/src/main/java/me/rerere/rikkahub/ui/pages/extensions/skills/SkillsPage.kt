@@ -408,7 +408,7 @@ private fun SkillCard(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
-                    text = skill.name,
+                    text = skill.displayName ?: skill.name,
                     style = MaterialTheme.typography.titleSmallEmphasized,
                 )
                 Text(

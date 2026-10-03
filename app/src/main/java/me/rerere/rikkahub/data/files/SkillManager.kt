@@ -89,6 +89,7 @@ class SkillManager(
         return SkillContent(
             name = name,
             description = description,
+            displayName = frontmatter["display_name"]?.takeIf { it.isNotBlank() },
             format = frontmatter["format"]?.takeIf { it.isNotBlank() },
             sourceLabel = frontmatter["source-url"]?.takeIf { it.isNotBlank() },
             contentMd = SkillFrontmatterParser.extractBody(raw),
@@ -306,19 +307,50 @@ class SkillManager(
                 continue
             }
 
-            // Non-core (lazy) skills: original behavior — seed once, then leave alone.
-            // The user may have manually installed and then deleted the skill. Detect that
-            // case by checking whether the directory exists at all — if it does and there is
-            // no sentinel, the user owns it; do not overwrite. If the directory does not
-            // exist, this is a fresh install and we can seed.
-            if (sentinel.exists()) continue
-            if (targetDir.exists() && targetDir.listFiles()?.isNotEmpty() == true) continue
+            // Non-core (lazy) skills: seed once, then follow the same bundled-version
+            // tracking as core skills. Rationale: bundled skill content evolves with the
+            // APK (e.g. the Chinese translation of the bundled frontmatter); an install
+            // that was seeded by us and left untouched must be refreshed, while a copy
+            // the user actually edited stays theirs. A directory with neither sentinel
+            // nor version record that the user created by hand is user-owned.
+            val bundledHash = computeBundledSkillHash(assetRoot, skillName)
+            val dirNonEmpty = targetDir.exists() && targetDir.listFiles()?.isNotEmpty() == true
+            if (!dirNonEmpty) {
+                // Fresh seed (first launch, or the user deleted the skill directory).
+                try {
+                    copyAssetSkill(assetRoot, skillName, targetDir)
+                    sentinel.writeText(System.currentTimeMillis().toString())
+                    coreVersionFile.writeText(bundledHash)
+                    Log.i(TAG, "seedDefaultSkillsIfNeeded: seeded $skillName")
+                } catch (e: Exception) {
+                    Log.w(TAG, "seedDefaultSkillsIfNeeded: failed to seed $skillName", e)
+                }
+                continue
+            }
+            if (!sentinel.exists() && !coreVersionFile.exists()) {
+                // Present but never seeded by us: the user installed it by hand.
+                Log.i(TAG, "seedDefaultSkillsIfNeeded: preserving user-installed skill $skillName")
+                coreVersionFile.writeText(bundledHash)
+                continue
+            }
+            val currentHash = if (coreVersionFile.exists()) coreVersionFile.readText().trim() else ""
+            if (bundledHash == currentHash) continue
+            val installedHash = targetDir.takeIf(File::exists)?.let(::computeInstalledSkillHash)
+            if (currentHash.isNotBlank() && installedHash != null && installedHash != currentHash) {
+                // The user edited their seeded copy: record that this bundled version
+                // has been considered and keep their files.
+                coreVersionFile.writeText(bundledHash)
+                Log.i(TAG, "seedDefaultSkillsIfNeeded: preserving edited skill $skillName")
+                continue
+            }
             try {
+                if (targetDir.exists()) targetDir.deleteRecursively()
                 copyAssetSkill(assetRoot, skillName, targetDir)
                 sentinel.writeText(System.currentTimeMillis().toString())
-                Log.i(TAG, "seedDefaultSkillsIfNeeded: seeded $skillName")
+                coreVersionFile.writeText(bundledHash)
+                Log.i(TAG, "seedDefaultSkillsIfNeeded: re-seeded skill $skillName (hash=$bundledHash)")
             } catch (e: Exception) {
-                Log.w(TAG, "seedDefaultSkillsIfNeeded: failed to seed $skillName", e)
+                Log.w(TAG, "seedDefaultSkillsIfNeeded: failed to re-seed $skillName", e)
             }
         }
     }
@@ -469,6 +501,7 @@ class SkillManager(
             SkillMetadata(
                 name = name,
                 description = description,
+                displayName = frontmatter["display_name"]?.takeIf { it.isNotBlank() },
                 compatibility = frontmatter["compatibility"],
                 autoLoad = frontmatter["auto_load"]?.equals("true", ignoreCase = true) == true,
                 autoLoadPath = frontmatter["auto_load_path"]?.takeIf { it.isNotBlank() },
@@ -493,6 +526,12 @@ class SkillManager(
 data class SkillMetadata(
     val name: String,
     val description: String,
+    /**
+     * Optional human-facing title from the `display_name:` frontmatter key. The skill
+     * list shows this when present; [name] stays the stable resolution identifier
+     * (frontmatter name == directory name) so loading is unaffected.
+     */
+    val displayName: String? = null,
     val compatibility: String? = null,
     // NOTE: the `allowed-tools:` frontmatter key is intentionally NOT parsed. It was
     // never enforced anywhere (the tool set offered to the model is built from the
@@ -520,6 +559,8 @@ data class SkillMetadata(
 data class SkillContent(
     val name: String,
     val description: String,
+    /** Optional human-facing title (`display_name:`); UI shows it instead of [name]. */
+    val displayName: String? = null,
     val format: String? = null,
     val sourceLabel: String? = null,
     val contentMd: String,

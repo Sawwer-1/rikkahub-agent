@@ -201,6 +201,8 @@ object CapabilityCatalog {
         ),
         LocalToolOption.PhoneActions to setOf("call_phone"),
         LocalToolOption.PackageManagement to setOf("install_apk"),
+        LocalToolOption.Moments to setOf("post_moment", "delete_moment"),
+        LocalToolOption.QuestionBox to setOf("post_anonymous_question", "delete_anonymous_question"),
     )
 
     private val activityToolNames: Set<String> = setOf(
@@ -1510,6 +1512,28 @@ object CapabilityCatalog {
             approvalPolicy = ApprovalPolicy.AlwaysAsk,
             allowedOrigins = setOf(ToolCallOrigin.LocalChat),
             requiresUnlockedDevice = true,
+        ))
+
+        reg(CapabilityDescriptor(
+            id = CapabilityId.Moments,
+            localToolOption = LocalToolOption.Moments,
+            toolNames = setOf("post_moment", "delete_moment"),
+            requirements = emptyList(),
+            implementationState = ImplementationState.Implemented,
+            riskLevel = RiskLevel.Low,
+            approvalPolicy = ApprovalPolicy.Default,
+            allowedOrigins = InvocationSurfacePolicy.LOCAL_UNLOCKED,
+        ))
+
+        reg(CapabilityDescriptor(
+            id = CapabilityId.QuestionBox,
+            localToolOption = LocalToolOption.QuestionBox,
+            toolNames = setOf("post_anonymous_question", "delete_anonymous_question"),
+            requirements = emptyList(),
+            implementationState = ImplementationState.Implemented,
+            riskLevel = RiskLevel.Low,
+            approvalPolicy = ApprovalPolicy.Default,
+            allowedOrigins = InvocationSurfacePolicy.LOCAL_UNLOCKED,
         ))
 
         reg(CapabilityDescriptor(
