@@ -916,7 +916,28 @@ sealed class UIMessageAnnotation {
         val status: FinalAnswerRecoveryStatus,
         val attempt: Int = 1,
     ) : UIMessageAnnotation()
+
+    @Serializable
+    @SerialName("voice_call_record")
+    data class VoiceCallRecord(
+        val callId: String,
+        val durationSeconds: Int,
+        val cardAnchor: Boolean = false,
+        val standalone: Boolean = false,
+        val audioSegments: List<VoiceCallAudioSegment> = emptyList(),
+        val messageIds: Set<String> = emptySet(),
+        val audioSegmentsByMessageId: Map<String, List<VoiceCallAudioSegment>> = emptyMap(),
+        val pendingEndedEvent: Boolean = false,
+    ) : UIMessageAnnotation()
 }
+
+@Serializable
+data class VoiceCallAudioSegment(
+    val text: String,
+    val audioUri: String,
+    val format: String,
+    val sampleRate: Int? = null,
+)
 
 @Serializable
 data class MessageChunk(

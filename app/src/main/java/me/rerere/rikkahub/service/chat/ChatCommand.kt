@@ -52,6 +52,15 @@ data class RawUserContent(
     val answer: Boolean = true,
     val annotations: List<UIMessageAnnotation> = emptyList(),
     /**
+     * Voice-call request mode (ported from jude). Normal keeps every pre-existing caller
+     * unchanged; VoiceCall marks the send as a voice-call turn and is consumed by
+     * ChatService.handleMessageComplete to drive the call state machine.
+     */
+    val requestMode: me.rerere.rikkahub.service.ChatRequestMode =
+        me.rerere.rikkahub.service.ChatRequestMode.Normal,
+    /** Voice-call connected event flag (ported from jude): emit ACTIVE user-event state. */
+    val includeVoiceCallConnectedEvent: Boolean = false,
+    /**
      * Frozen once at submission and persisted with the durable command. Admission and execution
      * must build the branch anchor with this same value; sampling the clock twice changes the
      * authority payload digest even when the user's content is byte-for-byte identical.
