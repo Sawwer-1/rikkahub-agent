@@ -95,7 +95,7 @@ class ScheduledJobSummariesTest {
             describeCron("*/1 * * * *"),
         )
         assertEquals(
-            ScheduleSummary.CronRes(R.string.ui2_jobs_every_n_min, 15),
+            ScheduleSummary.CronRes(R.string.ui2_jobs_every_n_min, listOf(15)),
             describeCron("*/15 * * * *"),
         )
     }
@@ -106,14 +106,14 @@ class ScheduledJobSummariesTest {
             describeCron("0 */1 * * *"),
         )
         assertEquals(
-            ScheduleSummary.CronRes(R.string.ui2_jobs_every_n_hours, 6),
+            ScheduleSummary.CronRes(R.string.ui2_jobs_every_n_hours, listOf(6)),
             describeCron("0 */6 * * *"),
         )
     }
 
     @Test fun `cron daily at HH MM`() {
         assertEquals(
-            ScheduleSummary.CronRes(R.string.ui2_jobs_every_day_at, "09:00"),
+            ScheduleSummary.CronRes(R.string.ui2_jobs_every_day_at, listOf("09:00")),
             describeCron("0 9 * * *"),
         )
     }
