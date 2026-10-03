@@ -220,6 +220,8 @@ class SettingsStore(
         val WEB_SERVER_JWT_ENABLED = booleanPreferencesKey("web_server_jwt_enabled")
         val WEB_SERVER_ACCESS_PASSWORD = stringPreferencesKey("web_server_access_password")
         val WEB_SERVER_LOCALHOST_ONLY = booleanPreferencesKey("web_server_localhost_only")
+        val VOICE_FEATURES_ENABLED = booleanPreferencesKey("voice_features_enabled")
+        val SOCIAL_TOOLS_SEEDED = booleanPreferencesKey("social_tools_seeded")
 
         // AI logging
         val AI_LOG_LEVEL = stringPreferencesKey("ai_log_level")
@@ -415,6 +417,8 @@ class SettingsStore(
                 webServerPort = preferences[WEB_SERVER_PORT] ?: 8080,
                 webServerJwtEnabled = preferences[WEB_SERVER_JWT_ENABLED] == true,
                 webServerAccessPassword = preferences[WEB_SERVER_ACCESS_PASSWORD] ?: "",
+                voiceFeaturesEnabled = preferences[VOICE_FEATURES_ENABLED] != false,
+                socialToolsSeeded = preferences[SOCIAL_TOOLS_SEEDED] == true,
                 // LAN is fail-closed until the paired TLS transport is configured. Existing
                 // installs that stored false are still forced local by WebServerManager.
                 webServerLocalhostOnly = preferences[WEB_SERVER_LOCALHOST_ONLY] != false,
@@ -719,6 +723,8 @@ class SettingsStore(
             preferences[WEB_SERVER_JWT_ENABLED] = settings.webServerJwtEnabled
             preferences[WEB_SERVER_ACCESS_PASSWORD] = settings.webServerAccessPassword
             preferences[WEB_SERVER_LOCALHOST_ONLY] = settings.webServerLocalhostOnly
+            preferences[VOICE_FEATURES_ENABLED] = settings.voiceFeaturesEnabled
+            preferences[SOCIAL_TOOLS_SEEDED] = settings.socialToolsSeeded
             preferences[AI_LOG_LEVEL] = settings.aiLogLevel.preferenceName
             preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
             preferences[LAUNCH_COUNT] = settings.launchCount
