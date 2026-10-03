@@ -124,7 +124,7 @@ internal fun createVoiceCallAudioTagSelectionTool(
                 required = listOf("assignments"),
             )
         },
-        needsApproval = false,
+        needsApproval = { false },
         execute = { arguments ->
             val selectedAssignments = validateVoiceCallAudioTagAssignmentsWithReplacements(
                 arguments = arguments,

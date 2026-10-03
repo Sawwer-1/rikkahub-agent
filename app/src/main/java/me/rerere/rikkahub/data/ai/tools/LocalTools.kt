@@ -740,7 +740,7 @@ class LocalTools(
                 required = listOf("reason")
             )
         },
-        needsApproval = voiceCallConfigured,
+        needsApproval = { voiceCallConfigured },
         execute = { params ->
             if (!voiceCallConfigured) {
                 listOf(
