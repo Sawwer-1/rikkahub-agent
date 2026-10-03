@@ -419,6 +419,7 @@ private fun UIMessage.withFinalAnswerRecovery(
     status: FinalAnswerRecoveryStatus,
     attempt: Int,
     state: UIMessageState,
+    terminal: GenerationTerminal? = null,
 ): UIMessage {
     val marker = UIMessageAnnotation.FinalAnswerRecovery(
         commandId = commandId,
@@ -430,18 +431,19 @@ private fun UIMessage.withFinalAnswerRecovery(
         annotation is UIMessageAnnotation.FinalAnswerRecovery &&
             annotation.commandId == commandId
     } + marker
-    val terminal = state == UIMessageState.COMPLETED ||
+    val isTerminal = state == UIMessageState.COMPLETED ||
         state == UIMessageState.INTERRUPTED ||
         state == UIMessageState.INCOMPLETE_NO_VISIBLE_ANSWER ||
         state == UIMessageState.FAILED
     return copy(
         annotations = updatedAnnotations,
         state = state,
-        finishedAt = if (terminal) {
+        finishedAt = if (isTerminal) {
             Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
         } else {
             null
         },
+        terminal = terminal ?: this.terminal,
     )
 }
 
@@ -457,6 +459,14 @@ sealed interface GenerationChunk {
 enum class GenerationPersistenceBarrier {
     NONE,
     PENDING_APPROVAL,
+
+    /**
+     * The chunk flips the last message into a terminal state. Must never be dropped by the
+     * 50ms streaming throttle in ChatService, otherwise the final text delta AND the
+     * state flip (e.g. STREAMING → INTERRUPTED) are silently lost and the message stays
+     * "streaming" on disk.
+     */
+    FINAL,
 }
 
 private const val TAG_GH_LOOP = "GenHandlerLoop"
@@ -938,10 +948,11 @@ class GenerationHandler(
                 currentTimingRound,
             ) { buildList {
                 if (hostMemoryCapabilityEnabled) {
-                    val memoryAssistantId = if (assistant.useGlobalMemory) {
-                        MemoryRepository.GLOBAL_MEMORY_ID
-                    } else {
-                        assistant.id.toString()
+                    val memoryAssistantId = when {
+                        assistant.useConversationMemory && conversationId != null ->
+                            "conversation:$conversationId"
+                        assistant.useGlobalMemory -> MemoryRepository.GLOBAL_MEMORY_ID
+                        else -> assistant.id.toString()
                     }
                     buildMemoryTools(
                         onCreation = { input ->
@@ -976,6 +987,13 @@ class GenerationHandler(
                                 kind = input.kind,
                                 includeArchived = false,
                                 frozenNowMs = memoryFrozenNowMs,
+                                scopeIdOverride = if (assistant.useConversationMemory &&
+                                    conversationId != null
+                                ) {
+                                    "conversation:$conversationId"
+                                } else {
+                                    null
+                                },
                             )
                         },
                     ).let(this::addAll)
@@ -1271,6 +1289,9 @@ class GenerationHandler(
                     if (recoveryDecision == FinalAnswerRecoveryDecision.Attempt) {
                         val recoveryReason = terminal.providerReason
                             ?: terminal.category.name.lowercase()
+                        val interruptedRecovery = outcome is GenerationOutcome.Interrupted
+                        val interruptedTerminal =
+                            (outcome as? GenerationOutcome.Interrupted)?.terminal
                         var recoveryComplete = false
                         var recoveryStream = false
                         while (finalAnswerRecoveryAttempts < FINAL_ANSWER_MAX_ATTEMPTS) {
@@ -1430,10 +1451,20 @@ class GenerationHandler(
                                         reason = stopReason,
                                         status = FinalAnswerRecoveryStatus.FAILED,
                                         attempt = attempt,
-                                        state = UIMessageState.INCOMPLETE_NO_VISIBLE_ANSWER,
+                                        state = if (interruptedRecovery) {
+                                            UIMessageState.INTERRUPTED
+                                        } else {
+                                            UIMessageState.INCOMPLETE_NO_VISIBLE_ANSWER
+                                        },
+                                        terminal = interruptedTerminal,
                                     ),
                                 )
-                                emit(GenerationChunk.Messages(messages))
+                                emit(
+                                    GenerationChunk.Messages(
+                                        messages,
+                                        persistenceBarrier = GenerationPersistenceBarrier.FINAL,
+                                    )
+                                )
                                 generationDiagnostics.markRecovery(attempt, "FAILED")
                                 break
                             }
@@ -1466,9 +1497,15 @@ class GenerationHandler(
                                         status = FinalAnswerRecoveryStatus.SUCCEEDED,
                                         attempt = attempt,
                                         state = UIMessageState.COMPLETED,
+                                        terminal = recoveryTerminal,
                                     ),
                                 )
-                                emit(GenerationChunk.Messages(messages))
+                                emit(
+                                    GenerationChunk.Messages(
+                                        messages,
+                                        persistenceBarrier = GenerationPersistenceBarrier.FINAL,
+                                    )
+                                )
                                 generationDiagnostics.markRecovery(attempt, "SUCCEEDED")
                                 recoveryComplete = true
                                 break
@@ -1487,6 +1524,13 @@ class GenerationHandler(
                                 nextStep as? FinalAnswerRecoveryAttemptDecision.Retry
                             val retry = retryDecision != null
                             if (retryDecision != null) recoveryStream = retryDecision.stream
+                            val recoveryRetryState = if (retry) {
+                                UIMessageState.STREAMING
+                            } else if (interruptedRecovery) {
+                                UIMessageState.INTERRUPTED
+                            } else {
+                                UIMessageState.INCOMPLETE_NO_VISIBLE_ANSWER
+                            }
                             messages = recoveryBase.replaceLastMessage(
                                 recoveryBase.last().withFinalAnswerRecovery(
                                     commandId = recoveryCommandKey,
@@ -1497,14 +1541,20 @@ class GenerationHandler(
                                     },
                                     status = FinalAnswerRecoveryStatus.FAILED,
                                     attempt = attempt,
-                                    state = if (retry) {
-                                        UIMessageState.STREAMING
-                                    } else {
-                                        UIMessageState.INCOMPLETE_NO_VISIBLE_ANSWER
-                                    },
+                                    state = recoveryRetryState,
+                                    terminal = if (retry) null else interruptedTerminal,
                                 ),
                             )
-                            emit(GenerationChunk.Messages(messages))
+                            if (retry) {
+                                emit(GenerationChunk.Messages(messages))
+                            } else {
+                                emit(
+                                    GenerationChunk.Messages(
+                                        messages,
+                                        persistenceBarrier = GenerationPersistenceBarrier.FINAL,
+                                    )
+                                )
+                            }
                             generationDiagnostics.markRecovery(
                                 attempt,
                                 if (retry) "RETRYING" else "FAILED",
@@ -1513,7 +1563,8 @@ class GenerationHandler(
                         }
 
                         if (!recoveryComplete &&
-                            messages.last().state != UIMessageState.INCOMPLETE_NO_VISIBLE_ANSWER
+                            messages.last().state != UIMessageState.INCOMPLETE_NO_VISIBLE_ANSWER &&
+                            messages.last().state != UIMessageState.INTERRUPTED
                         ) {
                             messages = messages.replaceLastMessage(
                                 messages.last().withFinalAnswerRecovery(
@@ -1521,10 +1572,20 @@ class GenerationHandler(
                                     reason = "recovery_attempts_exhausted:$recoveryReason",
                                     status = FinalAnswerRecoveryStatus.FAILED,
                                     attempt = finalAnswerRecoveryAttempts,
-                                    state = UIMessageState.INCOMPLETE_NO_VISIBLE_ANSWER,
+                                    state = if (interruptedRecovery) {
+                                        UIMessageState.INTERRUPTED
+                                    } else {
+                                        UIMessageState.INCOMPLETE_NO_VISIBLE_ANSWER
+                                    },
+                                    terminal = interruptedTerminal,
                                 ),
                             )
-                            emit(GenerationChunk.Messages(messages))
+                            emit(
+                                GenerationChunk.Messages(
+                                    messages,
+                                    persistenceBarrier = GenerationPersistenceBarrier.FINAL,
+                                )
+                            )
                         }
                         break@generationLoop
                     }
@@ -1539,8 +1600,23 @@ class GenerationHandler(
                         GenerationOutcome.ContinueToolLoop ->
                             UIMessageState.INCOMPLETE_NO_VISIBLE_ANSWER
                     }
-                    messages = messages.replaceLastMessage(messages.last().copy(state = terminalState))
-                    emit(GenerationChunk.Messages(messages))
+                    val finalTerminal = when (outcome) {
+                        is GenerationOutcome.Interrupted -> outcome.terminal
+                        is GenerationOutcome.Failed -> outcome.terminal
+                        is GenerationOutcome.NeedsFinalAnswer -> outcome.terminal
+                        GenerationOutcome.Completed -> terminal.withMessageStats(messages.last())
+                        GenerationOutcome.AwaitingToolApproval,
+                        GenerationOutcome.ContinueToolLoop -> null
+                    }
+                    messages = messages.replaceLastMessage(
+                        messages.last().copy(state = terminalState, terminal = finalTerminal)
+                    )
+                    emit(
+                        GenerationChunk.Messages(
+                            messages,
+                            persistenceBarrier = GenerationPersistenceBarrier.FINAL,
+                        )
+                    )
                     break
                 }
 
@@ -1728,10 +1804,11 @@ class GenerationHandler(
                         val scopeBindingFailure = memoryToolScopeBindingFailure(
                             tool = tool,
                             expectedAssistantId = assistant.id.toString(),
-                            expectedScopeId = if (assistant.useGlobalMemory) {
-                                MemoryRepository.GLOBAL_MEMORY_ID
-                            } else {
-                                assistant.id.toString()
+                            expectedScopeId = when {
+                                assistant.useConversationMemory && conversationId != null ->
+                                    "conversation:$conversationId"
+                                assistant.useGlobalMemory -> MemoryRepository.GLOBAL_MEMORY_ID
+                                else -> assistant.id.toString()
                             },
                             memoryCapabilityEnabled = hostMemoryCapabilityEnabled,
                         )
@@ -2364,10 +2441,12 @@ class GenerationHandler(
                             val scopeBindingFailure = memoryToolScopeBindingFailure(
                                 tool = tool,
                                 expectedAssistantId = assistant.id.toString(),
-                                expectedScopeId = if (assistant.useGlobalMemory) {
-                                    MemoryRepository.GLOBAL_MEMORY_ID
-                                } else {
-                                    assistant.id.toString()
+                                expectedScopeId = when {
+                                    assistant.useConversationMemory && conversationId != null ->
+                                        "conversation:$conversationId"
+                                    assistant.useGlobalMemory ->
+                                        MemoryRepository.GLOBAL_MEMORY_ID
+                                    else -> assistant.id.toString()
                                 },
                                 memoryCapabilityEnabled = hostMemoryCapabilityEnabled,
                             )
@@ -2926,10 +3005,11 @@ class GenerationHandler(
                 ),
             )
         }
-        val memoryScopeId = if (assistant.useGlobalMemory) {
-            MemoryRepository.GLOBAL_MEMORY_ID
-        } else {
-            assistant.id.toString()
+        val memoryScopeId = when {
+            assistant.useConversationMemory && conversationId != null ->
+                "conversation:$conversationId"
+            assistant.useGlobalMemory -> MemoryRepository.GLOBAL_MEMORY_ID
+            else -> assistant.id.toString()
         }
         val dreamScopeId = DreamScopeId.pairScope(assistant.id)
         val dreamContext = DreamGenerationContextPlanner(

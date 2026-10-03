@@ -53,7 +53,13 @@ data class UIMessage(
     val modelId: Uuid? = null,
     val usage: TokenUsage? = null,
     val translation: String? = null,
-    val state: UIMessageState = UIMessageState.COMPLETED
+    val state: UIMessageState = UIMessageState.COMPLETED,
+    /**
+     * How this generation actually ended (STOP/LENGTH/EOF/...), persisted with the message
+     * so "why did this reply stop mid-sentence" survives an app restart. Null on messages
+     * that predate this field or ended without a terminal observation.
+     */
+    val terminal: GenerationTerminal? = null
 ) {
     private fun appendChunk(chunk: MessageChunk): UIMessage {
         val choice = chunk.choices.getOrNull(0)

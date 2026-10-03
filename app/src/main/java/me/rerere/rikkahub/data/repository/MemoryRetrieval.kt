@@ -23,6 +23,11 @@ data class MemoryRetrievalRequest(
     val excludeMemoryIds: Set<Int> = emptySet(),
     val frozenNowMs: Long,
     val querySource: MemoryRetrievalQuerySource = MemoryRetrievalQuerySource.UNSPECIFIED,
+    /**
+     * Explicit scope key (e.g. "conversation:<uuid>") that wins over the assistant/global
+     * selection when set. Used by conversation-scoped memory isolation.
+     */
+    val scopeIdOverride: String? = null,
 )
 
 data class MemoryRetrievalResult(
@@ -92,11 +97,13 @@ class MemoryRetriever(
         val composedQuery = composeMemoryQuery(request.query)
         val effectiveLimit = request.limit.coerceIn(1, MAX_MEMORY_RETRIEVAL_TOP_K)
         val scopeKind = when {
+            request.scopeIdOverride != null -> MemoryRetrievalScopeKind.CONVERSATION
             request.includeGlobal -> MemoryRetrievalScopeKind.GLOBAL
             request.assistantId != null -> MemoryRetrievalScopeKind.ASSISTANT
             else -> MemoryRetrievalScopeKind.NONE
         }
         val scopeId = when (scopeKind) {
+            MemoryRetrievalScopeKind.CONVERSATION -> request.scopeIdOverride
             MemoryRetrievalScopeKind.GLOBAL -> MemoryRepository.GLOBAL_MEMORY_ID
             MemoryRetrievalScopeKind.ASSISTANT -> request.assistantId.toString()
             MemoryRetrievalScopeKind.NONE -> null

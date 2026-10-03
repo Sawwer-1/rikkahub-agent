@@ -154,6 +154,18 @@ class RoomMemoryProcessingStore(
                 maxChars = 20_000,
                 frozenNowMs = frozenNowMs,
             )).matches
+        } else if (scopeId.startsWith("conversation:")) {
+            // Conversation-scoped memories dedupe within their own scope, never against the
+            // owning assistant's long-term memory.
+            retriever.retrieve(MemoryRetrievalRequest(
+                assistantId = null,
+                query = query,
+                includeGlobal = false,
+                scopeIdOverride = scopeId,
+                limit = limit,
+                maxChars = 20_000,
+                frozenNowMs = frozenNowMs,
+            )).matches
         } else {
             val assistantId = runCatching { Uuid.parse(scopeId) }.getOrNull() ?: return emptyList()
             retriever.retrieve(MemoryRetrievalRequest(

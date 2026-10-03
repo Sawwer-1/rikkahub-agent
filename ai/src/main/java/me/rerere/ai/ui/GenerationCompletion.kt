@@ -118,8 +118,21 @@ object FinalAnswerRecoveryPolicy {
             GenerationOutcome.AwaitingToolApproval,
             GenerationOutcome.ContinueToolLoop -> FinalAnswerRecoveryDecision.Wait
             is GenerationOutcome.Failed -> FinalAnswerRecoveryDecision.Fail
-            GenerationOutcome.Completed,
-            is GenerationOutcome.Interrupted -> FinalAnswerRecoveryDecision.Skip
+            is GenerationOutcome.Interrupted -> {
+                // A stream cut off mid-answer (relay closed the connection silently, or the
+                // provider hit its output-token cap) gets ONE continuation pass through the
+                // existing recovery machinery, so the user gets a wrapped-up answer instead
+                // of a dead half sentence. User cancellations (CANCELLED) and unrecognized
+                // endings (UNKNOWN) must never auto-continue.
+                val autoContinuable = outcome.terminal.category == FinishCategory.EOF ||
+                    outcome.terminal.category == FinishCategory.LENGTH
+                if (autoContinuable) {
+                    FinalAnswerRecoveryDecision.Attempt
+                } else {
+                    FinalAnswerRecoveryDecision.Skip
+                }
+            }
+            GenerationOutcome.Completed -> FinalAnswerRecoveryDecision.Skip
         }
     }
 }

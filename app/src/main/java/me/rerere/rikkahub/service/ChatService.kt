@@ -3857,6 +3857,11 @@ class ChatService(
                         assistantId = assistant.id,
                         includeGlobal = assistant.useGlobalMemory,
                         frozenNowMs = memoryFrozenNowMs,
+                        scopeIdOverride = if (assistant.useConversationMemory) {
+                            "conversation:$conversationId"
+                        } else {
+                            null
+                        },
                     )
                     val query = generationInputMessages
                         .lastOrNull { it.role == MessageRole.USER }
@@ -3871,6 +3876,11 @@ class ChatService(
                         excludeMemoryIds = standingPreferences.mapTo(hashSetOf()) { it.id },
                         frozenNowMs = memoryFrozenNowMs,
                         querySource = MemoryRetrievalQuerySource.LATEST_USER_TEXT,
+                        scopeIdOverride = if (assistant.useConversationMemory) {
+                            "conversation:$conversationId"
+                        } else {
+                            null
+                        },
                     )
                     memoryRetrievalTraceId = memoryRetrievalDiagnostics.record(
                         trace = retrieval.trace,
@@ -4261,8 +4271,8 @@ class ChatService(
                             annotation is UIMessageAnnotation.FinalAnswerRecovery &&
                                 annotation.status == FinalAnswerRecoveryStatus.STARTED
                         } == true
-                        val forceStreamingUiUpdate = chunk.persistenceBarrier ==
-                            GenerationPersistenceBarrier.PENDING_APPROVAL || needsImmediatePersist
+                        val forceStreamingUiUpdate = chunk.persistenceBarrier !=
+                            GenerationPersistenceBarrier.NONE || needsImmediatePersist
                         val nowNanos = System.nanoTime()
                         val shouldUpdateStreamingUi = forceStreamingUiUpdate || (
                             latestChunkMessage != null && (
@@ -4635,10 +4645,10 @@ class ChatService(
             ToolCallOrigin.PetHandoffConfirmed ->
                 me.rerere.rikkahub.memory.MemoryCaptureOrigin.APP_UI
         }
-        val scopeId = if (assistant.useGlobalMemory) {
-            MemoryRepository.GLOBAL_MEMORY_ID
-        } else {
-            assistant.id.toString()
+        val scopeId = when {
+            assistant.useConversationMemory -> "conversation:$conversationId"
+            assistant.useGlobalMemory -> MemoryRepository.GLOBAL_MEMORY_ID
+            else -> assistant.id.toString()
         }
         val isHeadless = isSubAgent ||
             me.rerere.rikkahub.data.ai.tools.HeadlessConversations.isHeadless(conversationId)
@@ -4740,10 +4750,10 @@ class ChatService(
             return me.rerere.rikkahub.memory.ManualMemorySelectionResult.FAILED
         }
         val evidenceAnchor = assistantMessages.lastOrNull()?.id ?: userMessages.last().id
-        val scopeId = if (assistant.useGlobalMemory) {
-            MemoryRepository.GLOBAL_MEMORY_ID
-        } else {
-            assistant.id.toString()
+        val scopeId = when {
+            assistant.useConversationMemory -> "conversation:$conversationId"
+            assistant.useGlobalMemory -> MemoryRepository.GLOBAL_MEMORY_ID
+            else -> assistant.id.toString()
         }
         return runCatching {
             memoryV2Coordinator.capture(

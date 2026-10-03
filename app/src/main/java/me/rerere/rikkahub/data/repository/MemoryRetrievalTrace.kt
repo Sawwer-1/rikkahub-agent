@@ -56,6 +56,7 @@ data class MemoryRetrievalTrace(
 enum class MemoryRetrievalScopeKind {
     ASSISTANT,
     GLOBAL,
+    CONVERSATION,
     NONE,
 }
 

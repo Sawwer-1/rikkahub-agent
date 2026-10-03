@@ -78,8 +78,9 @@ class MemoryRepository(
         includeGlobal: Boolean,
         limit: Int = 16,
         frozenNowMs: Long = System.currentTimeMillis(),
+        scopeIdOverride: String? = null,
     ): List<AssistantMemory> {
-        val scopeId = when {
+        val scopeId = scopeIdOverride ?: when {
             includeGlobal -> GLOBAL_MEMORY_ID
             assistantId != null -> assistantId.toString()
             else -> return emptyList()
@@ -99,6 +100,7 @@ class MemoryRepository(
         maxChars: Int = DEFAULT_MEMORY_PROMPT_MAX_CHARS,
         excludeMemoryIds: Set<Int> = emptySet(),
         frozenNowMs: Long = System.currentTimeMillis(),
+        scopeIdOverride: String? = null,
     ): List<MemoryMatch> = retrieveRelevant(
         assistantId = assistantId,
         query = query,
@@ -107,6 +109,7 @@ class MemoryRepository(
         maxChars = maxChars,
         excludeMemoryIds = excludeMemoryIds,
         frozenNowMs = frozenNowMs,
+        scopeIdOverride = scopeIdOverride,
     ).matches
 
     suspend fun retrieveRelevant(
@@ -118,6 +121,7 @@ class MemoryRepository(
         excludeMemoryIds: Set<Int> = emptySet(),
         frozenNowMs: Long,
         querySource: MemoryRetrievalQuerySource = MemoryRetrievalQuerySource.UNSPECIFIED,
+        scopeIdOverride: String? = null,
     ): MemoryRetrievalResult = retriever.retrieve(
         MemoryRetrievalRequest(
             assistantId = assistantId,
@@ -128,6 +132,7 @@ class MemoryRepository(
             excludeMemoryIds = excludeMemoryIds,
             frozenNowMs = frozenNowMs,
             querySource = querySource,
+            scopeIdOverride = scopeIdOverride,
         ),
     )
 
@@ -391,9 +396,11 @@ class MemoryRepository(
         kind: MemoryKind? = null,
         includeArchived: Boolean = false,
         frozenNowMs: Long = System.currentTimeMillis(),
+        scopeIdOverride: String? = null,
     ): List<MemoryQueryRecord> {
         if (includeArchived) {
-            val scopeId = if (includeGlobal) GLOBAL_MEMORY_ID else assistantId?.toString()
+            val scopeId = scopeIdOverride
+                ?: (if (includeGlobal) GLOBAL_MEMORY_ID else assistantId?.toString())
                 ?: return emptyList()
             return memoryDAO.searchIncludingArchived(
                 scopeId = scopeId,
@@ -430,9 +437,11 @@ class MemoryRepository(
             limit = (limit.coerceIn(1, 20) * 3).coerceAtMost(64),
             maxChars = 20_000,
             frozenNowMs = frozenNowMs,
+            scopeIdOverride = scopeIdOverride,
         )
         return matches.mapNotNull { match ->
-            val expectedScopeId = if (includeGlobal) GLOBAL_MEMORY_ID else assistantId?.toString()
+            val expectedScopeId = scopeIdOverride
+                ?: (if (includeGlobal) GLOBAL_MEMORY_ID else assistantId?.toString())
                 ?: return@mapNotNull null
             val entity = memoryDAO.getActiveConfirmedMemoryById(
                 id = match.memory.id,

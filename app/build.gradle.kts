@@ -20,8 +20,13 @@ android {
         applicationId = "me.rerere.rikkahub"
         minSdk = 26
         targetSdk = 37
-        versionCode = 192
-        versionName = "2.3.1-agent-up244.7-jude1"
+        versionCode = 193
+        versionName = "2.3.1-agent-up244.7-jude2"
+
+        // Fork provenance, kept out of versionName so the upstream baseline stays greppable.
+        // See docs/audits for the meaning of the 2.3.1-agent-up244.x naming.
+        buildConfigField("String", "UPSTREAM_BASE", "\"AAAelina/rikkahub-agent (up244.7)\"")
+        buildConfigField("String", "FORK_REVISION", "\"jude2\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // AGP 9.2 UTP copies PlatformTestStorage output to
