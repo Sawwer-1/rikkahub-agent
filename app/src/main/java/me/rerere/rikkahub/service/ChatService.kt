@@ -1998,6 +1998,9 @@ class ChatService(
     fun getRuntimeStateFlow(conversationId: Uuid): StateFlow<me.rerere.rikkahub.service.chat.RuntimeState> =
         getOrCreateRuntime(conversationId).runtimeState
 
+    fun getActiveRunJobFlow(conversationId: Uuid): StateFlow<Job?> =
+        getOrCreateRuntime(conversationId).activeRunJob
+
     fun getQueueStatusFlow(conversationId: Uuid): StateFlow<me.rerere.rikkahub.service.chat.QueueStatus> =
         getOrCreateRuntime(conversationId).queueStatus
 

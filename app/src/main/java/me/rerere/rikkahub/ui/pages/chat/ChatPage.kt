@@ -304,6 +304,9 @@ private fun ChatPageContent(
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     val runtimeState by vm.runtimeState.collectAsStateWithLifecycle()
+    // extv-parity: the live run job keeps the stop button up for the whole multi-step
+    // generation even when the derived runtime state briefly leaves Running.
+    val loadingJob by vm.conversationJob.collectAsStateWithLifecycle()
     val queueStatus by vm.queueStatus.collectAsStateWithLifecycle()
     val queuedMessages by vm.queuedMessages.collectAsStateWithLifecycle()
     val steeringEntries by vm.steeringEntries.collectAsStateWithLifecycle()
@@ -644,7 +647,7 @@ private fun ChatPageContent(
                     }
                     ChatInput(
                     state = inputState,
-                    loading = runtimeState == RuntimeState.Running,
+                    loading = runtimeState == RuntimeState.Running || loadingJob != null,
                     settings = setting,
                     hazeState = hazeState,
                     completionProviders = completionProviders,
