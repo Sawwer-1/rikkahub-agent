@@ -767,7 +767,10 @@ internal fun MessagePartsBlock(
         it is UIMessageAnnotation.FinalAnswerRecovery ||
             it is UIMessageAnnotation.QuickCapture ||
             it is UIMessageAnnotation.PetHandoff ||
-            it is UIMessageAnnotation.ManualCompressionSummary
+            it is UIMessageAnnotation.ManualCompressionSummary ||
+            it is UIMessageAnnotation.VoiceCallRecord ||
+            it is UIMessageAnnotation.TtsAudio ||
+            it is UIMessageAnnotation.ChatVoiceReply
     }
 
     if (recovery != null && recovery.status != FinalAnswerRecoveryStatus.SUCCEEDED) {
