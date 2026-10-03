@@ -3,6 +3,7 @@ package me.rerere.rikkahub.personal.heartbeat
 import android.content.Context
 import kotlinx.coroutines.flow.first
 import me.rerere.rikkahub.service.ChatService
+import me.rerere.rikkahub.service.VoiceCallSessionRegistry
 import kotlin.uuid.Uuid
 
 enum class HeartbeatDeliveryBlock {
@@ -23,8 +24,11 @@ class HeartbeatDeliveryGuard(
         conversationId: Uuid,
         expectedAssistantId: String,
     ): HeartbeatDeliveryBlock? {
-        // Voice-call gating (jude's VoiceCallSessionRegistry) has no AAA counterpart —
-        // AAA has no voice-call session registry — so that hazard is structurally absent.
+        // A live voice call is the strongest "do not interrupt" signal there is; the
+        // registry now exists (ported with the voice-call stack).
+        if (VoiceCallSessionRegistry.isActive()) {
+            return HeartbeatDeliveryBlock.VOICE_CALL_ACTIVE
+        }
         if (hasPendingUserMessage(expectedAssistantId)) {
             return HeartbeatDeliveryBlock.USER_REPLY_PENDING
         }
