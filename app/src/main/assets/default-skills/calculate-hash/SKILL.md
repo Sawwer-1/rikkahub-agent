@@ -1,28 +1,28 @@
 ---
 name: calculate-hash
-description: Calculate the SHA-1 hash of a given text via the WebView's WebCrypto API.
+description: 通过 WebView 的 WebCrypto API 计算给定文本的 SHA-1 哈希值。
 compatibility: js
 auto_load: false
 ---
 
-# Calculate hash
+# 计算哈希
 
-This skill calculates the hash of a given text.
+本技能用于计算给定文本的哈希值。
 
-## Examples
+## 示例
 
-* "Calculate hash of..."
-* "What is the hash of..."
+* "计算……的哈希"
+* "……的哈希值是多少"
 
-## Instructions
+## 指令
 
-Call the `run_js` tool with the following exact parameters:
+调用 `run_js` 工具，并传入以下精确参数：
 
 - skill_name: `calculate-hash`
 - script: `scripts/index.html`
-- data: A JSON string with the following field
-  - text: the text to calculate hash for
+- data: 一个 JSON 字符串，包含以下字段
+  - text: 要计算哈希的文本
 
-## Attribution
+## 来源说明
 
-Ported from [google-ai-edge/gallery](https://github.com/google-ai-edge/gallery) under the Apache-2.0 licence. Original copyright Google LLC.
+移植自 [google-ai-edge/gallery](https://github.com/google-ai-edge/gallery)，遵循 Apache-2.0 许可。原始版权归 Google LLC 所有。

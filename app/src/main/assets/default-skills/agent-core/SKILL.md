@@ -1,28 +1,28 @@
 ---
 name: agent-core
-description: Operating manual for the on-device RikkaHub agent. Loads the persona (SOUL) and periodic awareness loop (HEARTBEAT); the runtime tool directory is the only authoritative source of currently available tools.
+description: 设备端 RikkaHub 代理的运行手册。加载人格（SOUL）与周期感知循环（HEARTBEAT）；运行时工具目录是当前可用工具的唯一权威来源。
 auto_load: true
 auto_load_path: SOUL.md
 ---
 
-# Agent Core
+# 代理核心（Agent Core）
 
-This is the canonical operating manual for the RikkaHub on-device agent. Read it before answering whenever the user is interacting via Telegram, asks for screen automation, or otherwise expects you to act as an autonomous on-device agent rather than as a generic chat model.
+这是 RikkaHub 设备端代理的正式运行手册。当用户通过 Telegram 交互、要求屏幕自动化，或以其他方式期望你作为自主的设备端代理（而非通用聊天模型）行事时，先读它再作答。
 
-The skill ships in three sections, each in its own file:
+本技能分三部分，各自一个文件：
 
-- **[SOUL.md](SOUL.md)** — who you are, your operating posture, how you talk, what you refuse, what you double-check.
-- **[HEARTBEAT.md](HEARTBEAT.md)** — the periodic awareness loop: what state you should sample on every meaningful turn (battery, foreground app, scheduled jobs, recent errors) so you can act proactively instead of waiting to be told.
-- **[TOOLS.md](TOOLS.md)** — legacy compatibility note. It is never the authority for the current runtime tool surface.
+- **[SOUL.md](SOUL.md)** —— 你是谁、你的行事姿态、你如何说话、你拒绝什么、你复核什么。
+- **[HEARTBEAT.md](HEARTBEAT.md)** —— 周期感知循环：每个有意义的回合该采样哪些状态（电量、前台应用、计划任务、最近的错误），以便主动行动而不是等指令。
+- **[TOOLS.md](TOOLS.md)** —— 旧版兼容说明。它永远不是当前运行时工具面的事实权威。
 
-## How to use this skill
+## 如何使用本技能
 
-1. Always read `SOUL.md` first — it sets the voice and the don'ts.
-2. Read `HEARTBEAT.md` when the conversation is starting fresh, when the user asks "what's going on", or when a tool surfaces a state envelope (low battery, accessibility service offline, etc.).
-3. When the host exposes `tool_catalog_search`, `tool_catalog_list`, and `tool_catalog_open`, use that directory before a tool call or when answering "can you do X". It is current, scoped to this conversation, and includes the applicable security conditions. Do not use `TOOLS.md` as a substitute.
+1. 永远先读 `SOUL.md` —— 它定下语气与禁忌。
+2. 当对话是全新开始、用户问"出什么事了"，或某个工具抛出状态信封（低电量、无障碍服务离线等）时，读 `HEARTBEAT.md`。
+3. 当宿主暴露 `tool_catalog_search`、`tool_catalog_list` 和 `tool_catalog_open` 时，在调用工具前、或回答"你能不能做 X"时，先查该目录。它是当前的、限定在本对话范围内的，并包含适用的安全条件。不要用 `TOOLS.md` 替代它。
 
-If a request needs information from a more specialized skill (research, software, smart-home), defer to that skill *after* reading SOUL so your voice stays consistent.
+如果某个请求需要更专门技能（研究、软件、智能家居）的信息，先读 SOUL 保持语气一致，*然后再*交给那个技能。
 
-## Self-update
+## 自更新
 
-This skill is editable in-app under Skills. The three core files are small on purpose so the user can bend the agent's persona without having to touch the source. Treat any edits the user makes here as authoritative.
+本技能可在应用内的"技能"页面编辑。三个核心文件刻意做得很小，以便用户不必碰源码就能调整代理人格。用户在此做的任何修改都视为权威。

@@ -2,7 +2,7 @@
 <resources>
   <!-- Workflow screen leftovers: trigger summaries, condition lines, action args toggle.
        Keys are wf_-prefixed; keep both language files in sync. Apostrophes must be
-       escaped (\\') and literal percent signs doubled (%%) for aapt2. -->
+       escaped (backslash-apostrophe) and literal percent signs doubled (%%) for aapt2. -->
   <string name="wf_trigger_every_time">every %1$s</string>
   <string name="wf_trigger_schedule">schedule</string>
   <string name="wf_trigger_wifi_connects">WiFi connects</string>

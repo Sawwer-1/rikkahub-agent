@@ -1,58 +1,58 @@
 ---
 name: notification-summarise-and-act
-description: Read the recent / active notification stream, group by app, summarise what's actually happening, and propose specific next actions. Used when the user asks "what's going on" or returns to their phone after a few hours.
+description: 读取最近 / 当前的通知流，按应用分组，总结实际发生了什么，并提出具体的下一步操作。用于用户问 "what's going on"、或离开手机几小时后回来的场景。
 allowed-tools: list_recent_notifications list_active_notifications dismiss_notification notification_action_click launch_app read_window_tree get_time_info
 ---
 
-# Notification summarise + act
+# 通知总结 + 行动
 
-Compress the user's notification noise into a short briefing with concrete suggestions. The goal is "skim in 5 seconds, decide in 10".
+把用户的通知噪音压缩成一份带具体建议的简短简报。目标是"5 秒扫完，10 秒做决定"。
 
-## When to use
+## 适用场景
 
-- "What did I miss" / "what's going on" / "anything important"
-- The user just woke up / opened the phone after a meeting
-- A workflow fires this on a schedule (e.g. "every 2h while screen is off, summarise notifications")
+- "我错过了什么" / "出什么事了" / "有什么重要的事吗"
+- 用户刚睡醒 / 开完会重新打开手机
+- 某个工作流按计划触发本技能（例如"屏幕关闭期间每 2 小时总结一次通知"）
 
-## Steps
+## 步骤
 
-1. **Time anchor.** `get_time_info` — note "since when" the user last interacted (best-effort: use the freshest notification's `post_time` as the lower bound).
-2. **Read the stream.**
-   - `list_active_notifications` — what's currently visible in the shade.
-   - `list_recent_notifications(limit = 50)` — the ring buffer; covers the last few hours.
-3. **Group by package.** For each package, count entries, pick the most-recent title + preview. Skip packages the user hasn't whitelisted in `notification_listener` settings — those are noise.
-4. **Categorise.**
-   - **Actionable** — anything that needs a reply, response, or decision (chat messages, calendar invites, package deliveries, account alerts).
-   - **Informational** — newsletters, app updates, social media, marketing.
-   - **Urgent** — bank fraud alerts, missed calls, system warnings, OTP-style codes.
-5. **Compose the briefing.**
-   - Lead with urgent (≤2 lines).
-   - Then actionable (1 line per source, with the count + sender if obvious).
-   - Drop informational entirely UNLESS the user usually wants those (check memory).
-   - Total length ≤6 short sentences.
-6. **Propose actions.** End with up to 3 concrete suggestions:
-   - "Reply to <Bob> in Telegram?"
-   - "Open the bank alert?"
-   - "Dismiss the 14 marketing pings?"
-   The user can say yes/no/skip and you do the next step.
-7. **If the user says yes to a dismiss-marketing kind of action**, call `dismiss_notification(key = ...)` for each unimportant entry. Do NOT auto-dismiss without confirmation.
+1. **时间锚点。** `get_time_info` —— 记下用户上次交互"从何时起"（尽力而为：用最新通知的 `post_time` 作为下界）。
+2. **读取通知流。**
+   - `list_active_notifications` —— 当前通知栏里可见的内容。
+   - `list_recent_notifications(limit = 50)` —— 环形缓冲区；覆盖最近几小时。
+3. **按应用包分组。** 对每个应用包，统计条数，取最新的标题 + 预览。跳过用户未在 `notification_listener` 设置中列入白名单的应用包——那些是噪音。
+4. **分类。**
+   - **可行动** —— 任何需要回复、响应或决定的内容（聊天消息、日程邀请、快递派送、账号提醒）。
+   - **信息类** —— 新闻邮件、应用更新、社交媒体、营销内容。
+   - **紧急** —— 银行欺诈提醒、未接来电、系统警告、验证码类信息。
+5. **撰写简报。**
+   - 以紧急内容开头（≤2 行）。
+   - 然后是可行动内容（每个来源 1 行，附上条数，明显的附上发件人）。
+   - 完全略去信息类，除非用户通常想看这些（查记忆）。
+   - 总长度 ≤6 个短句。
+6. **提出操作建议。** 结尾给出最多 3 条具体建议：
+   - "在 Telegram 里回复 <Bob>？"
+   - "打开那条银行提醒？"
+   - "清除那 14 条营销推送？"
+   用户可以说"好/不用/跳过"，然后你执行下一步。
+7. **如果用户对"清除营销通知"这类操作说 yes**，对每条不重要的通知调用 `dismiss_notification(key = ...)`。未经确认，绝不要自动清除。
 
-## Tools used
+## 用到的工具
 
-- `list_recent_notifications`, `list_active_notifications`
-- `dismiss_notification`, `notification_action_click`
-- `launch_app`, `read_window_tree` (to peek at one chat if the user picks a suggestion)
+- `list_recent_notifications`、`list_active_notifications`
+- `dismiss_notification`、`notification_action_click`
+- `launch_app`、`read_window_tree`（用户选定某条建议后，用于瞥一眼某个聊天）
 - `get_time_info`
 
-## Failure modes
+## 异常情形
 
-- **Notification listener disabled.** Tell the user once and offer the Settings deep-link path: "Notification listener is off — I can only see what's in `list_active_notifications`. Toggle it on in Settings → Notifications if you want me to track these properly."
-- **No recent notifications.** Fine — say so in one line ("Nothing new — last 3h is quiet") and stop. Don't manufacture content.
-- **OTP-shaped content in titles/previews.** Mark as urgent, but DON'T quote the code. Say "your bank sent a verification code — it's in the notification on your phone".
+- **通知监听被禁用。** 告知用户一次，并给出设置深链路径："通知监听已关闭——我只能看到 `list_active_notifications` 里的内容。如果想让我正常跟踪这些通知，请在设置 → 通知中打开它。"
+- **没有最近通知。** 没问题——用一句话说明（"没有新消息——最近 3 小时很安静"）后结束。不要编造内容。
+- **标题/预览中出现验证码类内容。** 标记为紧急，但不要引用验证码。说"你的银行发来一条验证码——它在手机上的通知里"。
 
-## Don't
+## 禁止事项
 
-- Don't dismiss anything without explicit user yes.
-- Don't read message bodies aloud / forward them — that belongs to `smart-forward` if the user wants it.
-- Don't summarise if the result would be longer than the raw notifications. Just list them.
-- Don't classify a notification as "urgent" because of capslock or exclamation marks — apps use those liberally.
+- 未经用户明确同意，不要清除任何通知。
+- 不要朗读或转发消息正文——如果用户需要，那属于 `smart-forward`。
+- 如果总结后反而比原始通知还长，就不要总结。直接列出通知即可。
+- 不要因为全大写或感叹号就把通知归类为"紧急"——应用滥用这些写法很常见。

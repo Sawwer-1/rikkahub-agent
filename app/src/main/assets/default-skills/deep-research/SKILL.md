@@ -1,29 +1,22 @@
 ---
 name: deep-research
-description: Plan and coordinate bounded, source-traceable research with restricted read-only sub-agents.
+description: 使用受限的只读子代理，规划并协调有边界、可溯源的研究。
 auto_load: false
 ---
 
-# Deep Research
+# 深度研究
 
-Use this skill only when the user explicitly asks for multi-source research or when they approve a
-research plan. Ordinary questions should use the normal response path.
+仅当用户明确要求多来源研究，或用户批准了一份研究计划时，才使用本技能。普通问题应走常规回答路径。
 
-## Contract
+## 约定
 
-1. Build an internal plan containing 2–5 independent subtasks. Do not split recursively.
-2. Start the plan with `research_start`; each worker receives only `search_web`, `scrape_web`, and
-   `web_fetch`. Browser interaction, device actions, configuration, and file mutation are forbidden.
-3. Keep every worker within the requested `max_trips` and timeout. Use the configured research
-   model when supplied; otherwise inherit the parent model through the sub-agent contract.
-4. Every worker must finish with compact JSON containing `summary`, `claims`, and
-   `open_questions`. Every claim includes source URLs and `high`, `medium`, or `low` confidence.
-5. Never paste a complete web page into the parent context. Summarise only the evidence needed.
-6. Treat one failed worker as a visible gap, not a reason to discard successful workers.
-7. Deduplicate source URLs before synthesis and keep claims traceable to their originating subtask.
-8. Use `research_status` for progress. If the user cancels, call `research_cancel` immediately;
-   cancellation cascades to every active child.
-9. Only the research coordinator completion may wake the parent conversation. Individual workers
-   must never post completion messages to it.
-10. End with a concise synthesis that separates supported conclusions, uncertainty, and unanswered
-    questions.
+1. 在内部拟定一份包含 2–5 个独立子任务的计划。不要递归拆分。
+2. 用 `research_start` 启动计划；每个工作代理只能获得 `search_web`、`scrape_web` 和 `web_fetch`。禁止浏览器交互、设备操作、配置修改和文件变更。
+3. 让每个工作代理都遵守所请求的 `max_trips` 与超时限制。提供了研究模型配置时就使用该模型；否则通过子代理契约继承父模型。
+4. 每个工作代理都必须以紧凑的 JSON 收尾，包含 `summary`、`claims` 和 `open_questions`。每条主张（claim）都要附上来源 URL 以及 `high`、`medium` 或 `low` 置信度。
+5. 绝不要把完整网页粘贴进父上下文。只总结必要的证据。
+6. 把某个工作代理的失败视为一处可见的缺口，而不是丢弃其他成功工作代理的理由。
+7. 合成前先去重来源 URL，并保证每条 claim 都可追溯到其所属子任务。
+8. 用 `research_status` 查看进度。若用户取消，立即调用 `research_cancel`；取消会级联到所有活动子代理。
+9. 只有研究协调器的完成事件才能唤醒父对话。各个工作代理绝不能向父对话发送完成消息。
+10. 以一份简洁的综述收尾，区分有依据的结论、不确定之处和未解决的问题。

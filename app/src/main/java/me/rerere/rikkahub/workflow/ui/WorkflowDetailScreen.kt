@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.workflow.ui
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -189,7 +190,7 @@ fun WorkflowDetailScreen(
             // Trigger
             item {
                 SectionHeader(stringResource(R.string.setting_page_workflow_detail_section_trigger))
-                Text(oneLineTriggerSummary(currentLoaded.definition))
+                Text(oneLineTriggerSummary(currentLoaded.definition, ctx))
             }
             // Conditions
             item {
@@ -199,7 +200,7 @@ fun WorkflowDetailScreen(
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         for (c in currentLoaded.definition.conditions) {
-                            Text("• ${conditionLine(c)}", style = MaterialTheme.typography.bodySmall)
+                            Text("• ${conditionLine(c, ctx)}", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -277,8 +278,10 @@ private fun ActionRow(index: Int, action: WorkflowAction) {
         if (action.args.isNotEmpty()) {
             TextButton(onClick = { expanded = !expanded },
                 contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
-                Text(if (expanded) "hide args" else "show args",
-                    style = MaterialTheme.typography.bodySmall)
+                Text(
+                    stringResource(if (expanded) R.string.wf_action_hide_args else R.string.wf_action_show_args),
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
             if (expanded) {
                 Text(
@@ -320,24 +323,38 @@ private fun StatsBlock(loaded: Loaded) {
     }
 }
 
-private fun conditionLine(c: me.rerere.rikkahub.workflow.model.ConditionSpec): String {
+private fun conditionLine(c: me.rerere.rikkahub.workflow.model.ConditionSpec, context: Context): String {
     val base = when (c) {
-        is me.rerere.rikkahub.workflow.model.ConditionSpec.TimeBetween -> "between ${c.start} and ${c.end}"
-        is me.rerere.rikkahub.workflow.model.ConditionSpec.TimeAfterSunset -> "after sunset" +
-            if (c.offsetMinutes != 0) " (${c.offsetMinutes}m offset)" else ""
-        is me.rerere.rikkahub.workflow.model.ConditionSpec.TimeBeforeSunrise -> "before sunrise" +
-            if (c.offsetMinutes != 0) " (${c.offsetMinutes}m offset)" else ""
-        is me.rerere.rikkahub.workflow.model.ConditionSpec.DayOfWeekIn -> "day(s) ${c.days.joinToString(",")}"
-        is me.rerere.rikkahub.workflow.model.ConditionSpec.WifiSsidIs -> "WiFi is ${c.ssid}"
-        is me.rerere.rikkahub.workflow.model.ConditionSpec.WifiSsidIn -> "WiFi in ${c.ssids.joinToString(",")}"
-        is me.rerere.rikkahub.workflow.model.ConditionSpec.BatteryAbove -> "battery > ${c.percent}%"
-        is me.rerere.rikkahub.workflow.model.ConditionSpec.BatteryBelow -> "battery < ${c.percent}%"
-        is me.rerere.rikkahub.workflow.model.ConditionSpec.IsCharging -> "charging"
-        is me.rerere.rikkahub.workflow.model.ConditionSpec.IsNotCharging -> "not charging"
-        is me.rerere.rikkahub.workflow.model.ConditionSpec.ForegroundAppIs -> "foreground app = ${c.packageName}"
-        is me.rerere.rikkahub.workflow.model.ConditionSpec.ForegroundAppIn -> "foreground in ${c.packageNames.size} pkgs"
-        is me.rerere.rikkahub.workflow.model.ConditionSpec.ScreenIsOn -> "screen on"
-        is me.rerere.rikkahub.workflow.model.ConditionSpec.ScreenIsOff -> "screen off"
+        is me.rerere.rikkahub.workflow.model.ConditionSpec.TimeBetween ->
+            context.getString(R.string.wf_condition_between, c.start, c.end)
+        is me.rerere.rikkahub.workflow.model.ConditionSpec.TimeAfterSunset ->
+            if (c.offsetMinutes != 0) context.getString(R.string.wf_condition_after_sunset_offset, c.offsetMinutes)
+            else context.getString(R.string.wf_condition_after_sunset)
+        is me.rerere.rikkahub.workflow.model.ConditionSpec.TimeBeforeSunrise ->
+            if (c.offsetMinutes != 0) context.getString(R.string.wf_condition_before_sunrise_offset, c.offsetMinutes)
+            else context.getString(R.string.wf_condition_before_sunrise)
+        is me.rerere.rikkahub.workflow.model.ConditionSpec.DayOfWeekIn ->
+            context.getString(R.string.wf_condition_day_of_week, c.days.joinToString(","))
+        is me.rerere.rikkahub.workflow.model.ConditionSpec.WifiSsidIs ->
+            context.getString(R.string.wf_condition_wifi_is, c.ssid)
+        is me.rerere.rikkahub.workflow.model.ConditionSpec.WifiSsidIn ->
+            context.getString(R.string.wf_condition_wifi_in, c.ssids.joinToString(","))
+        is me.rerere.rikkahub.workflow.model.ConditionSpec.BatteryAbove ->
+            context.getString(R.string.wf_condition_battery_above, c.percent)
+        is me.rerere.rikkahub.workflow.model.ConditionSpec.BatteryBelow ->
+            context.getString(R.string.wf_condition_battery_below, c.percent)
+        is me.rerere.rikkahub.workflow.model.ConditionSpec.IsCharging ->
+            context.getString(R.string.wf_condition_charging)
+        is me.rerere.rikkahub.workflow.model.ConditionSpec.IsNotCharging ->
+            context.getString(R.string.wf_condition_not_charging)
+        is me.rerere.rikkahub.workflow.model.ConditionSpec.ForegroundAppIs ->
+            context.getString(R.string.wf_condition_foreground_app, c.packageName)
+        is me.rerere.rikkahub.workflow.model.ConditionSpec.ForegroundAppIn ->
+            context.getString(R.string.wf_condition_foreground_app_in, c.packageNames.size)
+        is me.rerere.rikkahub.workflow.model.ConditionSpec.ScreenIsOn ->
+            context.getString(R.string.wf_condition_screen_on)
+        is me.rerere.rikkahub.workflow.model.ConditionSpec.ScreenIsOff ->
+            context.getString(R.string.wf_condition_screen_off)
     }
-    return if (c.invert) "NOT ($base)" else base
+    return if (c.invert) context.getString(R.string.wf_condition_invert, base) else base
 }

@@ -1,0 +1,50 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<resources>
+  <!-- 工作流界面残留英文字面量：触发器摘要、条件行、动作参数展开按钮。
+       wf_ 前缀，与 values/strings_workflow.xml 键集保持一致。 -->
+  <string name="wf_trigger_every_time">每 %1$s</string>
+  <string name="wf_trigger_schedule">定时</string>
+  <string name="wf_trigger_wifi_connects">WiFi 连接</string>
+  <string name="wf_trigger_wifi_connects_to">WiFi 连接到 %1$s</string>
+  <string name="wf_trigger_wifi_disconnects">WiFi 断开</string>
+  <string name="wf_trigger_wifi_disconnects_from">WiFi 从 %1$s 断开</string>
+  <string name="wf_trigger_bluetooth_connects">蓝牙连接</string>
+  <string name="wf_trigger_bluetooth_disconnects">蓝牙断开</string>
+  <string name="wf_trigger_headphones_plugged">插入耳机</string>
+  <string name="wf_trigger_headphones_unplugged">拔出耳机</string>
+  <string name="wf_trigger_power_connected">接通电源</string>
+  <string name="wf_trigger_power_disconnected">断开电源</string>
+  <string name="wf_trigger_battery_below">电量低于 %1$d%%</string>
+  <string name="wf_trigger_battery_above">电量高于 %1$d%%</string>
+  <string name="wf_trigger_geofence_enter_label">到达 %1$s</string>
+  <string name="wf_trigger_geofence_enter_place">到达某处</string>
+  <string name="wf_trigger_geofence_exit_label">离开 %1$s</string>
+  <string name="wf_trigger_geofence_exit_place">离开某处</string>
+  <string name="wf_trigger_app_launched">%1$s 启动</string>
+  <string name="wf_trigger_app_closed">%1$s 关闭</string>
+  <string name="wf_trigger_notification">通知</string>
+  <string name="wf_trigger_notification_from">来自 %1$s 的通知</string>
+  <string name="wf_trigger_boot_completed">设备开机</string>
+  <string name="wf_trigger_screen_on">屏幕点亮</string>
+  <string name="wf_trigger_screen_off">屏幕熄灭</string>
+  <string name="wf_trigger_manual">仅手动运行</string>
+  <string name="wf_condition_between">介于 %1$s 与 %2$s 之间</string>
+  <string name="wf_condition_after_sunset">日落后</string>
+  <string name="wf_condition_after_sunset_offset">日落后（偏移 %1$d 分钟）</string>
+  <string name="wf_condition_before_sunrise">日出前</string>
+  <string name="wf_condition_before_sunrise_offset">日出前（偏移 %1$d 分钟）</string>
+  <string name="wf_condition_day_of_week">星期 %1$s</string>
+  <string name="wf_condition_wifi_is">WiFi 为 %1$s</string>
+  <string name="wf_condition_wifi_in">WiFi 属于 %1$s</string>
+  <string name="wf_condition_battery_above">电量高于 %1$d%%</string>
+  <string name="wf_condition_battery_below">电量低于 %1$d%%</string>
+  <string name="wf_condition_charging">充电中</string>
+  <string name="wf_condition_not_charging">未充电</string>
+  <string name="wf_condition_foreground_app">前台应用 = %1$s</string>
+  <string name="wf_condition_foreground_app_in">前台应用属于 %1$d 个包</string>
+  <string name="wf_condition_screen_on">屏幕点亮</string>
+  <string name="wf_condition_screen_off">屏幕熄灭</string>
+  <string name="wf_condition_invert">非（%1$s）</string>
+  <string name="wf_action_show_args">显示参数</string>
+  <string name="wf_action_hide_args">隐藏参数</string>
+</resources>
