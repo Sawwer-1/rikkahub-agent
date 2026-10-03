@@ -127,6 +127,9 @@ data class SearchCommonOptions(
 data class SearchResult(
     val answer: String? = null,
     val items: List<SearchResultItem>,
+    val images: List<String> = emptyList(),
+    /** Local time at which this result was retrieved; not a publication date. */
+    val retrievedAt: String? = null,
 ) {
     @Serializable
     data class SearchResultItem(
