@@ -87,4 +87,10 @@
   <string name="vc_model_voice_tag_separate_api_title">语音标签专用 OpenAI API</string>
   <string name="vc_model_voice_tag_separate_api_desc">开启后，通话中的语音情绪标签会使用这里的 API，不影响当前对话模型 API。</string>
   <string name="vc_model_provider_name_voice_tag">语音标签专用 OpenAI API</string>
+  <string name="chat_voice_reply_play">播放语音消息</string>
+  <string name="chat_voice_reply_pause">暂停语音消息</string>
+  <string name="chat_voice_reply_show_text">显示文字</string>
+  <string name="chat_voice_reply_hide_text">隐藏文字</string>
+  <string name="notification_voice_call_title">%1$s 邀请你语音通话</string>
+  <string name="notification_voice_call_default_reason">助手想和你通话。</string>
 </resources>

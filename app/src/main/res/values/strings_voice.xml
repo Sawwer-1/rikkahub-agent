@@ -87,4 +87,10 @@
   <string name="vc_model_voice_tag_separate_api_title">Dedicated OpenAI API for voice tags</string>
   <string name="vc_model_voice_tag_separate_api_desc">When enabled, the emotion tags during a call use this API and leave the current chat model API untouched.</string>
   <string name="vc_model_provider_name_voice_tag">Voice tag dedicated OpenAI API</string>
+  <string name="chat_voice_reply_play">Play voice message</string>
+  <string name="chat_voice_reply_pause">Pause voice message</string>
+  <string name="chat_voice_reply_show_text">Show text</string>
+  <string name="chat_voice_reply_hide_text">Hide text</string>
+  <string name="notification_voice_call_title">%1$s is inviting you to a voice call</string>
+  <string name="notification_voice_call_default_reason">The assistant would like to talk with you.</string>
 </resources>
