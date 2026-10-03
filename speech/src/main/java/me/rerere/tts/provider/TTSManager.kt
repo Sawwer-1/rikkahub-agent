@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.Flow
 import me.rerere.tts.model.AudioChunk
 import me.rerere.tts.model.TTSRequest
 import me.rerere.tts.provider.providers.AuraTTSProvider
+import me.rerere.tts.provider.providers.ElevenLabsTTSProvider
 import me.rerere.tts.provider.providers.GeminiTTSProvider
 import me.rerere.tts.provider.providers.GroqTTSProvider
 import me.rerere.tts.provider.providers.MiMoTTSProvider
@@ -24,6 +25,7 @@ class TTSManager(private val context: Context) {
     private val qwenProvider = QwenTTSProvider()
     private val groqProvider = GroqTTSProvider()
     private val xaiProvider = XAITTSProvider()
+    private val elevenLabsProvider = ElevenLabsTTSProvider()
     private val miMoProvider = MiMoTTSProvider()
     private val genericHttpProvider = GenericHttpTTSProvider()
     private val registry = TTSProviderFactoryRegistry(
@@ -38,6 +40,7 @@ class TTSManager(private val context: Context) {
                     is TTSProviderSetting.Qwen -> qwenProvider.generateSpeech(context, setting, request)
                     is TTSProviderSetting.Groq -> groqProvider.generateSpeech(context, setting, request)
                     is TTSProviderSetting.XAI -> xaiProvider.generateSpeech(context, setting, request)
+                    is TTSProviderSetting.ElevenLabs -> elevenLabsProvider.generateSpeech(context, setting, request)
                     is TTSProviderSetting.MiMo -> miMoProvider.generateSpeech(context, setting, request)
                     is TTSProviderSetting.GenericHttp -> genericHttpProvider.generateSpeech(context, setting, request)
                 }

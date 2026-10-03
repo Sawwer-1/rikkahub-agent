@@ -31,6 +31,7 @@ import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_COMPRESS_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_FINAL_ANSWER_REMINDER_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.resolveFinalAnswerReminderPrompt
+import me.rerere.rikkahub.data.voice.VoiceCallAudioTagMode
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_OCR_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_SUGGESTION_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_TITLE_PROMPT
@@ -162,6 +163,8 @@ class SettingsStore(
         val COMPRESS_PROMPT = stringPreferencesKey("compress_prompt")
         val COMPRESS_OPENAI_CONFIG = stringPreferencesKey("compress_openai_config")
         val OCR_OPENAI_CONFIG = stringPreferencesKey("ocr_openai_config")
+        val VOICE_CALL_AUDIO_TAG_CONFIG = stringPreferencesKey("voice_call_audio_tag_config")
+        val VOICE_CALL_AUDIO_TAG_MODEL = stringPreferencesKey("voice_call_audio_tag_model")
         val FINAL_ANSWER_REMINDER_PROMPT = stringPreferencesKey("final_answer_reminder_prompt")
 
         // 提供商
@@ -304,6 +307,10 @@ class SettingsStore(
                 ocrOpenAIConfig = preferences[OCR_OPENAI_CONFIG]?.let { value ->
                     runCatching { JsonInstant.decodeFromString<OcrOpenAIConfig>(value) }.getOrNull()
                 } ?: OcrOpenAIConfig(),
+                voiceCallAudioTagConfig = preferences[VOICE_CALL_AUDIO_TAG_CONFIG]?.let { value ->
+                    runCatching { JsonInstant.decodeFromString<VoiceCallAudioTagConfig>(value) }.getOrNull()
+                } ?: VoiceCallAudioTagConfig(),
+                voiceCallAudioTagModelId = preferences[VOICE_CALL_AUDIO_TAG_MODEL]?.let { Uuid.parse(it) },
                 finalAnswerReminderPrompt = resolveFinalAnswerReminderPrompt(
                     preferences[FINAL_ANSWER_REMINDER_PROMPT],
                 ),
@@ -630,6 +637,11 @@ class SettingsStore(
             preferences[COMPRESS_PROMPT] = settings.compressPrompt
             preferences[COMPRESS_OPENAI_CONFIG] = JsonInstant.encodeToString(settings.compressOpenAIConfig)
             preferences[OCR_OPENAI_CONFIG] = JsonInstant.encodeToString(settings.ocrOpenAIConfig)
+            preferences[VOICE_CALL_AUDIO_TAG_CONFIG] =
+                JsonInstant.encodeToString(settings.voiceCallAudioTagConfig)
+            settings.voiceCallAudioTagModelId?.let {
+                preferences[VOICE_CALL_AUDIO_TAG_MODEL] = it.toString()
+            } ?: preferences.remove(VOICE_CALL_AUDIO_TAG_MODEL)
             preferences[FINAL_ANSWER_REMINDER_PROMPT] = settings.finalAnswerReminderPrompt
 
             preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
@@ -880,6 +892,16 @@ data class CompressOpenAIConfig(
 )
 
 @Serializable
+data class VoiceCallAudioTagConfig(
+    val enabled: Boolean = false,
+    val modelId: String = "",
+    val apiKey: String = "",
+    val baseUrl: String = "https://api.openai.com/v1",
+    val chatCompletionsPath: String = "/chat/completions",
+    val useResponseApi: Boolean = false,
+)
+
+@Serializable
 data class NetworkSetting(
     val userAgent: String = "",
     val proxyUrl: String = "",
@@ -925,6 +947,9 @@ data class Settings(
     val compressModelId: Uuid = Uuid.random(),
     val compressPrompt: String = DEFAULT_COMPRESS_PROMPT,
     val compressOpenAIConfig: CompressOpenAIConfig = CompressOpenAIConfig(),
+    val voiceCallAudioTagConfig: VoiceCallAudioTagConfig = VoiceCallAudioTagConfig(),
+    val voiceCallAudioTagModelId: Uuid? = null,
+    val voiceCallAudioTagMode: VoiceCallAudioTagMode = VoiceCallAudioTagMode.SECOND_PASS,
     val finalAnswerReminderPrompt: String = DEFAULT_FINAL_ANSWER_REMINDER_PROMPT,
     val assistantId: Uuid = DEFAULT_ASSISTANT_ID,
     val systemAssistantTargetAssistantId: Uuid? = null,

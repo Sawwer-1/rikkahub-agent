@@ -60,6 +60,7 @@ fun TTSProviderConfigure(
                         is TTSProviderSetting.Qwen -> "Qwen"
                         is TTSProviderSetting.Groq -> "Groq"
                         is TTSProviderSetting.XAI -> "xAI"
+                        is TTSProviderSetting.ElevenLabs -> "ElevenLabs"
                         is TTSProviderSetting.MiMo -> "MiMo"
                         is TTSProviderSetting.GenericHttp -> stringResource(R.string.setting_tts_page_provider_generic_http)
                     },
@@ -89,6 +90,7 @@ fun TTSProviderConfigure(
                                         TTSProviderSetting.Qwen::class -> "Qwen"
                                         TTSProviderSetting.Groq::class -> "Groq"
                                         TTSProviderSetting.XAI::class -> "xAI"
+                                        TTSProviderSetting.ElevenLabs::class -> "ElevenLabs"
                                         TTSProviderSetting.MiMo::class -> "MiMo"
                                         TTSProviderSetting.GenericHttp::class -> "Generic HTTP"
                                         else -> providerClass.simpleName ?: "Unknown"
@@ -138,6 +140,11 @@ fun TTSProviderConfigure(
                                         name = "xAI TTS"
                                     )
 
+                                    TTSProviderSetting.ElevenLabs::class -> TTSProviderSetting.ElevenLabs(
+                                        id = setting.id,
+                                        name = "ElevenLabs TTS"
+                                    )
+
                                     TTSProviderSetting.MiMo::class -> TTSProviderSetting.MiMo(
                                         id = setting.id,
                                         name = "MiMo TTS"
@@ -183,6 +190,7 @@ fun TTSProviderConfigure(
             is TTSProviderSetting.Qwen -> QwenTTSConfiguration(setting, onValueChange)
             is TTSProviderSetting.Groq -> GroqTTSConfiguration(setting, onValueChange)
             is TTSProviderSetting.XAI -> XAITTSConfiguration(setting, onValueChange)
+            is TTSProviderSetting.ElevenLabs -> ElevenLabsTTSConfiguration(setting, onValueChange)
             is TTSProviderSetting.MiMo -> MiMoTTSConfiguration(setting, onValueChange)
             is TTSProviderSetting.GenericHttp -> GenericHttpTTSConfiguration(setting, onValueChange)
         }
