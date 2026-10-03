@@ -22,6 +22,7 @@ import java.net.ServerSocket
 
 private const val TAG = "WebServerManager"
 private const val HOST_LOOPBACK = "127.0.0.1"
+private const val HOST_ALL_INTERFACES = "0.0.0.0"
 
 data class WebServerState(
     val isRunning: Boolean = false,
@@ -87,14 +88,14 @@ class WebServerManager(
         }
 
         appScope.launch {
-            // LAN pairing/TLS is intentionally not silently downgraded to plaintext. Until a
-            // verified paired HTTPS transport is supplied, every request binds loopback even if
-            // an older preference or an external intent requested all interfaces.
-            val effectiveLocalhostOnly = true
-            if (!localhostOnly) {
-                Log.w(TAG, "Rejected plaintext LAN web-server request; using localhost only")
+            // The transport is plaintext HTTP in LAN mode; the user opts in explicitly via
+            // the "Only localhost" switch (webServerLocalhostOnly). The assistant-facing
+            // privileged management surface still forces localhost-only on its own.
+            val effectiveLocalhostOnly = localhostOnly
+            val host = if (effectiveLocalhostOnly) HOST_LOOPBACK else HOST_ALL_INTERFACES
+            if (!effectiveLocalhostOnly) {
+                Log.i(TAG, "LAN web-server requested; binding all interfaces (plaintext HTTP)")
             }
-            val host = HOST_LOOPBACK
             val baseState = WebServerState(
                 port = port,
                 serviceName = serviceName,
