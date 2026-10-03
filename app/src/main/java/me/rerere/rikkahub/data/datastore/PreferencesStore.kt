@@ -1004,7 +1004,6 @@ data class Settings(
      * pages stay reachable from settings.
      */
     val voiceFeaturesEnabled: Boolean = true,
-    val socialToolsSeeded: Boolean = false,
     val assistantTags: List<Tag> = emptyList(),
     val searchServices: List<SearchServiceOptions> = listOf(SearchServiceOptions.DEFAULT),
     val searchCommonOptions: SearchCommonOptions = SearchCommonOptions(),
