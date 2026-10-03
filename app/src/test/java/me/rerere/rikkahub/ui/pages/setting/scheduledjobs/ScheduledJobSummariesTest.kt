@@ -1,13 +1,15 @@
 package me.rerere.rikkahub.ui.pages.setting.scheduledjobs
 
+import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.db.entity.ScheduledJobEntity
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pure-logic coverage for [summariseSchedule] and [modeLabel] - the schedule pretty-printer
- * shared by the scheduled-jobs list row and the detail screen header. These functions have
- * no Android dependencies, so we can pin every cron branch directly.
+ * Pure-logic coverage for [describeSchedule]/[describeCron] - the schedule pretty-printer
+ * shared by the scheduled-jobs list row and the detail screen header. Recognition is
+ * Context-free (resource ids + plain args); rendering is a thin on-device wrapper.
  *
  * Time-relative formatting (`formatAbsoluteTime` / `formatAbsoluteForDetail`) is locale- and
  * clock-dependent and intentionally not asserted here; only the deterministic cron and mode
@@ -32,71 +34,124 @@ class ScheduledJobSummariesTest {
     )
 
     @Test fun `once with no time set`() {
-        assertEquals("once (no time set)", summariseSchedule(job("once", atUnixMs = null)))
+        assertEquals(
+            ScheduleSummary.OnceNoTime,
+            describeSchedule(job("once", atUnixMs = null)),
+        )
+    }
+
+    @Test fun `once with time carries the timestamp`() {
+        assertEquals(
+            ScheduleSummary.OnceAt(12345L),
+            describeSchedule(job("once", atUnixMs = 12345L)),
+        )
     }
 
     @Test fun `cron macro shortcuts`() {
-        assertEquals("every hour", summariseSchedule(job("cron", "@hourly")))
-        assertEquals("every day at 00:00", summariseSchedule(job("cron", "@daily")))
-        assertEquals("every day at 00:00", summariseSchedule(job("cron", "@midnight")))
-        assertEquals("every Sunday at 00:00", summariseSchedule(job("cron", "@weekly")))
-        assertEquals("first of every month at 00:00", summariseSchedule(job("cron", "@monthly")))
-        assertEquals("every Jan 1 at 00:00", summariseSchedule(job("cron", "@yearly")))
-        assertEquals("every Jan 1 at 00:00", summariseSchedule(job("cron", "@annually")))
+        assertEquals(
+            ScheduleSummary.CronRes(R.string.ui2_jobs_every_hour),
+            describeCron("@hourly"),
+        )
+        assertEquals(
+            ScheduleSummary.CronRes(R.string.ui2_jobs_every_day_at_midnight),
+            describeCron("@daily"),
+        )
+        assertEquals(
+            ScheduleSummary.CronRes(R.string.ui2_jobs_every_day_at_midnight),
+            describeCron("@midnight"),
+        )
+        assertEquals(
+            ScheduleSummary.CronRes(R.string.ui2_jobs_every_sunday),
+            describeCron("@weekly"),
+        )
+        assertEquals(
+            ScheduleSummary.CronRes(R.string.ui2_jobs_first_of_month),
+            describeCron("@monthly"),
+        )
+        assertEquals(
+            ScheduleSummary.CronRes(R.string.ui2_jobs_every_jan_1),
+            describeCron("@yearly"),
+        )
+        assertEquals(
+            ScheduleSummary.CronRes(R.string.ui2_jobs_every_jan_1),
+            describeCron("@annually"),
+        )
     }
 
-    @Test fun `cron at-every passthrough`() {
-        assertEquals("every 30m", summariseSchedule(job("cron", "@every 30m")))
-        assertEquals("every 2h", summariseSchedule(job("cron", "@every 2h")))
+    @Test fun `cron at-every passthrough keeps the raw spec`() {
+        assertEquals(
+            ScheduleSummary.CronEveryInterval("30m"),
+            describeCron("@every 30m"),
+        )
+        assertEquals(
+            ScheduleSummary.CronEveryInterval("2h"),
+            describeCron("@every 2h"),
+        )
     }
 
     @Test fun `cron every N minutes`() {
-        assertEquals("every minute", summariseSchedule(job("cron", "*/1 * * * *")))
-        assertEquals("every 15 min", summariseSchedule(job("cron", "*/15 * * * *")))
+        assertEquals(
+            ScheduleSummary.CronRes(R.string.ui2_jobs_every_minute),
+            describeCron("*/1 * * * *"),
+        )
+        assertEquals(
+            ScheduleSummary.CronRes(R.string.ui2_jobs_every_n_min, 15),
+            describeCron("*/15 * * * *"),
+        )
     }
 
     @Test fun `cron every N hours`() {
-        assertEquals("every hour", summariseSchedule(job("cron", "0 */1 * * *")))
-        assertEquals("every 6 hours", summariseSchedule(job("cron", "0 */6 * * *")))
-    }
-
-    @Test fun `cron every day at fixed time`() {
-        assertEquals("every day at 09:00", summariseSchedule(job("cron", "0 9 * * *")))
-        assertEquals("every day at 23:05", summariseSchedule(job("cron", "5 23 * * *")))
-    }
-
-    @Test fun `cron specific weekdays by name`() {
         assertEquals(
-            "every Mon, Wed, Fri at 09:00",
-            summariseSchedule(job("cron", "0 9 * * MON,WED,FRI")),
+            ScheduleSummary.CronRes(R.string.ui2_jobs_every_hour),
+            describeCron("0 */1 * * *"),
+        )
+        assertEquals(
+            ScheduleSummary.CronRes(R.string.ui2_jobs_every_n_hours, 6),
+            describeCron("0 */6 * * *"),
         )
     }
 
-    @Test fun `cron specific weekdays by number`() {
+    @Test fun `cron daily at HH MM`() {
         assertEquals(
-            "every Mon, Wed, Fri at 09:00",
-            summariseSchedule(job("cron", "0 9 * * 1,3,5")),
+            ScheduleSummary.CronRes(R.string.ui2_jobs_every_day_at, "09:00"),
+            describeCron("0 9 * * *"),
         )
     }
 
-    @Test fun `cron unrecognised expression falls back to custom`() {
-        assertEquals("custom: 0 9 1-15 * *", summariseSchedule(job("cron", "0 9 1-15 * *")))
-        assertEquals("custom: not a cron", summariseSchedule(job("cron", "not a cron")))
-        assertEquals("custom: ", summariseSchedule(job("cron", "")))
-        assertEquals("custom: ", summariseSchedule(job("cron", cronExpression = null)))
+    @Test fun `cron specific weekdays render day keys then time`() {
+        val summary = describeCron("0 9 * * MON,WED,FRI")
+        assertTrue(summary is ScheduleSummary.CronRes)
+        summary as ScheduleSummary.CronRes
+        assertEquals(R.string.ui2_jobs_every_days_at, summary.id)
+        assertEquals(
+            listOf(
+                R.string.ui2_jobs_day_mon,
+                R.string.ui2_jobs_day_wed,
+                R.string.ui2_jobs_day_fri,
+                "09:00",
+            ),
+            summary.args,
+        )
     }
 
-    @Test fun `cron range of weekdays is not pretty-printed`() {
-        assertEquals("custom: 0 9 * * MON-FRI", summariseSchedule(job("cron", "0 9 * * MON-FRI")))
+    @Test fun `unrecognised cron falls back to custom`() {
+        assertEquals(
+            ScheduleSummary.Custom("0 9 31 2 *"),
+            describeSchedule(job("cron", "0 9 31 2 *")),
+        )
     }
 
-    @Test fun `unknown schedule type echoes the raw value`() {
-        assertEquals("interval", summariseSchedule(job("interval")))
+    @Test fun `unknown schedule type falls back to custom with the raw type`() {
+        assertEquals(
+            ScheduleSummary.Custom("interval"),
+            describeSchedule(job("interval")),
+        )
     }
 
-    @Test fun `mode label mapping`() {
-        assertEquals("LLM-driven", modeLabel(job("once", mode = "llm")))
-        assertEquals("direct (no LLM)", modeLabel(job("once", mode = "direct")))
-        assertEquals("future-mode", modeLabel(job("once", mode = "future-mode")))
+    @Test fun `empty cron expression falls back to custom`() {
+        assertEquals(
+            ScheduleSummary.Custom(""),
+            describeSchedule(job("cron", "")),
+        )
     }
 }
