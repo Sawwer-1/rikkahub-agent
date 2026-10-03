@@ -221,12 +221,6 @@ class ConversationRuntime(
 
     private val _runtimeState = MutableStateFlow<RuntimeState>(RuntimeState.Hydrating)
     val runtimeState: StateFlow<RuntimeState> = _runtimeState.asStateFlow()
-
-    // extv-parity loading source: the live run job. Stays non-null for the whole multi-step
-    // generation (tool loops included) even when the derived runtime state briefly leaves
-    // Running (approval barriers, queue pauses), so the chat stop button never flickers off.
-    private val _activeRunJob = MutableStateFlow<Job?>(null)
-    val activeRunJob: StateFlow<Job?> = _activeRunJob.asStateFlow()
     private val _hydrationState = MutableStateFlow(HydrationState.NotHydrated)
     val hydrationState: StateFlow<HydrationState> = _hydrationState.asStateFlow()
     private val _queueStatus = MutableStateFlow(QueueStatus(false, 0, null))
@@ -1916,7 +1910,6 @@ class ConversationRuntime(
         )
         softSteeringTarget.set(control)
         onRunJobChanged(job)
-        _activeRunJob.value = job
         _runtimeState.value = RuntimeState.Running
         refreshQueueStatus()
         job.invokeOnCompletion { completionWakeup.trySend(Unit) }
@@ -2108,7 +2101,6 @@ class ConversationRuntime(
                 activeRun = null
                 activeEnvelope = null
                 onRunJobChanged(null)
-                _activeRunJob.value = null
                 _runtimeState.value = RuntimeState.Paused
                 refreshQueueStatus()
                 return
@@ -2134,7 +2126,6 @@ class ConversationRuntime(
         activeRun = null
         activeEnvelope = null
         onRunJobChanged(null)
-        _activeRunJob.value = null
         if (replacementToStart == null) {
             // Final resume may have removed the last WAITING barrier after the earlier state
             // projection. Recompute only after the durable transaction and in-memory completion.
