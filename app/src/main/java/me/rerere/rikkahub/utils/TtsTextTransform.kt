@@ -66,3 +66,19 @@ private fun String.isApostropheInsideWord(index: Int, character: Char): Boolean 
     if (character != '\'') return false
     return index > 0 && index < lastIndex && this[index - 1].isLetter() && this[index + 1].isLetter()
 }
+
+private val ttsCjkRegex = Regex("[\\u3400-\\u9FFF\\uF900-\\uFAFF]")
+private val ttsLatinLetterRegex = Regex("[A-Za-z]")
+
+/** Keeps only lines that are pure Latin text — used when the user asked TTS to read English only. */
+fun String.keepEnglishOnlyForTts(): String {
+    return lineSequence()
+        .map { it.trim() }
+        .filter { line ->
+            line.any { it.isLetterOrDigit() } &&
+                ttsLatinLetterRegex.containsMatchIn(line) &&
+                !ttsCjkRegex.containsMatchIn(line)
+        }
+        .joinToString("\n")
+        .trim()
+}

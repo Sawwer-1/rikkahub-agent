@@ -8,7 +8,7 @@ private val voiceCallEmotionMarkerRegex = Regex(
 
 private val voiceCallRealtimeEmotionCatalog = TTSProviderSetting.MiniMax.GLOBAL_EMOTION_OPTIONS
     .filter { it != "whipser" }
-    .map(String::lowercase)
+    .map { it.lowercase() }
     .toSet()
 
 internal fun String.voiceCallRealtimeEmotionOrNull(): String? =

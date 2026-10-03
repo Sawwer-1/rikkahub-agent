@@ -179,11 +179,17 @@ fun LanguageSelectionDialog(
 @Composable
 fun CollapsibleTranslationText(
     content: String,
-    onClickCitation: (String) -> Unit
+    onClickCitation: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    showHeader: Boolean = true,
+    showCollapseControl: Boolean = true
 ) {
     if (content.isNotBlank()) {
         var isCollapsed by remember { mutableStateOf(false) }
+        val effectiveCollapsed = showCollapseControl && isCollapsed
 
+        Column(modifier = modifier) {
+        if (showHeader) {
         Spacer(modifier = Modifier.height(12.dp))
 
         HorizontalDivider(
@@ -216,6 +222,7 @@ fun CollapsibleTranslationText(
             }
 
             // 折叠/展开按钮
+            if (showCollapseControl) {
             IconButton(
                 onClick = { isCollapsed = !isCollapsed },
                 modifier = Modifier.size(32.dp)
@@ -229,11 +236,13 @@ fun CollapsibleTranslationText(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            }
+        }
         }
 
         // Translation content (collapsible)
         AnimatedVisibility(
-            visible = !isCollapsed,
+            visible = !effectiveCollapsed,
             enter = expandVertically() + fadeIn(),
             exit = shrinkVertically() + fadeOut()
         ) {
@@ -293,6 +302,7 @@ fun CollapsibleTranslationText(
                     )
                 }
             }
+        }
         }
     }
 }
