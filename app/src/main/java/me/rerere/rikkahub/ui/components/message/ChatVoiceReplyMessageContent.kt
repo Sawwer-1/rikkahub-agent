@@ -23,7 +23,7 @@ internal fun ChatVoiceReplyMessageContent(
     onTtsSpeak: ((String) -> Unit)?,
     onTranslateSegment: ((UIMessage, Int, String, Locale) -> Unit)?,
     onClearSegmentTranslation: ((UIMessage, Int) -> Unit)?,
-    onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)?,
+    onToolApproval: ((toolCallId: String, approved: Boolean, reason: String, scope: me.rerere.rikkahub.service.ChatService.ApprovalScope, toolName: String) -> Unit)?,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)?,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -40,8 +40,8 @@ internal fun ChatVoiceReplyMessageContent(
                 model = model,
                 parts = supportingParts,
                 annotations = message.annotations,
+                messageState = message.state,
                 loading = loading,
-                showElevenLabsAudioTagAnnotations = false,
                 onToolApproval = onToolApproval,
                 onToolAnswer = onToolAnswer,
             )

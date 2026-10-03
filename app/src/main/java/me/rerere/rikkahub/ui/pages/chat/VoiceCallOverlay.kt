@@ -630,11 +630,12 @@ fun VoiceCallOverlay(
             color = MaterialTheme.colorScheme.background,
             modifier = Modifier.fillMaxSize()
         ) {
+            // 同 IncomingVoiceCallOverlay：本 fork 的 AssistantBackground(setting, modifier)
+            // （ui/pages/chat/Background.kt）不接受 assistant/useVoiceCallBackground，
+            // 无法按 callAssistant 定向渲染通话背景 —— 取 setting 当前助手背景近似。
             AssistantBackground(
                 setting = settings,
                 modifier = Modifier.fillMaxSize(),
-                assistant = callAssistant,
-                useVoiceCallBackground = true,
             )
             Box(
                 modifier = Modifier

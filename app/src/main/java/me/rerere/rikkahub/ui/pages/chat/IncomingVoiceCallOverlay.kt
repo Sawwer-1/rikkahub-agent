@@ -62,7 +62,7 @@ import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Voice
 import me.rerere.rikkahub.R
 import androidx.compose.ui.res.stringResource
-import me.rerere.rikkahub.data.voice.REQUEST_VOICE_CALL_TOOL_NAME
+import me.rerere.rikkahub.data.ai.tools.REQUEST_VOICE_CALL_TOOL_NAME
 import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.ui.components.ui.UIAvatar
@@ -177,11 +177,13 @@ internal fun IncomingVoiceCallOverlay(
             color = MaterialTheme.colorScheme.background,
         ) {
             Box(Modifier.fillMaxSize()) {
+                // jude 在此按通话助手的“通话专用背景”渲染（assistant + useVoiceCallBackground）；
+                // 本 fork 的 AssistantBackground(setting, modifier)（ui/pages/chat/Background.kt）
+                // 只接受 Settings 并按 setting 的当前助手取背景，无法定向传入 assistant ——
+                // 用 setting 原样近似（行为差异：背景取当前助手，而非来电发起助手）。
                 AssistantBackground(
                     setting = setting,
-                    assistant = assistant,
                     modifier = Modifier.fillMaxSize(),
-                    useVoiceCallBackground = true,
                 )
                 Column(
                     modifier = Modifier
@@ -293,7 +295,7 @@ private fun IncomingCallAvatar(
             UIAvatar(
                 name = name,
                 value = avatar,
-                avatarSize = 96.dp,
+                modifier = Modifier.size(96.dp),
             )
         }
     }

@@ -38,6 +38,7 @@ import me.rerere.hugeicons.stroke.MagicWand01
 import me.rerere.hugeicons.stroke.Pause
 import me.rerere.hugeicons.stroke.Play
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.context.LocalTTSState
 import me.rerere.rikkahub.ui.pages.chat.estimateVoiceCallDurationSeconds
 import me.rerere.tts.model.AudioFormat
@@ -52,6 +53,7 @@ internal fun ChatVoiceMessageBubble(
     onClearTranslation: (() -> Unit)?,
 ) {
     val tts = LocalTTSState.current
+    val settings = LocalSettings.current.displaySetting
     val playbackState by tts.playbackState.collectAsStateWithLifecycle()
     val playbackSessionId by tts.playbackSessionId.collectAsStateWithLifecycle()
     var textExpanded by remember { mutableStateOf(false) }
@@ -80,7 +82,10 @@ internal fun ChatVoiceMessageBubble(
 
     Surface(
         shape = RoundedCornerShape(18.dp),
-        color = assistantMessageBubbleColor(),
+        // jude 的 assistantMessageBubbleColor() 在本 fork 不存在；
+        // 取本仓 assistant 气泡色（ChatMessage.kt 同款）。
+        color = MaterialTheme.colorScheme.surfaceContainerHigh
+            .copy(alpha = settings.bubbleOpacity),
     ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
             Row(

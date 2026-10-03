@@ -412,7 +412,7 @@ fun ChatMessage(
 
 @OptIn(FlowPreview::class)
 @Composable
-private fun MessagePartsBlock(
+internal fun MessagePartsBlock(
     assistant: Assistant?,
     role: MessageRole,
     model: Model?,
@@ -917,6 +917,12 @@ private fun MessagePartsBlock(
                                 is UIMessageAnnotation.QuickCapture -> Unit
                                 is UIMessageAnnotation.PetHandoff -> Unit
                                 is UIMessageAnnotation.ManualCompressionSummary -> Unit
+                                // Voice-suite annotations (voice call record anchor, cached TTS
+                                // audio, voice reply) are internal bookkeeping for bubbles/calls;
+                                // they must not render as citation entries.
+                                is UIMessageAnnotation.VoiceCallRecord -> Unit
+                                is UIMessageAnnotation.TtsAudio -> Unit
+                                is UIMessageAnnotation.ChatVoiceReply -> Unit
                             }
                         }
                     }
