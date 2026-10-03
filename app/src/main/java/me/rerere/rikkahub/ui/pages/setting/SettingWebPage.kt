@@ -104,7 +104,7 @@ fun SettingWebPage() {
         val intent = Intent(context, WebServerService::class.java).apply {
             action = WebServerService.ACTION_START
             putExtra(WebServerService.EXTRA_PORT, settings.webServerPort)
-            putExtra(WebServerService.EXTRA_LOCALHOST_ONLY, true)
+            putExtra(WebServerService.EXTRA_LOCALHOST_ONLY, settings.webServerLocalhostOnly)
         }
         runCatching {
             context.startForegroundService(intent)
@@ -240,11 +240,15 @@ fun SettingWebPage() {
                         supportingContent = { Text(stringResource(R.string.setting_page_web_server_localhost_only_desc)) },
                         trailingContent = {
                             Switch(
-                                checked = true,
-                                onCheckedChange = {},
-                                // LAN pairing and TLS have not been provisioned yet. Keeping
-                                // this visibly locked avoids a misleading plaintext-LAN switch.
-                                enabled = false,
+                                checked = settings.webServerLocalhostOnly,
+                                onCheckedChange = { checked ->
+                                    scope.launch {
+                                        settingsStore.update {
+                                            it.copy(webServerLocalhostOnly = checked)
+                                        }
+                                    }
+                                },
+                                enabled = !serverState.isRunning && !serverState.isLoading,
                             )
                         },
                     )
