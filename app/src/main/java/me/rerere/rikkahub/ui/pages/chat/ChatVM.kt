@@ -106,6 +106,12 @@ class ChatVM(
         chatService.getRuntimeStateFlow(_conversationId)
             .stateIn(viewModelScope, SharingStarted.Eagerly, RuntimeState.Hydrating)
 
+    // extv-parity loading source: the live run job covers the whole multi-step generation
+    // (tool loops included) even when the runtime state briefly leaves Running.
+    val conversationJob: StateFlow<Job?> =
+        chatService.getActiveRunJobFlow(_conversationId)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
     val queueStatus: StateFlow<QueueStatus> =
         chatService.getQueueStatusFlow(_conversationId)
             .stateIn(viewModelScope, SharingStarted.Eagerly, QueueStatus(false, 0, null))
