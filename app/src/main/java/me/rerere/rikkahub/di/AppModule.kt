@@ -953,6 +953,7 @@ val appModule = module {
             finalConversationAuthority = get(),
             executionMessageAuthorityBinder = get(),
             folderRepository = get(),
+            chatVoiceReplyMaterializer = get(),
         )
     }
     single {

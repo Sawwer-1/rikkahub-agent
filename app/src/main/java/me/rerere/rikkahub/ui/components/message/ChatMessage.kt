@@ -304,6 +304,7 @@ fun ChatMessage(
                         },
                         annotations = message.annotations,
                         messageState = message.state,
+                        messageTerminal = message.terminal,
                         loading = loading,
                         model = model,
                         onToolApproval = onToolApproval,
@@ -418,6 +419,7 @@ private fun MessagePartsBlock(
     parts: List<UIMessagePart>,
     annotations: List<UIMessageAnnotation>,
     messageState: UIMessageState,
+    messageTerminal: me.rerere.ai.ui.GenerationTerminal? = null,
     loading: Boolean,
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String, scope: me.rerere.rikkahub.service.ChatService.ApprovalScope, toolName: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
@@ -806,6 +808,48 @@ private fun MessagePartsBlock(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.labelMedium,
             )
+        }
+    }
+
+    // Truncation surfacing: an interruption caused by the transport/provider (silent EOF,
+    // output cap, early provider stop) must look different from a deliberate user stop.
+    // The category rides on the message since jude2 so the reason survives an app restart.
+    val truncationTerminal = messageTerminal?.takeIf { terminal ->
+        messageState == UIMessageState.INTERRUPTED &&
+            terminal.category in setOf(
+                me.rerere.ai.ui.FinishCategory.EOF,
+                me.rerere.ai.ui.FinishCategory.LENGTH,
+                me.rerere.ai.ui.FinishCategory.INCOMPLETE,
+                me.rerere.ai.ui.FinishCategory.UNKNOWN,
+            )
+    }
+    if (recovery == null && truncationTerminal != null) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.errorContainer,
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Text(
+                    text = stringResource(R.string.gen_truncated_banner_title),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Text(
+                    text = stringResource(
+                        when (truncationTerminal.category) {
+                            me.rerere.ai.ui.FinishCategory.EOF -> R.string.gen_truncated_banner_eof
+                            me.rerere.ai.ui.FinishCategory.LENGTH -> R.string.gen_truncated_banner_length
+                            me.rerere.ai.ui.FinishCategory.INCOMPLETE -> R.string.gen_truncated_banner_incomplete
+                            else -> R.string.gen_truncated_banner_unknown
+                        }
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+                Text(
+                    text = stringResource(R.string.gen_truncated_hint_retry),
+                    modifier = Modifier.padding(top = 2.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
         }
     }
 
