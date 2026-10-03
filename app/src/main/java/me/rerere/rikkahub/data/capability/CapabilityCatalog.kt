@@ -330,7 +330,8 @@ object CapabilityCatalog {
         "skill_install_from_text",
         "generate_bug_report",
         "workspace_write_file",
-        "workspace_edit_file",
+        "workspace_edit_file",        "workspace_create_folder",
+
     )
 
     private val dataEgressToolNames: Set<String> = setOf(
@@ -501,7 +502,9 @@ object CapabilityCatalog {
         "linux_session_inspect",
         "linux_session_list",
         "tts_library_list",
-        "tts_library_play",
+        "tts_library_play",        "workspace_read_folder",
+        "get_gnss_status",
+
     )
 
     private val registry: Map<CapabilityId, CapabilityDescriptor> = buildRegistry()
