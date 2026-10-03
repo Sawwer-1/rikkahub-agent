@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import me.rerere.ai.core.MessageRole
 import me.rerere.rikkahub.data.db.dao.MemoryDAO
 import me.rerere.rikkahub.data.db.entity.MemoryEntity
+import me.rerere.rikkahub.data.model.MemoryScope
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.memory.MemorySourceRole
 import me.rerere.rikkahub.memory.memoryCaptureSourcesForMessage
@@ -93,6 +94,9 @@ class DreamMemoryAdapter(
         nowMs: Long,
         limit: Int = 128,
     ): Int {
+        // Conversation-level memories are a short-lived isolation layer and never join the
+        // long-term dream portrait (memory scope boundary ruling).
+        if (MemoryScope.conversationKeyOrNull(memoryScopeId) != null) return 0
         val pair = DreamPairScope.forAssistant(assistantId)
         var inserted = 0
         traverseDreamMemoryPages(

@@ -57,6 +57,7 @@ data class Assistant(
     val memoryNarrativeUserName: String = "",
     val memoryNarrativeCompanionName: String = "",
     val useGlobalMemory: Boolean = false, // 使用全局共享记忆而非助手隔离记忆
+    val useConversationMemory: Boolean = false, // 使用当前会话独立记忆，避免同一助手的不同窗口互相读取
     val enableRecentChatsReference: Boolean = false,
     val autoContextEnabled: Boolean = false,
     val autoContextForegroundWindow: Boolean = true,

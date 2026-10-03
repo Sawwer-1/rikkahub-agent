@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<resources>
+  <!-- Memory scope isolation (conversation-level memory). Keys are mem_-prefixed; keep both
+       language files in sync. Apostrophes must be escaped for aapt2. -->
+  <string name="mem_conversation_memory">Conversation Memory</string>
+  <string name="mem_conversation_memory_desc">Keep memory isolated to the current chat window. It will not be read by other conversations of this assistant.</string>
+</resources>

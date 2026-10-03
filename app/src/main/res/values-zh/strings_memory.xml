@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<resources>
+  <!-- 会话记忆隔离文案（mem_ 前缀，与 values/strings_memory.xml 键集保持一致） -->
+  <string name="mem_conversation_memory">会话记忆</string>
+  <string name="mem_conversation_memory_desc">仅在当前聊天窗口中使用会话记忆，不同会话之间不会共享这部分记忆；管理记忆中的内容仍对该助手的所有会话通用。</string>
+</resources>

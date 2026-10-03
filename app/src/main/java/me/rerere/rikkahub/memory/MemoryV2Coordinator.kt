@@ -3,6 +3,7 @@ package me.rerere.rikkahub.memory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import me.rerere.rikkahub.data.model.MemoryScope
 
 interface MemoryV2Coordinator {
     suspend fun capture(turn: CompletedMemoryTurn): MemoryCaptureResult
@@ -255,6 +256,12 @@ class DefaultMemoryV2Coordinator(
     }
 
     override suspend fun process(request: MemoryProcessRequest): MemoryProcessResult {
+        // Defence-in-depth for the conversation-scope exclusion: a stale work request enqueued
+        // before the user switched an assistant to conversation memory must never claim or
+        // extract anything. Conversation captures are skipped at [captureSkipReason] already.
+        if (MemoryScope.conversationKeyOrNull(request.scopeId) != null) {
+            return MemoryProcessResult.NothingToDo
+        }
         val store = processingStore
             ?: return MemoryProcessResult.Failed("memory_processing_store_missing", false)
         val memoryExtractor = extractor
@@ -593,6 +600,10 @@ private fun captureSkipReason(turn: CompletedMemoryTurn): MemoryCaptureSkipReaso
         MemoryCaptureSkipReason.ORIGIN_NOT_ALLOWED
     turn.isHeadless -> MemoryCaptureSkipReason.HEADLESS
     turn.needsFinalAnswer -> MemoryCaptureSkipReason.NEEDS_FINAL_ANSWER
+    // Conversation-level memory is a short-lived isolation layer (boundary ruling of the memory
+    // scope task): it is tool-writable but must never feed the extraction/review pipeline.
+    MemoryScope.conversationKeyOrNull(turn.scopeId) != null ->
+        MemoryCaptureSkipReason.CONVERSATION_SCOPE_NOT_ELIGIBLE
     !isValidMemoryScopeBinding(turn.scopeId, turn.assistantId.toString()) ->
         MemoryCaptureSkipReason.INVALID_SCOPE
     turn.sourceMessages.size > MAX_MEMORY_CAPTURE_SOURCE_IDENTITIES ->

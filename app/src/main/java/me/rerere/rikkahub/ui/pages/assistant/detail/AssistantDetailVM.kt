@@ -24,6 +24,7 @@ import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.AssistantMemory
 import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.model.Tag
+import me.rerere.rikkahub.data.model.memoryScope
 import me.rerere.rikkahub.pet.PetOverlaySelection
 import me.rerere.rikkahub.pet.resolvePetProfileForPackage
 import me.rerere.rikkahub.assistant.SecondUserAuthorityState
@@ -75,11 +76,9 @@ class AssistantDetailVM(
 
     val memories = assistant
         .flatMapLatest { currentAssistant ->
-            if (currentAssistant.useGlobalMemory) {
-                memoryRepository.getGlobalMemoriesFlow()
-            } else {
-                memoryRepository.getMemoriesOfAssistantFlow(assistantId.toString())
-            }
+            // Jude parity: resolve through the three-level MemoryScope. This page has no
+            // conversation context, so useConversationMemory falls back to assistant scope.
+            memoryRepository.getMemoriesOfAssistantFlow(currentAssistant.memoryScope.ownerId)
         }
         .stateIn(
             scope = viewModelScope, started = SharingStarted.Eagerly, initialValue = emptyList()
@@ -111,12 +110,7 @@ class AssistantDetailVM(
 
     val pendingReviewCount = assistant
         .flatMapLatest { currentAssistant ->
-            val scopeId = if (currentAssistant.useGlobalMemory) {
-                MemoryRepository.GLOBAL_MEMORY_ID
-            } else {
-                assistantId.toString()
-            }
-            memoryV2Dao.observePendingCandidateCount(scopeId)
+            memoryV2Dao.observePendingCandidateCount(currentAssistant.memoryScope.ownerId)
         }
         .stateIn(
             scope = viewModelScope,
@@ -303,13 +297,8 @@ class AssistantDetailVM(
 
     fun addMemory(memory: AssistantMemory) {
         viewModelScope.launch {
-            val memoryAssistantId = if (assistant.value.useGlobalMemory) {
-                MemoryRepository.GLOBAL_MEMORY_ID
-            } else {
-                assistantId.toString()
-            }
             memoryRepository.addMemory(
-                scopeId = memoryAssistantId,
+                scopeId = assistant.value.memoryScope.ownerId,
                 content = memory.content,
                 originAssistantId = assistantId.toString(),
             )
