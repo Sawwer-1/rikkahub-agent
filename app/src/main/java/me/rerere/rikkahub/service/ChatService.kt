@@ -97,6 +97,7 @@ import me.rerere.rikkahub.data.ai.transformers.TemplateTransformer
 import me.rerere.rikkahub.data.ai.transformers.ThinkTagTransformer
 import me.rerere.rikkahub.data.ai.transformers.TimeReminderTransformer
 import me.rerere.rikkahub.data.ai.transformers.WorkspaceReminderTransformer
+import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.DEFAULT_AUTO_MODEL_ID
 import me.rerere.rikkahub.data.datastore.findModelById
@@ -4255,7 +4256,87 @@ class ChatService(
                 }
             }
             agentTiming?.mark(AgentTimingEventKind.TOOL_SURFACE_STARTED)
-            val generationFlow = generationHandler.generateText(
+            // Voice-call incremental tagging (jude L1004-1248 port). The generation flow runs
+            // inside a coroutine scope so that per-sentence SECOND_PASS tagging jobs are
+            // children of this turn: they are cancelled with the turn and joined before the
+            // final projection at the end of this scope. The wrapped block below keeps its
+            // original indentation.
+            val generationFlow = coroutineScope {
+            val tagJobs = mutableListOf<Job>()
+            fun enqueueVoiceCallTagging(messages: List<UIMessage>, includeUnfinishedTail: Boolean) {
+                if (!incrementalVoiceCallTagging) return
+                // 本仓的 run fencing：被取代/冻结的 run 不再发起标注、不再写会话状态
+                // （jude 原版没有 run fence 概念，此处为本仓最小适配）。
+                if (runControl?.isUpdateFenced() == true) return
+                val primaryReply = messages.lastOrNull { it.role == MessageRole.ASSISTANT && it.toText().isNotBlank() }
+                    ?: return
+                val segments = splitVoiceCallAudioTaggingSegments(primaryReply.toText().trim())
+                val lastEligibleIndex = if (includeUnfinishedTail) {
+                    segments.lastIndex
+                } else {
+                    segments.indexOfLast { segment ->
+                        segment.lastOrNull() in setOf('。', '.', '！', '!', '？', '?', '；', ';', '\n')
+                    }
+                }
+                if (lastEligibleIndex < 0) return
+                val nextIndex = synchronized(tagProjectionLock) {
+                    nextTagIndexByMessageId[primaryReply.id] ?: 0
+                }
+                if (nextIndex > lastEligibleIndex) return
+                for (index in nextIndex..lastEligibleIndex) {
+                    val sentence = segments.getOrNull(index) ?: continue
+                    synchronized(tagProjectionLock) {
+                        nextTagIndexByMessageId[primaryReply.id] = index + 1
+                    }
+                    tagJobs += launch {
+                        val assignmentResult = try {
+                            Result.success(
+                                tagVoiceCallSentence(
+                                    settings = settings,
+                                    model = model,
+                                    assistant = assistant,
+                                    processingStatus = session.processingStatus,
+                                    primaryReply = primaryReply,
+                                    sentence = sentence,
+                                    format = voiceCallAudioTagFormat!!,
+                                )
+                            )
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
+                            Result.failure(error)
+                        }
+                        if (assignmentResult.isFailure) {
+                            Logging.log(TAG, "sentence voice-call tagging failed; using no-tag fallback: ${assignmentResult.exceptionOrNull()}")
+                        }
+                        synchronized(tagProjectionLock) {
+                            tagAssignmentsByMessageId
+                                .getOrPut(primaryReply.id) { mutableMapOf() }[index] = assignmentResult.getOrNull()
+                            val currentConversation = getConversationFlow(conversationId).value
+                            val currentReply = currentConversation.currentMessages
+                                .firstOrNull { it.id == primaryReply.id }
+                            if (currentReply != null && runControl?.isUpdateFenced() != true) {
+                                val projectedReply = currentReply.withIncrementalVoiceCallAudioTagAssignments(
+                                    assignments = tagAssignmentsByMessageId.getValue(primaryReply.id),
+                                    // voiceCallAudioTagFormat is non-null on every path that can
+                                    // reach this branch (incrementalVoiceCallTagging gate).
+                                    format = voiceCallAudioTagFormat!!,
+                                )
+                                updateConversation(
+                                    conversationId,
+                                    currentConversation.updateMessageAtNodeIndex(
+                                        nodeIndex = currentConversation.messageNodes.indexOfFirst { node ->
+                                            node.messages.any { it.id == projectedReply.id }
+                                        }.takeIf { it >= 0 },
+                                        message = projectedReply,
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            generationHandler.generateText(
                 settings = settings,
                 model = model,
                 processingStatus = session.processingStatus,
@@ -4593,8 +4674,34 @@ class ChatService(
                 cancelLiveUpdateNotification(conversationId)
 
                 // 可能被取消了，或者意外结束，兜底更新
-                val updatedConversation = getConversationFlow(conversationId).value.copy(
-                    messageNodes = getConversationFlow(conversationId).value.messageNodes.map { node ->
+                val baseConversation = getConversationFlow(conversationId).value
+                // Voice-call tagging fallback (jude): merge the tag assignments collected so
+                // far into the last streamed reply before the reasoning-state sweep. The repo's
+                // Conversation has no visibleMessageNodeIndexAt, so the target node is located
+                // by message id (the same pattern the streaming update above uses).
+                val projectedConversation = synchronized(tagProjectionLock) {
+                    val finalStreamMessage = latestPrimaryMessages?.lastOrNull()?.let { message ->
+                        tagAssignmentsByMessageId[message.id]?.let { assignments ->
+                            message.withIncrementalVoiceCallAudioTagAssignments(
+                                assignments = assignments,
+                                format = voiceCallAudioTagFormat!!,
+                            )
+                        } ?: message
+                    }
+                    if (finalStreamMessage != null) {
+                        val nodeIndex = baseConversation.messageNodes.indexOfFirst { node ->
+                            node.messages.any { it.id == finalStreamMessage.id }
+                        }.takeIf { it >= 0 }
+                        baseConversation.updateMessageAtNodeIndex(
+                            nodeIndex = nodeIndex,
+                            message = finalStreamMessage,
+                        )
+                    } else {
+                        baseConversation
+                    }
+                }
+                val updatedConversation = projectedConversation.copy(
+                    messageNodes = projectedConversation.messageNodes.map { node ->
                         node.copy(messages = node.messages.map { it.finishReasoning() })
                     },
                     updateAt = Instant.now()
@@ -4617,6 +4724,9 @@ class ChatService(
                         val correlatedMessages = chunk.messages.withResponseCorrelation(
                             responseCorrelationAnnotation,
                         ).sanitizeTransientConversationToolResults()
+                        // Voice-call tagging (jude): remember the raw streamed messages for the
+                        // end-of-stream incremental projection / second-pass fallback.
+                        latestPrimaryMessages = correlatedMessages
                         val timingAssistantMessage = if (agentTiming != null) {
                             correlatedMessages.lastOrNull()
                                 ?.takeIf(UIMessage::hasAgentTimingRenderableContent)
@@ -4656,13 +4766,29 @@ class ChatService(
                                     STREAMING_UI_UPDATE_INTERVAL_NANOS
                                 )
                             )
+                        // Voice-call incremental projection (jude): merge the tag assignments
+                        // produced so far into the streamed copy before it reaches the UI.
+                        val projectedMessages = synchronized(tagProjectionLock) {
+                            if (!incrementalVoiceCallTagging) {
+                                correlatedMessages
+                            } else {
+                                correlatedMessages.map { message ->
+                                    tagAssignmentsByMessageId[message.id]?.let { assignments ->
+                                        message.withIncrementalVoiceCallAudioTagAssignments(
+                                            assignments = assignments,
+                                            format = voiceCallAudioTagFormat!!,
+                                        )
+                                    } ?: message
+                                }
+                            }
+                        }
                         var updatedConversation: Conversation? = null
                         if (shouldUpdateStreamingUi) {
                             updatedConversation = if (latestChunkMessage == null ||
                                 streamingMessageId != latestChunkMessage.id
                             ) {
                                 getConversationFlow(conversationId).value
-                                    .updateCurrentMessages(correlatedMessages)
+                                    .updateCurrentMessages(projectedMessages)
                             } else {
                                 val currentConversation = getConversationFlow(conversationId).value
                                 val nodeIndex = currentConversation.messageNodes.indexOfFirst { node ->
@@ -4670,7 +4796,7 @@ class ChatService(
                                 }.takeIf { it >= 0 }
                                 currentConversation.updateMessageAtNodeIndex(
                                     nodeIndex = nodeIndex,
-                                    message = latestChunkMessage,
+                                    message = projectedMessages.lastOrNull() ?: latestChunkMessage,
                                 )
                             }
                             if (latestChunkMessage != null) {
@@ -4824,8 +4950,58 @@ class ChatService(
                         if (!isForeground.value && settings.displaySetting.enableNotificationOnMessageGeneration && settings.displaySetting.enableLiveUpdateNotification) {
                             sendLiveUpdateNotification(conversationId, chunk.messages, senderName)
                         }
+                        // Tag the sentences of this chunk that are complete enough to tag
+                        // (SECOND_PASS incremental mode). Runs after the UI/persistence path so
+                        // the assignments are ready before the next chunk is projected.
+                        enqueueVoiceCallTagging(correlatedMessages, includeUnfinishedTail = false)
                     }
                 }
+            }
+            // jude L1224-1247: after the stream ends, tag the unfinished tail, join every
+            // sentence job, then project all collected assignments into the conversation.
+            // Skipped for a fenced run (repo run-control concept; jude has no equivalent).
+            if (incrementalVoiceCallTagging && runControl?.isUpdateFenced() != true) {
+                enqueueVoiceCallTagging(
+                    getConversationFlow(conversationId).value.currentMessages,
+                    includeUnfinishedTail = true,
+                )
+                tagJobs.forEach { it.join() }
+                synchronized(tagProjectionLock) {
+                    val currentConversation = getConversationFlow(conversationId).value
+                    val projectedMessages = currentConversation.currentMessages.map { message ->
+                        tagAssignmentsByMessageId[message.id]?.let { assignments ->
+                            message.withIncrementalVoiceCallAudioTagAssignments(
+                                assignments = assignments,
+                                format = voiceCallAudioTagFormat!!,
+                            )
+                        } ?: message
+                    }
+                    updateConversation(
+                        conversationId,
+                        currentConversation.updateCurrentMessages(projectedMessages),
+                    )
+                }
+            }
+            }
+
+            // SECOND_PASS without the incremental stream path (jude L1250-1264): runs the
+            // primary reply through the tagger once the turn completed. Incremental mode
+            // already tagged in-stream, so it is excluded here exactly like jude. Fenced runs
+            // (repo run-control concept) are excluded as well.
+            if (runControl?.isUpdateFenced() != true && !incrementalVoiceCallTagging && voiceCallAudioTagMode == VoiceCallAudioTagMode.SECOND_PASS && voiceCallAudioTagFormat != null) {
+                val primaryMessages = latestPrimaryMessages
+                    ?: getConversationFlow(conversationId).value.currentMessages
+                val taggedMessages = applySecondPassVoiceCallAudioTags(
+                    settings = settings,
+                    model = model,
+                    assistant = assistant,
+                    processingStatus = session.processingStatus,
+                    primaryMessages = primaryMessages,
+                    format = voiceCallAudioTagFormat,
+                )
+                val taggedConversation = getConversationFlow(conversationId).value
+                    .updateCurrentMessages(taggedMessages)
+                updateConversation(conversationId, taggedConversation)
             }
         }
         var authorityFailure: Throwable? = null
@@ -4966,6 +5142,224 @@ class ChatService(
         }
         authorityFailure?.let { throw it }
         if (propagateFailure || authority != null) generationResult.getOrThrow()
+    }
+
+    /**
+     * Tags one sentence of the primary call reply (jude port). Used by the incremental
+     * SECOND_PASS projection: the second-pass tagger runs on a single-sentence copy so each
+     * completed sentence can receive its assignment while the reply is still streaming.
+     */
+    private suspend fun tagVoiceCallSentence(
+        settings: Settings,
+        model: Model,
+        assistant: Assistant,
+        processingStatus: MutableStateFlow<String?>,
+        primaryReply: UIMessage,
+        sentence: String,
+        format: VoiceCallAudioTagFormat,
+    ): VoiceCallAudioTagAssignment? {
+        val sentenceMessage = primaryReply.copy(
+            parts = listOf(UIMessagePart.Text(sentence)),
+        )
+        val taggedMessage = applySecondPassVoiceCallAudioTags(
+            settings = settings,
+            model = model,
+            assistant = assistant,
+            processingStatus = processingStatus,
+            primaryMessages = listOf(sentenceMessage),
+            format = format,
+        ).firstOrNull()
+        return taggedMessage?.voiceCallAudioTagAssignmentsOrEmpty()?.firstOrNull()
+    }
+
+    /**
+     * Voice-call second-pass tagging (jude port). Sends the client-owned segments to the tag
+     * model with only the `select_voice_call_audio_tags` tool available, then writes the
+     * validated per-segment assignments into the reply message.
+     *
+     * Adaptations for this repo (GenerationHandler has no jude-only parameters):
+     * - `extraSystemPrompt` -> `systemAddendum` (the repo's single system-prompt addendum channel).
+     * - `providerOverride` / `maxTokensOverride` are not supported; the dedicated
+     *   VoiceCallAudioTagConfig apiKey/baseUrl cannot be passed through. A configured
+     *   `VoiceCallAudioTagConfig.modelId` is honoured only if a registered provider exposes the
+     *   same modelId; otherwise the configured tag model / primary model is used.
+     * - `includeMemoriesInPrompt = false` is implicit: `memories = emptyList()` and the tag
+     *   assistant keeps `enableMemory = false`.
+     */
+    private suspend fun applySecondPassVoiceCallAudioTags(
+        settings: Settings,
+        model: Model,
+        assistant: Assistant,
+        processingStatus: MutableStateFlow<String?>,
+        primaryMessages: List<UIMessage>,
+        format: VoiceCallAudioTagFormat,
+    ): List<UIMessage> {
+        val primaryReplyIndex = primaryMessages.indexOfLast { message ->
+            message.role == MessageRole.ASSISTANT && message.toText().isNotBlank()
+        }
+        if (primaryReplyIndex < 0) return primaryMessages
+
+        val primaryReply = primaryMessages[primaryReplyIndex]
+        val primaryReplyText = primaryReply.toText().trim()
+        val originalSegments = splitVoiceCallAudioTaggingSegments(primaryReplyText)
+        val taggingSegmentIndexes = selectVoiceCallAudioTaggingSegmentIndexes(
+            segments = originalSegments,
+            englishOnly = settings.displaySetting.ttsEnglishOnly,
+        )
+        if (taggingSegmentIndexes.isEmpty()) return primaryMessages
+        val taggingSegments = taggingSegmentIndexes.map(originalSegments::get)
+        val filteredTaggingSegmentIndexes = taggingSegmentIndexes
+            .takeIf { settings.displaySetting.ttsEnglishOnly }
+        val taggingContext = listOf(
+            UIMessage.user(
+                buildVoiceCallAudioTaggingRequest(taggingSegments)
+            )
+        )
+        val taggingAssistant = assistant.copy(
+            systemPrompt = "",
+            temperature = 0f,
+            topP = 1f,
+            contextMessageSize = 1,
+            streamOutput = false,
+            enableMemory = false,
+            useGlobalMemory = false,
+            enableRecentChatsReference = false,
+            reasoningLevel = ReasoningLevel.OFF,
+            localTools = emptyList(),
+            modeInjectionIds = emptySet(),
+            lorebookIds = emptySet(),
+            enabledSkills = emptySet(),
+            enableTimeReminder = false,
+            allowConversationSystemPrompt = false,
+            allowConversationPromptInjection = false,
+        )
+        val voiceCallAudioTagConfig = settings.voiceCallAudioTagConfig
+        // 二次标注只依赖本地的 select_voice_call_audio_tags 工具。模型注册表按 id 匹配能力，
+        // 常见写法（Qwen3-14B / Qwen-2.5-14B-instruct）匹配不到 TOOL，各 provider 就不会把
+        // tools 发出去，模型只能回文本导致 missing_tool_call 回退。这里强制带上 TOOL 能力。
+        val voiceCallAudioTagModel = if (
+            voiceCallAudioTagConfig.enabled &&
+            voiceCallAudioTagConfig.modelId.isNotBlank()
+        ) {
+            val configuredModelId = voiceCallAudioTagConfig.modelId.trim()
+            settings.providers.asSequence()
+                .flatMap { it.models.asSequence() }
+                .firstOrNull { it.modelId == configuredModelId }
+                ?: settings.voiceCallAudioTagModelId?.let { modelId -> settings.findModelById(modelId) }
+                ?: model
+        } else {
+            settings.voiceCallAudioTagModelId?.let { modelId -> settings.findModelById(modelId) } ?: model
+        }
+        val voiceCallAudioTaggingModel = voiceCallAudioTagModel.copy(
+            abilities = (voiceCallAudioTagModel.abilities + ModelAbility.TOOL).distinct()
+        )
+        var toolCallCount = 0
+        var selectionResult: VoiceCallAudioTagSelectionResult? = null
+        val tagSelectionTool = createVoiceCallAudioTagSelectionTool(
+            segmentCount = taggingSegments.size,
+            format = format,
+            onResult = { result ->
+                toolCallCount++
+                selectionResult = if (toolCallCount == 1) {
+                    result
+                } else {
+                    VoiceCallAudioTagSelectionResult.InvalidArguments
+                }
+            },
+        )
+        var requestFailureReason: VoiceCallTaggingFallbackReason? = null
+        var rawTaggingResponse = ""
+        Logging.log(
+            TAG,
+            "applySecondPassVoiceCallAudioTags: provider=${format.providerName}, " +
+                "segments=${taggingSegments.size}",
+        )
+        try {
+            generationHandler.generateText(
+                settings = settings,
+                model = voiceCallAudioTaggingModel,
+                processingStatus = processingStatus,
+                messages = taggingContext,
+                assistant = taggingAssistant,
+                memories = emptyList(),
+                tools = listOf(tagSelectionTool),
+                maxSteps = 1,
+                systemAddendum = buildVoiceCallAudioTagPrompt(format),
+            ).collect { chunk ->
+                if (chunk is GenerationChunk.Messages) {
+                    rawTaggingResponse = chunk.messages.lastOrNull()?.toText().orEmpty()
+                }
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            requestFailureReason = VoiceCallTaggingFallbackReason.REQUEST_ERROR
+            Logging.log(TAG, "applySecondPassVoiceCallAudioTags: $error")
+        }
+        if (requestFailureReason == null) {
+            requestFailureReason = when (selectionResult) {
+                null -> VoiceCallTaggingFallbackReason.MISSING_TOOL_CALL
+                VoiceCallAudioTagSelectionResult.InvalidArguments ->
+                    VoiceCallTaggingFallbackReason.INVALID_TOOL_ARGUMENTS
+
+                is VoiceCallAudioTagSelectionResult.Selected -> null
+            }
+        }
+        Logging.log(
+            TAG,
+            "applySecondPassVoiceCallAudioTags: completed toolCalls=$toolCallCount, " +
+                "selection=${selectionResult?.javaClass?.simpleName ?: "missing"}, " +
+                "failure=${requestFailureReason?.displayName ?: "none"}",
+        )
+
+        val selectedAssignments = (selectionResult as? VoiceCallAudioTagSelectionResult.Selected)?.assignments
+        // 部分模型不调用工具、直接回 JSON 文本：客户端只取校验过的 tagId，按索引映射回自己的
+        // 原文分段来渲染，绝不使用模型回填的正文，避免模型改写文本进入语音副本。
+        val parsedTextFallbackAssignments = if (selectedAssignments == null && rawTaggingResponse.isNotBlank()) {
+            parseVoiceCallAudioTagResponse(rawTaggingResponse, format)
+                .takeIf { parsed ->
+                    parsed.segments.isNotEmpty() &&
+                        parsed.segments.all { it.selectionSource != VoiceCallTagSelectionSource.FALLBACK }
+                }
+                ?.segments
+                ?.map { segment ->
+                    VoiceCallAudioTagAssignment(
+                        tagId = segment.tag?.id,
+                        replacementText = segment.replacementText,
+                    )
+                }
+                ?.takeIf { it.size == taggingSegments.size }
+        } else {
+            null
+        }
+        return primaryMessages.mapIndexed { index, message ->
+            if (index == primaryReplyIndex) {
+                when {
+                    selectedAssignments != null -> message.withSelectedVoiceCallAudioTagAssignments(
+                        selectedAssignments = selectedAssignments,
+                        taggingSegmentIndexes = filteredTaggingSegmentIndexes,
+                        format = format,
+                        selectionFailureReason = requestFailureReason,
+                    )
+
+                    parsedTextFallbackAssignments != null -> message.withSelectedVoiceCallAudioTagAssignments(
+                        selectedAssignments = parsedTextFallbackAssignments,
+                        taggingSegmentIndexes = filteredTaggingSegmentIndexes,
+                        format = format,
+                        selectionFailureReason = null,
+                    )
+
+                    else -> message.withSelectedVoiceCallAudioTagAssignments(
+                        selectedAssignments = null,
+                        taggingSegmentIndexes = filteredTaggingSegmentIndexes,
+                        format = format,
+                        selectionFailureReason = requestFailureReason,
+                    )
+                }
+            } else {
+                message
+            }
+        }
     }
 
     private fun scheduleGenerationPostCommit(postCommit: DeferredGenerationPostCommit) {
@@ -6069,6 +6463,173 @@ class ChatService(
         updateConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
     }
 
+    fun translateVoiceCallBubble(
+        conversationId: Uuid,
+        message: UIMessage,
+        bubbleKey: String,
+        sourceText: String,
+        targetLanguage: Locale,
+    ) {
+        appScope.launch(Dispatchers.IO) {
+            try {
+                val settings = settingsStore.settingsFlow.first()
+                val loadingText = context.getString(R.string.translating)
+                val currentMessage = getConversationFlow(conversationId).value.messageNodes
+                    .asSequence()
+                    .flatMap { it.messages.asSequence() }
+                    .firstOrNull { it.id == message.id }
+                val cachedTranslation = currentMessage?.voiceCallTranslations?.get(bubbleKey)
+                if (cachedTranslation?.isNotBlank() == true && cachedTranslation != loadingText) {
+                    return@launch
+                }
+                if (sourceText.isBlank()) return@launch
+
+                updateVoiceCallTranslationField(conversationId, message.id, bubbleKey, loadingText)
+                generationHandler.translateText(
+                    settings = settings,
+                    sourceText = sourceText,
+                    targetLanguage = targetLanguage,
+                ) { translatedText ->
+                    updateVoiceCallTranslationField(
+                        conversationId = conversationId,
+                        messageId = message.id,
+                        bubbleKey = bubbleKey,
+                        translationText = translatedText.sanitizeVoiceCallTextForTranslation(),
+                    )
+                }.collect { }
+
+                saveConversation(conversationId, getConversationFlow(conversationId).value)
+            } catch (e: Exception) {
+                updateVoiceCallTranslationField(
+                    conversationId = conversationId,
+                    messageId = message.id,
+                    bubbleKey = bubbleKey,
+                    translationText = null,
+                )
+                addError(e, conversationId, title = context.getString(R.string.error_title_translate_message))
+            }
+        }
+    }
+
+    fun translateChatVoiceSegment(
+        conversationId: Uuid,
+        message: UIMessage,
+        segmentIndex: Int,
+        sourceText: String,
+        targetLanguage: Locale,
+    ) {
+        appScope.launch(Dispatchers.IO) {
+            try {
+                val settings = settingsStore.settingsFlow.first()
+                val loadingText = context.getString(R.string.translating)
+                val currentMessage = getConversationFlow(conversationId).value.messageNodes
+                    .asSequence()
+                    .flatMap { it.messages.asSequence() }
+                    .firstOrNull { it.id == message.id }
+                val cachedTranslation = currentMessage
+                    ?.chatVoiceReply()
+                    ?.segments
+                    ?.getOrNull(segmentIndex)
+                    ?.translation
+                if (cachedTranslation?.isNotBlank() == true && cachedTranslation != loadingText) {
+                    return@launch
+                }
+                if (sourceText.isBlank()) return@launch
+
+                updateChatVoiceSegmentTranslation(
+                    conversationId = conversationId,
+                    messageId = message.id,
+                    segmentIndex = segmentIndex,
+                    translationText = loadingText,
+                )
+                generationHandler.translateText(
+                    settings = settings,
+                    sourceText = sourceText,
+                    targetLanguage = targetLanguage,
+                ) { translatedText ->
+                    updateChatVoiceSegmentTranslation(
+                        conversationId = conversationId,
+                        messageId = message.id,
+                        segmentIndex = segmentIndex,
+                        translationText = translatedText,
+                    )
+                }.collect { }
+                saveConversation(conversationId, getConversationFlow(conversationId).value)
+            } catch (e: Exception) {
+                updateChatVoiceSegmentTranslation(
+                    conversationId = conversationId,
+                    messageId = message.id,
+                    segmentIndex = segmentIndex,
+                    translationText = null,
+                )
+                addError(e, conversationId, title = context.getString(R.string.error_title_translate_message))
+            }
+        }
+    }
+
+    private fun updateVoiceCallTranslationField(
+        conversationId: Uuid,
+        messageId: Uuid,
+        bubbleKey: String,
+        translationText: String?,
+        clearLegacyTranslation: Boolean = false,
+    ) {
+        val currentConversation = getConversationFlow(conversationId).value
+        val updatedNodes = currentConversation.messageNodes.map { node ->
+            if (node.messages.any { it.id == messageId }) {
+                node.copy(
+                    messages = node.messages.map { msg ->
+                        if (msg.id == messageId) {
+                            val translations = msg.voiceCallTranslations.toMutableMap().apply {
+                                if (translationText.isNullOrBlank()) {
+                                    remove(bubbleKey)
+                                } else {
+                                    put(bubbleKey, translationText)
+                                }
+                            }
+                            msg.copy(
+                                translation = if (clearLegacyTranslation) null else msg.translation,
+                                voiceCallTranslations = translations,
+                            )
+                        } else {
+                            msg
+                        }
+                    }
+                )
+            } else {
+                node
+            }
+        }
+        updateConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
+    }
+
+    private fun updateChatVoiceSegmentTranslation(
+        conversationId: Uuid,
+        messageId: Uuid,
+        segmentIndex: Int,
+        translationText: String?,
+    ) {
+        val currentConversation = getConversationFlow(conversationId).value
+        val updatedNodes = currentConversation.messageNodes.map { node ->
+            if (node.messages.none { it.id == messageId }) {
+                node
+            } else {
+                node.copy(
+                    messages = node.messages.map { message ->
+                        if (message.id == messageId) {
+                            message.updateChatVoiceReplySegment(segmentIndex) { segment ->
+                                segment.copy(translation = translationText?.takeIf { it.isNotBlank() })
+                            }
+                        } else {
+                            message
+                        }
+                    }
+                )
+            }
+        }
+        updateConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
+    }
+
     // ---- 消息操作 ----
 
     suspend fun editMessage(
@@ -6188,6 +6749,55 @@ class ChatService(
         deleteMessage(conversationId, message.id, failIfMissing = false)
     }
 
+    suspend fun deleteVoiceCallRecord(
+        conversationId: Uuid,
+        callId: String,
+    ) {
+        val conversation = getConversationFlow(conversationId).value
+        val recordMessages = conversation.messageNodes
+            .flatMap { it.messages }
+            .mapNotNull { message ->
+                message.voiceCallRecord()
+                    ?.takeIf { it.callId == callId }
+                    ?.let { record -> message to record }
+            }
+        if (recordMessages.isEmpty()) return
+
+        val linkedMessageIds = buildSet {
+            recordMessages.forEach { (message, record) ->
+                addAll(record.messageIds)
+                if (!record.standalone) add(message.id.toString())
+            }
+        }
+        val audioUris = recordMessages
+            .flatMap { (_, record) ->
+                record.audioSegments + record.audioSegmentsByMessageId.values.flatten()
+            }
+            .map { it.audioUri }
+            .distinct()
+            .map(String::toUri)
+
+        val updatedNodes = conversation.messageNodes.mapNotNull { node ->
+            val remainingMessages = node.messages.filterNot { message ->
+                message.id.toString() in linkedMessageIds ||
+                    message.voiceCallRecord()?.callId == callId
+            }
+            if (remainingMessages.isEmpty()) {
+                null
+            } else {
+                node.copy(
+                    messages = remainingMessages,
+                    selectIndex = node.selectIndex.coerceAtMost(remainingMessages.lastIndex),
+                )
+            }
+        }
+        saveConversation(
+            conversationId,
+            conversation.copy(messageNodes = updatedNodes),
+        )
+        filesManager.deleteChatFiles(audioUris)
+    }
+
     private fun buildConversationAfterMessageDelete(
         conversation: Conversation,
         messageId: Uuid,
@@ -6253,6 +6863,40 @@ class ChatService(
         }
 
         updateConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
+    }
+
+    fun clearVoiceCallTranslation(
+        conversationId: Uuid,
+        messageId: Uuid,
+        bubbleKey: String,
+        clearLegacyTranslation: Boolean,
+    ) {
+        appScope.launch(Dispatchers.IO) {
+            updateVoiceCallTranslationField(
+                conversationId = conversationId,
+                messageId = messageId,
+                bubbleKey = bubbleKey,
+                translationText = null,
+                clearLegacyTranslation = clearLegacyTranslation,
+            )
+            saveConversation(conversationId, getConversationFlow(conversationId).value)
+        }
+    }
+
+    fun clearChatVoiceSegmentTranslation(
+        conversationId: Uuid,
+        messageId: Uuid,
+        segmentIndex: Int,
+    ) {
+        appScope.launch(Dispatchers.IO) {
+            updateChatVoiceSegmentTranslation(
+                conversationId = conversationId,
+                messageId = messageId,
+                segmentIndex = segmentIndex,
+                translationText = null,
+            )
+            saveConversation(conversationId, getConversationFlow(conversationId).value)
+        }
     }
 
     /** Stop acknowledgement is not a join. Retain ephemeral state until both authorities settle. */

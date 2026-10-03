@@ -59,7 +59,9 @@ data class UIMessage(
      * so "why did this reply stop mid-sentence" survives an app restart. Null on messages
      * that predate this field or ended without a terminal observation.
      */
-    val terminal: GenerationTerminal? = null
+    val terminal: GenerationTerminal? = null,
+    /** Per-bubble voice-call translation cache (jude voice-call port). */
+    val voiceCallTranslations: Map<String, String> = emptyMap()
 ) {
     private fun appendChunk(chunk: MessageChunk): UIMessage {
         val choice = chunk.choices.getOrNull(0)
@@ -935,7 +937,47 @@ sealed class UIMessageAnnotation {
         val audioSegmentsByMessageId: Map<String, List<VoiceCallAudioSegment>> = emptyMap(),
         val pendingEndedEvent: Boolean = false,
     ) : UIMessageAnnotation()
+
+    @Serializable
+    @SerialName("tts_audio")
+    data class TtsAudio(
+        val requestText: String,
+        val chunkText: String,
+        val audioUri: String,
+        val format: String,
+        val sampleRate: Int? = null,
+        val chunkIndex: Int = 0,
+        val totalChunks: Int = 1,
+    ) : UIMessageAnnotation()
+
+    @Serializable
+    @SerialName("chat_voice_reply")
+    data class ChatVoiceReply(
+        val segments: List<ChatVoiceReplySegment>,
+    ) : UIMessageAnnotation()
 }
+
+@Serializable
+enum class ChatVoiceReplySegmentType {
+    TEXT,
+    VOICE,
+}
+
+@Serializable
+data class ChatVoiceReplySegment(
+    val type: ChatVoiceReplySegmentType,
+    val text: String,
+    val audioSegments: List<ChatVoiceAudioSegment> = emptyList(),
+    val translation: String? = null,
+)
+
+@Serializable
+data class ChatVoiceAudioSegment(
+    val text: String,
+    val audioUri: String,
+    val format: String,
+    val sampleRate: Int? = null,
+)
 
 @Serializable
 data class VoiceCallAudioSegment(
