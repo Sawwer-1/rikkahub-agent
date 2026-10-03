@@ -1,5 +1,6 @@
 ---
 name: kitchen-adventure
+display_name: 厨房冒险
 description: 扮演一场文字冒险游戏的地下城主，故事发生在一个所有角色都是具有感知的厨房电器的世界里。当用户说 "start kitchen adventure" 时触发。
 compatibility: any
 auto_load: false

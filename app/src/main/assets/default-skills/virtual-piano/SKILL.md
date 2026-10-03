@@ -1,5 +1,6 @@
 ---
 name: virtual-piano
+display_name: 虚拟钢琴
 description: 在 webview 中显示一台可弹奏的 88 键虚拟钢琴，带有采样音符音频。
 compatibility: js
 auto_load: false

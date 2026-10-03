@@ -1,5 +1,6 @@
 ---
 name: agent-core
+display_name: 代理核心
 description: 设备端 RikkaHub 代理的运行手册。加载人格（SOUL）与周期感知循环（HEARTBEAT）；运行时工具目录是当前可用工具的唯一权威来源。
 auto_load: true
 auto_load_path: SOUL.md

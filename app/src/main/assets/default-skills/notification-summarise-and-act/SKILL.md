@@ -1,5 +1,6 @@
 ---
 name: notification-summarise-and-act
+display_name: 通知摘要与行动
 description: 读取最近 / 当前的通知流，按应用分组，总结实际发生了什么，并提出具体的下一步操作。用于用户问 "what's going on"、或离开手机几小时后回来的场景。
 allowed-tools: list_recent_notifications list_active_notifications dismiss_notification notification_action_click launch_app read_window_tree get_time_info
 ---

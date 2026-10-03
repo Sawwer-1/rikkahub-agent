@@ -1,5 +1,6 @@
 ---
 name: auto-reply
+display_name: 自动回复
 description: 代替用户回复任意聊天应用中的来信。读取可见对话，起草符合语境的回复并发送。组合了通知监听、无障碍点击/滚动/读取工具，以及返回主屏的全局操作。
 allowed-tools: list_recent_notifications list_active_notifications launch_app read_window_tree find_node click_node set_text scroll global_action take_screenshot
 ---

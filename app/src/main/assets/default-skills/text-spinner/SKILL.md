@@ -1,5 +1,6 @@
 ---
 name: text-spinner
+display_name: 3D 文字旋转
 description: 在 webview 中渲染一个 3D 旋转的文字标签。返回聊天界面可嵌入的相对 webview URL。
 compatibility: js
 auto_load: false

@@ -1,5 +1,6 @@
 ---
 name: interactive-map
+display_name: 交互式地图
 description: 为某个地点显示可交互的 Google Maps 嵌入地图。返回聊天界面可渲染的 webview URL。
 compatibility: js
 auto_load: false

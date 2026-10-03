@@ -1,5 +1,6 @@
 ---
 name: qr-code
+display_name: 二维码生成
 description: 为给定 URL 生成 512x512 的二维码 PNG。返回 base64 编码的图片。需要联网（从 cdnjs 加载 qrcode.js）。
 compatibility: js
 auto_load: false

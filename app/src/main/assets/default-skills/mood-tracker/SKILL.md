@@ -1,5 +1,6 @@
 ---
 name: mood-tracker
+display_name: 心情追踪
 description: 记录每日 1-10 分的心情评分与备注，并查看趋势仪表盘。历史数据存储在 WebView localStorage 中。
 compatibility: js
 auto_load: false

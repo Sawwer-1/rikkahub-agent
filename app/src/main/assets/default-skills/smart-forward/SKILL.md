@@ -1,5 +1,6 @@
 ---
 name: smart-forward
+display_name: 智能转发
 description: 捕获某个应用的通知，并将其内容转发给另一应用中的联系人（通常是 Telegram），附上一句收件人可直接照做的摘要。适用于分享验证码、快递追踪更新、新闻提醒，或"你看到这个了吗"这类时刻。
 allowed-tools: list_recent_notifications notification_action_click launch_app read_window_tree find_node click_node set_text take_screenshot telegram_send_message global_action
 ---
