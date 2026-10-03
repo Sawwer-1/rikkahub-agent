@@ -355,6 +355,7 @@ fun deleteJobTool(
     repo: ScheduledJobRepository,
     runRepo: ScheduledJobRunRepository,
     scheduler: CronJobScheduler,
+    callerAssistantId: String? = null,
 ): Tool = Tool(
     name = "delete_job",
     description = "Permanently delete a scheduled job and its run history.".trimIndent(),
@@ -369,6 +370,19 @@ fun deleteJobTool(
     execute = { input ->
         val id = input.jsonObject["id"]?.jsonPrimitive?.contentOrNull
             ?: return@Tool textPart(errEnvelope("missing_id", "id is required"))
+        val job = repo.getById(id)
+            ?: return@Tool textPart(errEnvelope("not_found", "no job with id '$id'"))
+        // Ownership guard: an assistant may only delete jobs it owns. Jobs created
+        // before caller identity existed (assistantId blank) stay deletable to avoid
+        // orphaned rows that nothing can remove.
+        if (callerAssistantId != null && job.assistantId.isNotBlank() &&
+            job.assistantId != callerAssistantId
+        ) {
+            return@Tool textPart(errEnvelope(
+                "forbidden",
+                "job '$id' belongs to a different assistant; only its owner can delete it",
+            ))
+        }
         scheduler.cancel(id)
         runRepo.deleteAllForJob(id)
         repo.deleteById(id)
