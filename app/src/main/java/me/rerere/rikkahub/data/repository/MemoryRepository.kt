@@ -8,6 +8,7 @@ import me.rerere.rikkahub.data.db.dao.MemoryV2Dao
 import me.rerere.rikkahub.data.db.entity.MemoryEntity
 import me.rerere.rikkahub.data.db.entity.MemoryRelationCandidateEntity
 import me.rerere.rikkahub.data.model.AssistantMemory
+import me.rerere.rikkahub.data.model.MemoryScope
 import me.rerere.rikkahub.memory.MemoryApprovalSource
 import me.rerere.rikkahub.memory.MemoryMutationCommand
 import me.rerere.rikkahub.memory.MemoryMutationCoordinator
@@ -559,6 +560,10 @@ private val OWNER_IDENTIFIER_PATTERN = Regex("[A-Za-z0-9._:-]{1,128}")
 private val RELATION_TYPE_PATTERN = Regex("[A-Z][A-Z0-9_]{0,63}")
 private fun isValidRelationReviewScope(scopeId: String): Boolean =
     scopeId == MemoryRepository.GLOBAL_MEMORY_ID ||
+        // Conversation-level scopes carry no long-line relation reviews (extraction excludes
+        // them), but the repository still answers the query with an empty set instead of
+        // rejecting the whole lookup.
+        MemoryScope.conversationKeyOrNull(scopeId) != null ||
         runCatching { kotlin.uuid.Uuid.parse(scopeId).toString() == scopeId }.getOrDefault(false)
 
 private fun MemoryEntity.toAssistantMemory(): AssistantMemory = AssistantMemory(
