@@ -3139,4 +3139,11 @@
   <string name="setting_page_preferences_network_auto_retry_desc">Automatically retry failed model requests using the attempt limit below.</string>
   <string name="setting_page_preferences_network_max_retries">Stream retry attempts</string>
   <string name="setting_page_preferences_network_max_retries_desc">Maximum retries for a failed streaming response (0-10).</string>
+  <string name="assistant_page_local_tools_section_social">Social</string>
+  <string name="assistant_page_local_tools_moments_title">Moments</string>
+  <string name="assistant_page_local_tools_moments_desc">Let this assistant post to or delete from its own Moments timeline (post_moment / delete_moment). Posts appear in the Moments view for this assistant.</string>
+  <string name="assistant_page_local_tools_question_box_title">Question box</string>
+  <string name="assistant_page_local_tools_question_box_desc">Let this assistant publish or remove anonymous questions in its question box (post_anonymous_question / delete_anonymous_question).</string>
+  <string name="voice_master_title">Enable voice features</string>
+  <string name="voice_master_desc">Master switch for TTS / ASR and voice entries. When off, voice quick entries (chat top-bar voice call, attachment-sheet voice, input mic) are hidden.</string>
 </resources>

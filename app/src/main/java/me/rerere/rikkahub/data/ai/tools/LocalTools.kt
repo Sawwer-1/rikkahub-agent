@@ -266,6 +266,8 @@ sealed class LocalToolOption {
     @Serializable @SerialName("phone_actions")          data object PhoneActions         : LocalToolOption()
     @Serializable @SerialName("keyboard_control")     data object KeyboardControl     : LocalToolOption()
     @Serializable @SerialName("package_management")  data object PackageManagement  : LocalToolOption()
+    @Serializable @SerialName("moments")             data object Moments            : LocalToolOption()
+    @Serializable @SerialName("question_box")        data object QuestionBox        : LocalToolOption()
 
     companion object {
         /**
@@ -285,7 +287,7 @@ sealed class LocalToolOption {
             JsSkills, SystemIntents, Browser, WebFetch, SmsSend, Wallpaper, Keystore, Nfc,
             ExternalStorage, Archive, Alarm, MediaLibrary, MediaWrite, BluetoothDevices,
             NearbyDevices, ExternalPrivilegeBridge, StepCounter, ExportConversation,
-            PhoneActions, KeyboardControl, PackageManagement,
+            PhoneActions, KeyboardControl, PackageManagement, Moments, QuestionBox,
             )
     }
 }
@@ -1919,17 +1921,21 @@ class LocalTools(
         // Moments + anonymous question box (ported from jude, batch 3). Isolation key is the
         // calling assistant: ToolInvocationContext.callerAssistantId, aligned with
         // MomentRepository.observeTimeline's per-assistant key. Without a caller assistant
-        // there is no scope to write into, so the tools must not register (jude gated these
-        // on per-assistant toggles that both defaulted to enabled; here availability tracks
-        // the caller context instead, no Assistant-model or ChatService changes needed).
+        // there is no scope to write into, so the tools must not register. Gated on the
+        // assistant's Moments / QuestionBox local-tool switches (seeded enabled for
+        // existing assistants, matching jude's default-enabled toggles).
         val momentAssistantId = invocationContext.callerAssistantId
             ?.takeIf(String::isNotBlank)
             ?.let { runCatching { Uuid.parse(it) }.getOrNull() }
         if (momentAssistantId != null) {
-            tools.add(postMomentTool(momentAssistantId))
-            tools.add(deleteMomentTool(momentAssistantId))
-            tools.add(postAnonymousQuestionTool(momentAssistantId))
-            tools.add(deleteAnonymousQuestionTool(momentAssistantId))
+            if (options.contains(LocalToolOption.Moments)) {
+                tools.add(postMomentTool(momentAssistantId))
+                tools.add(deleteMomentTool(momentAssistantId))
+            }
+            if (options.contains(LocalToolOption.QuestionBox)) {
+                tools.add(postAnonymousQuestionTool(momentAssistantId))
+                tools.add(deleteAnonymousQuestionTool(momentAssistantId))
+            }
         }
         // Centralised opt-in to needsApproval. Tool factories themselves don't have to know
         // whether their op is destructive — ToolApprovalDefaults is the single source of

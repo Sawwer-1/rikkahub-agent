@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import me.rerere.rikkahub.ui.components.ui.CardGroup
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.BottomSheetDefaults
@@ -41,6 +42,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -145,20 +147,36 @@ fun SettingSpeechPage(vm: SettingVM = koinViewModel()) {
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = CustomColors.topBarColors.containerColor,
     ) { innerPadding ->
-        when (selectedPage) {
-            0 -> TTSProviderList(
-                settings = settings,
-                onUpdateSettings = vm::updateSettings,
-                onEdit = { editingTTSProvider = it },
-                modifier = Modifier.padding(innerPadding)
-            )
+        Column(modifier = Modifier.padding(innerPadding)) {
+            CardGroup(modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
+                item(
+                    headlineContent = { Text(stringResource(R.string.voice_master_title)) },
+                    supportingContent = { Text(stringResource(R.string.voice_master_desc)) },
+                    trailingContent = {
+                        Switch(
+                            checked = settings.voiceFeaturesEnabled,
+                            onCheckedChange = { enabled ->
+                                vm.updateSettings(settings.copy(voiceFeaturesEnabled = enabled))
+                            }
+                        )
+                    }
+                )
+            }
+            when (selectedPage) {
+                0 -> TTSProviderList(
+                    settings = settings,
+                    onUpdateSettings = vm::updateSettings,
+                    onEdit = { editingTTSProvider = it },
+                    modifier = Modifier.weight(1f)
+                )
 
-            1 -> ASRProviderList(
-                settings = settings,
-                onUpdateSettings = vm::updateSettings,
-                onEdit = { editingASRProvider = it },
-                modifier = Modifier.padding(innerPadding)
-            )
+                1 -> ASRProviderList(
+                    settings = settings,
+                    onUpdateSettings = vm::updateSettings,
+                    onEdit = { editingASRProvider = it },
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
 

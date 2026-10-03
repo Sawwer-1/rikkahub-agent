@@ -109,6 +109,8 @@ enum class CapabilityId {
     NearbyDevices,
     HealthSensors,
     PackageManagement,
+    Moments,
+    QuestionBox,
     DeviceAdmin,
     VpnControl,
     MediaProjection,
