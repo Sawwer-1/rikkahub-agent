@@ -111,11 +111,15 @@ internal fun TTSProviderSetting.configurationError(): ChatVoiceReplyError? {
         is TTSProviderSetting.OpenAI -> remoteConfigurationError(apiKey, baseUrl, model, voice)
         is TTSProviderSetting.Gemini -> remoteConfigurationError(apiKey, baseUrl, model, voiceName)
         is TTSProviderSetting.MiniMax -> remoteConfigurationError(apiKey, baseUrl, model, voiceId)
+        is TTSProviderSetting.Aura -> remoteConfigurationError(apiKey, baseUrl, model, voice)
         is TTSProviderSetting.Qwen -> remoteConfigurationError(apiKey, baseUrl, model, voice)
         is TTSProviderSetting.Groq -> remoteConfigurationError(apiKey, baseUrl, model, voice)
         is TTSProviderSetting.XAI -> remoteConfigurationError(apiKey, baseUrl, voice = voiceId)
         is TTSProviderSetting.ElevenLabs -> remoteConfigurationError(apiKey, baseUrl, model, voiceId)
         is TTSProviderSetting.MiMo -> remoteConfigurationError(apiKey, baseUrl, model, voice)
+        // GenericHttp providers carry their own endpoint template; blank runtimeSecret is
+        // legitimate for unauthenticated endpoints, so there is nothing to pre-validate here.
+        is TTSProviderSetting.GenericHttp -> null
     }
 }
 

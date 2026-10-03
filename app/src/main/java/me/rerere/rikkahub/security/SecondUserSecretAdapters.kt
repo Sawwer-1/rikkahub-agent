@@ -190,6 +190,7 @@ private fun TTSProviderSetting.withVaultApiKey(chars: CharArray): TTSProviderSet
     is TTSProviderSetting.Qwen -> copy(apiKey = chars.concatToString())
     is TTSProviderSetting.Groq -> copy(apiKey = chars.concatToString())
     is TTSProviderSetting.XAI -> copy(apiKey = chars.concatToString())
+    is TTSProviderSetting.ElevenLabs -> copy(apiKey = chars.concatToString())
     is TTSProviderSetting.MiMo -> copy(apiKey = chars.concatToString())
     is TTSProviderSetting.SystemTTS -> null
     is TTSProviderSetting.GenericHttp -> copy(runtimeSecret = chars.concatToString())

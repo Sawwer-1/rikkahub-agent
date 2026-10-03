@@ -201,14 +201,10 @@ import me.rerere.rikkahub.data.ai.tools.REQUEST_VOICE_CALL_TOOL_NAME
 import me.rerere.rikkahub.data.datastore.getSelectedTTSProvider
 import me.rerere.rikkahub.data.voice.VOICE_CALL_UNAVAILABLE_MESSAGE
 import me.rerere.rikkahub.data.voice.ChatVoiceReplyMaterializer
-import me.rerere.rikkahub.data.voice.inspectChatVoiceReplyMaterialization
-import me.rerere.rikkahub.data.voice.toDiagnosticDetails
 import me.rerere.rikkahub.data.voice.chatVoiceReply
 import me.rerere.rikkahub.data.voice.updateChatVoiceReplySegment
 import me.rerere.rikkahub.data.voice.VoiceCallCompletion
-import me.rerere.rikkahub.data.voice.isStandaloneVoiceCallRecord
 import me.rerere.rikkahub.data.voice.voiceCallRecord
-import me.rerere.rikkahub.data.voice.voiceCallRecordNodeIdsFullyCoveredBy
 import me.rerere.rikkahub.data.voice.VoiceCallAudioTagFormat
 import me.rerere.rikkahub.data.voice.VoiceCallAudioTagSelectionResult
 import me.rerere.rikkahub.data.voice.VoiceCallTaggingFallbackReason
@@ -227,7 +223,6 @@ import me.rerere.rikkahub.data.voice.voiceCallAudioTagAssignmentsOrEmpty
 import me.rerere.rikkahub.data.voice.withIncrementalVoiceCallAudioTagAssignments
 import me.rerere.rikkahub.data.voice.withoutVoiceCallAudioTagsForNormalContext
 import me.rerere.rikkahub.data.voice.sanitizeVoiceCallTextForTranslation
-import me.rerere.rikkahub.data.voice.sanitizeVoiceCallTextForOutput
 
 private const val TAG = "ChatService"
 private const val FAST_PATH_TOOL_BUDGET_MS = 30_000L
@@ -5132,7 +5127,18 @@ class ChatService(
                         conversation = getConversationFlow(conversationId).value,
                         generationBaseMessageIds = generationBaseMessageIds,
                         settings = settings,
-                        onUpdate = { updateConversation(conversationId, it) },
+                        onUpdate = { materialized ->
+                            updateConversation(conversationId, materialized)
+                            // The final save for this turn already happened above, so the
+                            // materialized voice bubbles must be persisted explicitly or
+                            // they vanish on process restart.
+                            saveConversation(
+                                conversationId = conversationId,
+                                conversation = materialized,
+                                sourceInvalidationMode = persistenceSourceInvalidationMode,
+                                sourceInvalidationNowMs = persistenceSourceInvalidationNowMs,
+                            )
+                        },
                     )
                 }.onFailure { error ->
                     if (error is CancellationException) throw error

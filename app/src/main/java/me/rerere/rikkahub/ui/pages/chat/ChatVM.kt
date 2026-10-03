@@ -603,15 +603,21 @@ class ChatVM(
         viewModelScope.launch { reportSubmitResult(chatService.selectMessageVersion(_conversationId, nodeId, messageId)) }
     }
 
-    /** 就地变换一条消息（TTS 音频标注持久化用，jude 移植） */
+    /** 就地变换一条消息（TTS 音频标注持久化用，jude 移植）——变换后必须落盘，否则重启即丢 */
     fun updateMessage(messageId: Uuid, transform: (UIMessage) -> UIMessage) {
-        chatService.updateConversationState(_conversationId) { current ->
-            current.copy(
-                messageNodes = current.messageNodes.map { node ->
-                    node.copy(messages = node.messages.map { m ->
-                        if (m.id == messageId) transform(m) else m
-                    })
-                }
+        viewModelScope.launch {
+            chatService.updateConversationState(_conversationId) { current ->
+                current.copy(
+                    messageNodes = current.messageNodes.map { node ->
+                        node.copy(messages = node.messages.map { m ->
+                            if (m.id == messageId) transform(m) else m
+                        })
+                    }
+                )
+            }
+            chatService.saveConversation(
+                _conversationId,
+                chatService.getConversationFlow(_conversationId).value,
             )
         }
     }

@@ -310,7 +310,9 @@ class SettingsStore(
                 voiceCallAudioTagConfig = preferences[VOICE_CALL_AUDIO_TAG_CONFIG]?.let { value ->
                     runCatching { JsonInstant.decodeFromString<VoiceCallAudioTagConfig>(value) }.getOrNull()
                 } ?: VoiceCallAudioTagConfig(),
-                voiceCallAudioTagModelId = preferences[VOICE_CALL_AUDIO_TAG_MODEL]?.let { Uuid.parse(it) },
+                voiceCallAudioTagModelId = preferences[VOICE_CALL_AUDIO_TAG_MODEL]?.let { value ->
+                    runCatching { Uuid.parse(value) }.getOrNull()
+                },
                 finalAnswerReminderPrompt = resolveFinalAnswerReminderPrompt(
                     preferences[FINAL_ANSWER_REMINDER_PROMPT],
                 ),

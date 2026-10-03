@@ -17,7 +17,7 @@ class ChatVoiceReplyMaterializer(
     suspend fun materialize(
         conversation: Conversation,
         generationBaseMessageIds: Set<Uuid>,
-        onUpdate: (Conversation) -> Unit,
+        onUpdate: suspend (Conversation) -> Unit,
         settings: Settings,
     ) {
         val currentMessages = conversation.currentMessages

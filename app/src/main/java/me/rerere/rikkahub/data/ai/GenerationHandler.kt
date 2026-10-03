@@ -1484,7 +1484,18 @@ class GenerationHandler(
                             val recoveryAddedTool = recoveredMessages.last().parts
                                 .drop(recoveryBase.last().parts.size)
                                 .any { it is UIMessagePart.Tool }
-                            if (recoveryOutcome == GenerationOutcome.Completed && !recoveryAddedTool) {
+                            // mergeVisibleAnswer requires genuinely appended visible text; a
+                            // continuation attempt that returns nothing (empty/whitespace on
+                            // top of an already-visible truncated tail) must fall through to
+                            // the normal failure accounting instead of throwing.
+                            val recoveryAddedVisibleText = recoveredMessages.last().parts
+                                .drop(recoveryBase.last().parts.size)
+                                .any { part ->
+                                    part is UIMessagePart.Text && part.text.isNotBlank()
+                                }
+                            if (recoveryOutcome == GenerationOutcome.Completed &&
+                                !recoveryAddedTool && recoveryAddedVisibleText
+                            ) {
                                 val recoveredFinalMessage =
                                     FinalAnswerRecoveryMessagePolicy.mergeVisibleAnswer(
                                         original = recoveryBase.last(),
