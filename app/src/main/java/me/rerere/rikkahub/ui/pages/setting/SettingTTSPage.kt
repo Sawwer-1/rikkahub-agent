@@ -372,6 +372,7 @@ private fun TTSProviderItem(
                             is TTSProviderSetting.Qwen -> "Qwen"
                             is TTSProviderSetting.Groq -> "Groq"
                             is TTSProviderSetting.XAI -> "xAI"
+                            is TTSProviderSetting.ElevenLabs -> "ElevenLabs"
                             is TTSProviderSetting.MiMo -> "MiMo"
                             is TTSProviderSetting.GenericHttp -> stringResource(R.string.setting_tts_page_provider_generic_http)
                         },

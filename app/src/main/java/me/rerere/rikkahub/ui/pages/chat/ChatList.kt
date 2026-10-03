@@ -142,11 +142,14 @@ fun ChatList(
     onForkMessage: (UIMessage) -> Unit = {},
     onDelete: (UIMessage) -> Unit = {},
     onUpdateMessage: (kotlin.uuid.Uuid, kotlin.uuid.Uuid) -> Unit = { _, _ -> },
+    onUpdateTtsMessage: (messageId: Uuid, transform: (UIMessage) -> UIMessage) -> Unit = { _, _ -> },
     onHelpfulFeedback: ((UIMessage) -> Unit)? = null,
     onNotHelpfulFeedback: ((UIMessage) -> Unit)? = null,
     onClickSuggestion: (String) -> Unit = {},
     onTranslate: ((UIMessage, java.util.Locale) -> Unit)? = null,
     onClearTranslation: (UIMessage) -> Unit = {},
+    onTranslateChatVoiceSegment: ((UIMessage, Int, String, java.util.Locale) -> Unit)? = null,
+    onClearChatVoiceSegmentTranslation: ((UIMessage, Int) -> Unit)? = null,
     onJumpToMessage: (Int) -> Unit = {},
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String, scope: me.rerere.rikkahub.service.ChatService.ApprovalScope, toolName: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
@@ -154,6 +157,7 @@ fun ChatList(
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
     onAddSelectionToMemory: (Set<Uuid>) -> Unit = {},
     showCompressedMessages: Boolean = false,
+    onOpenVoiceCallRecord: ((String) -> Unit)? = null,
 ) {
     AnimatedContent(
         targetState = previewMode,
@@ -188,11 +192,14 @@ fun ChatList(
                 onForkMessage = onForkMessage,
                 onDelete = onDelete,
                 onUpdateMessage = onUpdateMessage,
+                onUpdateTtsMessage = onUpdateTtsMessage,
                 onHelpfulFeedback = onHelpfulFeedback,
                 onNotHelpfulFeedback = onNotHelpfulFeedback,
                 onClickSuggestion = onClickSuggestion,
                 onTranslate = onTranslate,
                 onClearTranslation = onClearTranslation,
+                onTranslateChatVoiceSegment = onTranslateChatVoiceSegment,
+                onClearChatVoiceSegmentTranslation = onClearChatVoiceSegmentTranslation,
                 animatedVisibilityScope = this@AnimatedContent,
                 onToolApproval = onToolApproval,
                 onToolAnswer = onToolAnswer,
@@ -200,6 +207,7 @@ fun ChatList(
                 onConversationSystemPromptChange = onConversationSystemPromptChange,
                 onAddSelectionToMemory = onAddSelectionToMemory,
                 showCompressedMessages = showCompressedMessages,
+                onOpenVoiceCallRecord = onOpenVoiceCallRecord,
             )
         }
     }
@@ -222,11 +230,14 @@ private fun ChatListNormal(
     onForkMessage: (UIMessage) -> Unit,
     onDelete: (UIMessage) -> Unit,
     onUpdateMessage: (kotlin.uuid.Uuid, kotlin.uuid.Uuid) -> Unit,
+    onUpdateTtsMessage: (messageId: Uuid, transform: (UIMessage) -> UIMessage) -> Unit,
     onHelpfulFeedback: ((UIMessage) -> Unit)?,
     onNotHelpfulFeedback: ((UIMessage) -> Unit)?,
     onClickSuggestion: (String) -> Unit,
     onTranslate: ((UIMessage, java.util.Locale) -> Unit)?,
     onClearTranslation: (UIMessage) -> Unit,
+    onTranslateChatVoiceSegment: ((UIMessage, Int, String, java.util.Locale) -> Unit)? = null,
+    onClearChatVoiceSegmentTranslation: ((UIMessage, Int) -> Unit)? = null,
     animatedVisibilityScope: AnimatedVisibilityScope,
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String, scope: me.rerere.rikkahub.service.ChatService.ApprovalScope, toolName: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
@@ -234,6 +245,7 @@ private fun ChatListNormal(
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
     onAddSelectionToMemory: (Set<Uuid>) -> Unit = {},
     showCompressedMessages: Boolean = false,
+    onOpenVoiceCallRecord: ((String) -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     // 滚动摘要压缩：默认只显示可见节点；眼睛按钮打开时显示被压缩的原始消息。
@@ -439,6 +451,7 @@ private fun ChatListNormal(
                             onUpdate = { nodeId, messageId ->
                                 onUpdateMessage(nodeId, messageId)
                             },
+                            onUpdateTtsMessage = onUpdateTtsMessage,
                             onHelpfulFeedback = onHelpfulFeedback,
                             onNotHelpfulFeedback = onNotHelpfulFeedback,
                             isFavorite = node.isFavorite,
@@ -447,8 +460,11 @@ private fun ChatListNormal(
                             },
                             onTranslate = onTranslate,
                             onClearTranslation = onClearTranslation,
+                            onTranslateChatVoiceSegment = onTranslateChatVoiceSegment,
+                            onClearChatVoiceSegmentTranslation = onClearChatVoiceSegmentTranslation,
                             onToolApproval = onToolApproval,
                             onToolAnswer = onToolAnswer,
+                            onOpenVoiceCallRecord = onOpenVoiceCallRecord,
                             lastMessage = index == lastMessageIndex,
                             agentTiming = messageTiming,
                             agentTimingDrawMarker = timingDrawMarker,

@@ -54,6 +54,11 @@ class TtsController(
     private val cache = java.util.concurrent.ConcurrentHashMap<UUID, kotlinx.coroutines.Deferred<TTSResponse>>()
     private var lastPrefetchedIndex: Int = -1
 
+    // 语音通话：整段缓存音频队列与合成回调（按 chunk id 关联）
+    private val cachedAudioQueue: java.util.concurrent.ConcurrentLinkedQueue<TTSResponse> = java.util.concurrent.ConcurrentLinkedQueue()
+    private val audioReadyCallbacks = java.util.concurrent.ConcurrentHashMap<UUID, suspend (TTSResponse) -> Unit>()
+    private val audioReadyWithChunkCallbacks = java.util.concurrent.ConcurrentHashMap<UUID, ChunkAudioCallback>()
+
     // 行为参数
     private val chunkDelayMs = 120L
     private val prefetchCount = 4
@@ -61,6 +66,9 @@ class TtsController(
     // 状态流（保留与旧版兼容的 StateFlow）
     private val _isAvailable = MutableStateFlow(false)
     val isAvailable: StateFlow<Boolean> = _isAvailable.asStateFlow()
+
+    private val _isProviderReady = MutableStateFlow(false)
+    val isProviderReady: StateFlow<Boolean> = _isProviderReady.asStateFlow()
 
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking: StateFlow<Boolean> = _isSpeaking.asStateFlow()
@@ -97,6 +105,7 @@ class TtsController(
     fun setProvider(provider: TTSProviderSetting?) {
         currentProvider = provider
         _isAvailable.update { provider != null }
+        _isProviderReady.update { true }
         if (provider == null) stop()
     }
 
@@ -105,7 +114,14 @@ class TtsController(
      * - flush=true: 清空当前进度并重新开始
      * - flush=false: 继续队列，追加朗读
      */
-    fun speak(text: String, flush: Boolean = true) {
+    fun speak(
+        text: String,
+        flush: Boolean = true,
+        chunked: Boolean = true,
+        onAudioReady: (suspend (TTSResponse) -> Unit)? = null,
+        onAudioReadyWithChunk: (suspend (TtsChunk, Int, Int, TTSResponse) -> Unit)? = null,
+        emotion: String? = null,
+    ) {
         if (text.isBlank()) return
         val provider = currentProvider
         if (provider == null) {
@@ -113,7 +129,11 @@ class TtsController(
             return
         }
 
-        val newChunks = chunker.split(text)
+        val newChunks = if (chunked) {
+            chunker.split(text).map { chunk -> chunk.copy(emotion = emotion) }
+        } else {
+            listOf(TtsChunk(text = text.trim(), index = 0, emotion = emotion))
+        }
         if (newChunks.isEmpty()) return
 
         if (flush) {
@@ -127,6 +147,21 @@ class TtsController(
             val remapped = newChunks.mapIndexed { i, c -> c.copy(index = startIndex + i) }
             allChunks.addAll(remapped)
             queue.addAll(remapped)
+        }
+
+        onAudioReady?.let { callback ->
+            newChunks.forEach { chunk ->
+                audioReadyCallbacks[chunk.id] = callback
+            }
+        }
+        onAudioReadyWithChunk?.let { callback ->
+            newChunks.forEachIndexed { index, chunk ->
+                audioReadyWithChunkCallbacks[chunk.id] = ChunkAudioCallback(
+                    callback = callback,
+                    chunkIndex = index,
+                    totalChunks = newChunks.size,
+                )
+            }
         }
         _totalChunks.update { queue.size }
         _error.update { null }
@@ -143,6 +178,34 @@ class TtsController(
         prefetchFrom((_currentChunk.value).coerceAtLeast(0))
     }
 
+    /** 播放一段已缓存的合成音频（语音通话回放用） */
+    fun playCachedAudio(response: TTSResponse) {
+        playCachedAudioSequence(listOf(response), flush = true)
+    }
+
+    fun playCachedAudioSequence(responses: List<TTSResponse>, flush: Boolean = true) {
+        if (responses.isEmpty()) return
+        if (flush) stop()
+        cachedAudioQueue.addAll(responses)
+        if (workerJob?.isActive == true) return
+        workerJob = scope.launch {
+            _isSpeaking.update { true }
+            try {
+                while (isActive) {
+                    val response = cachedAudioQueue.poll() ?: break
+                    audio.play(response)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Cached audio sequence playback error", e)
+                _error.update { e.message ?: "Audio playback error" }
+            } finally {
+                _isSpeaking.update { false }
+            }
+        }
+    }
+
     private fun internalReset() {
         // Reset current session while keeping provider availability
         workerJob?.cancel()
@@ -150,9 +213,12 @@ class TtsController(
         audio.clear()
         isPaused = false
         queue.clear()
+        cachedAudioQueue.clear()
         allChunks.clear()
         cache.values.forEach { it.cancel(CancellationException("Reset")) }
         cache.clear()
+        audioReadyCallbacks.clear()
+        audioReadyWithChunkCallbacks.clear()
         lastPrefetchedIndex = -1
         _isSpeaking.update { false }
         _currentChunk.update { 0 }
@@ -200,9 +266,12 @@ class TtsController(
         audio.clear()
         isPaused = false
         queue.clear()
+        cachedAudioQueue.clear()
         allChunks.clear()
         cache.values.forEach { it.cancel(CancellationException("Stopped")) }
         cache.clear()
+        audioReadyCallbacks.clear()
+        audioReadyWithChunkCallbacks.clear()
         lastPrefetchedIndex = -1
         _isSpeaking.update { false }
         _currentChunk.update { 0 }
@@ -262,6 +331,10 @@ class TtsController(
 
                     // 播放
                     try {
+                        audioReadyCallbacks.remove(chunk.id)?.invoke(response)
+                        audioReadyWithChunkCallbacks.remove(chunk.id)?.let { callback ->
+                            callback.callback(chunk, callback.chunkIndex, callback.totalChunks, response)
+                        }
                         audio.play(response)
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
@@ -307,5 +380,11 @@ class TtsController(
             // 可按需保留缓存（此处保留，便于重播/重试）
         }
     }
+
+    private data class ChunkAudioCallback(
+        val callback: suspend (TtsChunk, Int, Int, TTSResponse) -> Unit,
+        val chunkIndex: Int,
+        val totalChunks: Int,
+    )
     // endregion
 }

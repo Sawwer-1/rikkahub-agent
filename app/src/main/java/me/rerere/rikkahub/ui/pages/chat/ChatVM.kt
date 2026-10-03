@@ -53,10 +53,12 @@ import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.data.model.NodeFavoriteTarget
+import me.rerere.rikkahub.data.voice.VoiceCallCompletion
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.ConversationDeletionResult
 import me.rerere.rikkahub.data.repository.FavoriteRepository
 import me.rerere.rikkahub.service.ChatError
+import me.rerere.rikkahub.service.ChatRequestMode
 import me.rerere.rikkahub.service.ChatService
 import me.rerere.rikkahub.service.MessageQueueState
 import me.rerere.rikkahub.service.QueuedMessage
@@ -314,7 +316,12 @@ class ChatVM(
      * @param content 消息内容
      * @param answer 是否触发消息生成，如果为false，则仅添加消息到消息列表中
      */
-    fun handleMessageSend(content: List<UIMessagePart>, answer: Boolean = true) {
+    fun handleMessageSend(
+        content: List<UIMessagePart>,
+        answer: Boolean = true,
+        requestMode: ChatRequestMode = ChatRequestMode.Normal,
+        includeVoiceCallConnectedEvent: Boolean = false,
+    ) {
         if (content.isEmptyInputMessage()) return
         val agentTimingSubmission = chatService.beginAgentTimingSubmission(_conversationId)
 
@@ -326,6 +333,8 @@ class ChatVM(
                     answer = answer,
                     origin = CommandOrigin.APP_UI,
                     agentTimingSubmission = agentTimingSubmission,
+                    requestMode = requestMode,
+                    includeVoiceCallConnectedEvent = includeVoiceCallConnectedEvent,
                 )
             )
         }
@@ -521,6 +530,12 @@ class ChatVM(
         }
     }
 
+    fun deleteVoiceCallRecord(callId: String) {
+        viewModelScope.launch {
+            chatService.deleteVoiceCallRecord(_conversationId, callId)
+        }
+    }
+
     fun showDeleteBlockedWhileGeneratingError() {
         chatService.addError(
             error = IllegalStateException(context.getString(R.string.chat_stop_generation_before_delete)),
@@ -567,6 +582,10 @@ class ChatVM(
         chatService.handleToolApproval(_conversationId, toolCallId, approved = true, answer = answer)
     }
 
+    fun reportVoiceCallClosed(toolCallId: String?, failureMessage: String? = null, voiceCallCompletion: VoiceCallCompletion? = null) {
+        chatService.reportVoiceCallClosed(_conversationId, toolCallId, failureMessage, voiceCallCompletion)
+    }
+
     fun stopGeneration() {
         viewModelScope.launch {
             chatService.stopGeneration(_conversationId)
@@ -582,6 +601,19 @@ class ChatVM(
 
     fun selectMessageVersion(nodeId: Uuid, messageId: Uuid) {
         viewModelScope.launch { reportSubmitResult(chatService.selectMessageVersion(_conversationId, nodeId, messageId)) }
+    }
+
+    /** 就地变换一条消息（TTS 音频标注持久化用，jude 移植） */
+    fun updateMessage(messageId: Uuid, transform: (UIMessage) -> UIMessage) {
+        chatService.updateConversationState(_conversationId) { current ->
+            current.copy(
+                messageNodes = current.messageNodes.map { node ->
+                    node.copy(messages = node.messages.map { m ->
+                        if (m.id == messageId) transform(m) else m
+                    })
+                }
+            )
+        }
     }
 
     suspend fun deleteConversation(conversation: Conversation): ConversationDeletionResult =
@@ -618,6 +650,36 @@ class ChatVM(
         chatService.translateMessage(_conversationId, message, targetLanguage)
     }
 
+    fun translateVoiceCallBubble(
+        message: UIMessage,
+        bubbleKey: String,
+        sourceText: String,
+        targetLanguage: Locale,
+    ) {
+        chatService.translateVoiceCallBubble(
+            conversationId = _conversationId,
+            message = message,
+            bubbleKey = bubbleKey,
+            sourceText = sourceText,
+            targetLanguage = targetLanguage,
+        )
+    }
+
+    fun translateChatVoiceSegment(
+        message: UIMessage,
+        segmentIndex: Int,
+        sourceText: String,
+        targetLanguage: Locale,
+    ) {
+        chatService.translateChatVoiceSegment(
+            conversationId = _conversationId,
+            message = message,
+            segmentIndex = segmentIndex,
+            sourceText = sourceText,
+            targetLanguage = targetLanguage,
+        )
+    }
+
     fun generateTitle(conversation: Conversation, force: Boolean = false) {
         viewModelScope.launch {
             val conversationFull = conversationRepo.getConversationById(conversation.id) ?: return@launch
@@ -633,6 +695,23 @@ class ChatVM(
 
     fun clearTranslationField(messageId: Uuid) {
         chatService.clearTranslationField(_conversationId, messageId)
+    }
+
+    fun clearVoiceCallTranslation(messageId: Uuid, bubbleKey: String, clearLegacyTranslation: Boolean) {
+        chatService.clearVoiceCallTranslation(
+            conversationId = _conversationId,
+            messageId = messageId,
+            bubbleKey = bubbleKey,
+            clearLegacyTranslation = clearLegacyTranslation,
+        )
+    }
+
+    fun clearChatVoiceSegmentTranslation(messageId: Uuid, segmentIndex: Int) {
+        chatService.clearChatVoiceSegmentTranslation(
+            conversationId = _conversationId,
+            messageId = messageId,
+            segmentIndex = segmentIndex,
+        )
     }
 
     fun toggleMessageFavorite(node: MessageNode) {
