@@ -203,6 +203,7 @@ object CapabilityCatalog {
         LocalToolOption.PackageManagement to setOf("install_apk"),
         LocalToolOption.Moments to setOf("post_moment", "delete_moment"),
         LocalToolOption.QuestionBox to setOf("post_anonymous_question", "delete_anonymous_question"),
+        LocalToolOption.VoiceCall to setOf("request_voice_call"),
     )
 
     private val activityToolNames: Set<String> = setOf(
@@ -409,6 +410,11 @@ object CapabilityCatalog {
     private val backgroundToolNames: Set<String> = setOf(
         "search_web",
         "scrape_web",
+        "post_moment",
+        "delete_moment",
+        "post_anonymous_question",
+        "delete_anonymous_question",
+        "request_voice_call",
         "get_time_info",
         "calendar_query",
         "get_battery_status",
@@ -1512,6 +1518,17 @@ object CapabilityCatalog {
             approvalPolicy = ApprovalPolicy.AlwaysAsk,
             allowedOrigins = setOf(ToolCallOrigin.LocalChat),
             requiresUnlockedDevice = true,
+        ))
+
+        reg(CapabilityDescriptor(
+            id = CapabilityId.VoiceCall,
+            localToolOption = LocalToolOption.VoiceCall,
+            toolNames = setOf("request_voice_call"),
+            requirements = emptyList(),
+            implementationState = ImplementationState.Implemented,
+            riskLevel = RiskLevel.Medium,
+            approvalPolicy = ApprovalPolicy.Default,
+            allowedOrigins = InvocationSurfacePolicy.LOCAL_UNLOCKED,
         ))
 
         reg(CapabilityDescriptor(
