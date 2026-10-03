@@ -4946,6 +4946,23 @@ class ChatService(
             } finally {
                 agentTiming?.mark(AgentTimingEventKind.FINAL_SAVE_FINISHED)
             }
+            // Voice-message replies (jude): once a Normal-mode turn is durably saved,
+            // materialize any 【语音条】 segments in the assistant message into voice
+            // bubbles and persist the rewrite. Failures are survivable — the text stays,
+            // only the audio artifacts are missing — so they must not fail the turn.
+            if (requestMode == ChatRequestMode.Normal) {
+                runCatching {
+                    chatVoiceReplyMaterializer.materialize(
+                        conversation = getConversationFlow(conversationId).value,
+                        generationBaseMessageIds = generationBaseMessageIds,
+                        settings = settings,
+                        onUpdate = { updateConversation(conversationId, it) },
+                    )
+                }.onFailure { error ->
+                    if (error is CancellationException) throw error
+                    Log.w(TAG, "voice reply materialization failed", error)
+                }
+            }
         }
         authorityFailure?.let { throw it }
         if (propagateFailure || authority != null) generationResult.getOrThrow()
