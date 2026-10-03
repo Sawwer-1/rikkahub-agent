@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.ui.hooks
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.runtime.Composable
@@ -13,13 +14,18 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicLong
 import me.rerere.tts.model.PlaybackState
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getSelectedTTSProvider
 import me.rerere.rikkahub.data.datastore.normalizedTtsPlaybackSpeed
 import me.rerere.rikkahub.utils.stripMarkdown
+import me.rerere.tts.model.AudioFormat
+import me.rerere.tts.model.CachedAudioSource
 import me.rerere.tts.model.TTSResponse
 import me.rerere.tts.provider.TTSManager
 import me.rerere.tts.provider.TTSProviderSetting
@@ -78,6 +84,9 @@ interface CustomTtsState {
     /** Flow indicating if the TTS provider is available and ready. */
     val isAvailable: StateFlow<Boolean>
 
+    /** Becomes true after the runtime has synchronized with persisted provider settings. */
+    val isProviderReady: StateFlow<Boolean>
+
     /** Flow indicating if the TTS is currently speaking. */
     val isSpeaking: StateFlow<Boolean>
 
@@ -95,12 +104,28 @@ interface CustomTtsState {
 
     /**
      * Speaks the given text using the selected TTS provider.
-     * Long texts will be automatically chunked and queued.
+     * Long texts will be automatically chunked and queued unless [chunked] is false.
      */
-    fun speak(text: String, flushCalled: Boolean = true)
+    fun speak(
+        text: String,
+        flushCalled: Boolean = true,
+        chunked: Boolean = true,
+        onAudioReady: (suspend (TTSResponse) -> Unit)? = null,
+        onAudioReadyWithChunk: (suspend (String, Int, Int, TTSResponse) -> Unit)? = null,
+        emotion: String? = null,
+    )
 
     /** Stops the current speech and clears the queue. */
     fun stop()
+
+    /** Identifies the latest playback request so message-level controls do not follow another message. */
+    val playbackSessionId: StateFlow<Long>
+
+    /** Plays back an already synthesized audio file (voice call replay). */
+    fun playCachedAudio(audioUri: String, format: String, sampleRate: Int? = null)
+
+    /** Plays back a list of already synthesized audio files sequentially. */
+    fun playCachedAudios(audios: List<CachedAudioSource>, flushCalled: Boolean = true): Long
 
     /** Pauses the current playback. */
     fun pause()
@@ -136,25 +161,105 @@ private class CustomTtsStateImpl(
     private var currentJob: Job? = null
 
     override val isAvailable: StateFlow<Boolean> get() = controller.isAvailable
+    override val isProviderReady: StateFlow<Boolean> get() = controller.isProviderReady
     override val isSpeaking: StateFlow<Boolean> get() = controller.isSpeaking
     override val error: StateFlow<String?> get() = controller.error
     override val currentChunk: StateFlow<Int> get() = controller.currentChunk
     override val totalChunks: StateFlow<Int> get() = controller.totalChunks
     override val playbackState: StateFlow<PlaybackState> get() = controller.playbackState
 
+    private val playbackSessionCounter = AtomicLong(0L)
+    private val _playbackSessionId = MutableStateFlow(0L)
+    override val playbackSessionId: StateFlow<Long> get() = _playbackSessionId
+
+    private fun beginPlaybackSession(): Long {
+        val sessionId = playbackSessionCounter.incrementAndGet()
+        _playbackSessionId.value = sessionId
+        return sessionId
+    }
+
     fun updateConfiguration(provider: TTSProviderSetting?, playbackSpeed: Float) {
         controller.setProvider(provider)
         controller.setSpeed(playbackSpeed.normalizedTtsPlaybackSpeed())
     }
 
-    override fun speak(text: String, flushCalled: Boolean) {
+    override fun speak(
+        text: String,
+        flushCalled: Boolean,
+        chunked: Boolean,
+        onAudioReady: (suspend (TTSResponse) -> Unit)?,
+        onAudioReadyWithChunk: (suspend (String, Int, Int, TTSResponse) -> Unit)?,
+        emotion: String?,
+    ) {
+        beginPlaybackSession()
         val processed = text.stripMarkdown()
-        controller.speak(processed, flushCalled)
+        controller.speak(
+            text = processed,
+            flush = flushCalled,
+            chunked = chunked,
+            onAudioReady = onAudioReady,
+            onAudioReadyWithChunk = onAudioReadyWithChunk?.let { callback ->
+                { chunk, chunkIndex, totalChunks, response ->
+                    callback(chunk.text, chunkIndex, totalChunks, response)
+                }
+            },
+            emotion = emotion,
+        )
     }
 
     override fun stop() {
+        beginPlaybackSession()
         controller.stop()
     }
+
+    override fun playCachedAudio(audioUri: String, format: String, sampleRate: Int?) {
+        beginPlaybackSession()
+        Log.i(TAG, "Cached audio playback requested: uri=" + audioUri + ", format=" + format + ", sampleRate=" + sampleRate)
+        scope.launch {
+            val response = withContext(Dispatchers.IO) {
+                readCachedAudio(audioUri, format, sampleRate)
+            } ?: return@launch
+            runCatching {
+                Log.i(TAG, "Starting cached audio player")
+                // ExoPlayer is main-looper bound; only cached-file I/O runs on IO.
+                controller.playCachedAudio(response)
+                Log.i(TAG, "Cached audio player started")
+            }.onFailure { error ->
+                Log.e(TAG, "Cached audio player start failed", error)
+            }
+        }
+    }
+
+    override fun playCachedAudios(audios: List<CachedAudioSource>, flushCalled: Boolean): Long {
+        val sessionId = beginPlaybackSession()
+        if (audios.isEmpty()) return sessionId
+        scope.launch {
+            val responses = withContext(Dispatchers.IO) {
+                audios.mapNotNull { audio ->
+                    readCachedAudio(audio.audioUri, audio.format.name, audio.sampleRate)
+                }
+            }
+            if (responses.isNotEmpty()) {
+                controller.playCachedAudioSequence(responses, flush = flushCalled)
+            }
+        }
+        return sessionId
+    }
+
+    private fun readCachedAudio(audioUri: String, format: String, sampleRate: Int?): TTSResponse? = runCatching {
+        val uri = Uri.parse(audioUri)
+        val bytes = when (uri.scheme?.lowercase()) {
+            "file" -> uri.path?.let { java.io.File(it).readBytes() }
+            else -> context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        } ?: error("Cached audio input stream is unavailable")
+        TTSResponse(
+            audioData = bytes,
+            format = AudioFormat.valueOf(format),
+            sampleRate = sampleRate,
+        )
+    }.onFailure { error ->
+        Log.e(TAG, "Cached audio read failed: uri=$audioUri", error)
+    }.getOrNull()
 
     override fun pause() {
         controller.pause()

@@ -1,0 +1,51 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<resources>
+  <!-- Workflow screen leftovers: trigger summaries, condition lines, action args toggle.
+       Keys are wf_-prefixed; keep both language files in sync. Apostrophes must be
+       escaped (backslash-apostrophe) and literal percent signs doubled (%%) for aapt2. -->
+  <string name="wf_trigger_every_time">every %1$s</string>
+  <string name="wf_trigger_schedule">schedule</string>
+  <string name="wf_trigger_wifi_connects">WiFi connects</string>
+  <string name="wf_trigger_wifi_connects_to">WiFi connects to %1$s</string>
+  <string name="wf_trigger_wifi_disconnects">WiFi disconnects</string>
+  <string name="wf_trigger_wifi_disconnects_from">WiFi disconnects from %1$s</string>
+  <string name="wf_trigger_bluetooth_connects">Bluetooth connects</string>
+  <string name="wf_trigger_bluetooth_disconnects">Bluetooth disconnects</string>
+  <string name="wf_trigger_headphones_plugged">headphones plugged</string>
+  <string name="wf_trigger_headphones_unplugged">headphones unplugged</string>
+  <string name="wf_trigger_power_connected">power connected</string>
+  <string name="wf_trigger_power_disconnected">power disconnected</string>
+  <string name="wf_trigger_battery_below">battery &lt; %1$d%%</string>
+  <string name="wf_trigger_battery_above">battery &gt; %1$d%%</string>
+  <string name="wf_trigger_geofence_enter_label">you arrive at %1$s</string>
+  <string name="wf_trigger_geofence_enter_place">you arrive at a place</string>
+  <string name="wf_trigger_geofence_exit_label">you leave %1$s</string>
+  <string name="wf_trigger_geofence_exit_place">you leave a place</string>
+  <string name="wf_trigger_app_launched">%1$s launches</string>
+  <string name="wf_trigger_app_closed">%1$s closes</string>
+  <string name="wf_trigger_notification">notification</string>
+  <string name="wf_trigger_notification_from">notification from %1$s</string>
+  <string name="wf_trigger_boot_completed">device boots</string>
+  <string name="wf_trigger_screen_on">screen on</string>
+  <string name="wf_trigger_screen_off">screen off</string>
+  <string name="wf_trigger_manual">manual run only</string>
+  <string name="wf_condition_between">between %1$s and %2$s</string>
+  <string name="wf_condition_after_sunset">after sunset</string>
+  <string name="wf_condition_after_sunset_offset">after sunset (%1$dm offset)</string>
+  <string name="wf_condition_before_sunrise">before sunrise</string>
+  <string name="wf_condition_before_sunrise_offset">before sunrise (%1$dm offset)</string>
+  <string name="wf_condition_day_of_week">day(s) %1$s</string>
+  <string name="wf_condition_wifi_is">WiFi is %1$s</string>
+  <string name="wf_condition_wifi_in">WiFi in %1$s</string>
+  <string name="wf_condition_battery_above">battery &gt; %1$d%%</string>
+  <string name="wf_condition_battery_below">battery &lt; %1$d%%</string>
+  <string name="wf_condition_charging">charging</string>
+  <string name="wf_condition_not_charging">not charging</string>
+  <string name="wf_condition_foreground_app">foreground app = %1$s</string>
+  <string name="wf_condition_foreground_app_in">foreground in %1$d pkgs</string>
+  <string name="wf_condition_screen_on">screen on</string>
+  <string name="wf_condition_screen_off">screen off</string>
+  <string name="wf_condition_invert">NOT (%1$s)</string>
+  <string name="wf_action_show_args">show args</string>
+  <string name="wf_action_hide_args">hide args</string>
+</resources>

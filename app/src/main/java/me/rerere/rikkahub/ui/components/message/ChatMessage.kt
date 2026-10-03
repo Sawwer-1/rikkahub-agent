@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -78,12 +79,20 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.File02
 import me.rerere.hugeicons.stroke.MusicNote03
 import me.rerere.hugeicons.stroke.Video01
+import me.rerere.hugeicons.stroke.Voice
+import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.AssistantAffectScope
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.data.model.replaceRegexes
+import me.rerere.rikkahub.data.voice.chatVoiceReply
+import me.rerere.rikkahub.data.voice.chatVoiceReplyDraft
+import me.rerere.rikkahub.data.voice.hasChatVoiceReplyTool
+import me.rerere.rikkahub.data.voice.hasChatVoiceReplyToolError
+import me.rerere.rikkahub.data.voice.voiceCallRecord
+import me.rerere.rikkahub.data.voice.withoutVoiceCallAudioTagsForChatDisplay
 import me.rerere.rikkahub.diagnostics.agenttiming.AgentTimingFirstVisibleDrawMarker
 import me.rerere.rikkahub.diagnostics.agenttiming.AgentTimingStreamRenderMarker
 import me.rerere.rikkahub.diagnostics.agenttiming.AgentTimingToolSnapshot
@@ -95,6 +104,7 @@ import me.rerere.rikkahub.ui.components.richtext.buildMarkdownPreviewHtml
 import me.rerere.rikkahub.ui.components.ui.ChainOfThought
 import me.rerere.rikkahub.ui.components.ui.Favicon
 import me.rerere.rikkahub.ui.context.LocalNavController
+import me.rerere.rikkahub.ui.hooks.rememberChatTtsPlayback
 import me.rerere.rikkahub.ui.modifier.shimmer
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.theme.LocalChatFontFamily
@@ -127,14 +137,49 @@ fun ChatMessage(
     onToggleFavorite: (() -> Unit)? = null,
     onTranslate: ((UIMessage, Locale) -> Unit)? = null,
     onClearTranslation: (UIMessage) -> Unit = {},
+    onTranslateChatVoiceSegment: ((UIMessage, Int, String, Locale) -> Unit)? = null,
+    onClearChatVoiceSegmentTranslation: ((UIMessage, Int) -> Unit)? = null,
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String, scope: me.rerere.rikkahub.service.ChatService.ApprovalScope, toolName: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
+    onOpenVoiceCallRecord: ((String) -> Unit)? = null,
+    onUpdateTtsMessage: (messageId: kotlin.uuid.Uuid, transform: (UIMessage) -> UIMessage) -> Unit = { _, _ -> },
     agentTiming: AgentTimingTraceSnapshot? = null,
     agentTimingDrawMarker: AgentTimingFirstVisibleDrawMarker? = null,
     agentTimingStreamMarker: AgentTimingStreamRenderMarker? = null,
 ) {
     val message = node.messages[node.selectIndex]
+    val chatVoiceReply = message.chatVoiceReply()
+    val chatVoiceReplyDraft = message.chatVoiceReplyDraft()
+    val pendingChatVoiceReply = chatVoiceReply == null &&
+        !message.hasChatVoiceReplyToolError() &&
+        ((chatVoiceReplyDraft != null && (message.hasChatVoiceReplyTool() || loading)) ||
+            (message.hasChatVoiceReplyTool() && loading))
+    val voiceCallRecord = message.voiceCallRecord()
+    if (voiceCallRecord != null) {
+        if (voiceCallRecord.cardAnchor) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = modifier.combinedClickable(
+                    onClick = { onOpenVoiceCallRecord?.invoke(voiceCallRecord.callId) },
+                    onLongClick = onDelete,
+                ),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Icon(HugeIcons.Voice, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text(stringResource(R.string.vc_call_record), style = MaterialTheme.typography.labelLarge)
+                    Text(formatVoiceCallDuration(voiceCallRecord.durationSeconds), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        return
+    }
     val settings = LocalSettings.current.displaySetting
+    val chatTts = rememberChatTtsPlayback()
     val chatFontFamily = LocalChatFontFamily.current ?: rememberChatFontFamily(settings)
     val textStyle = LocalTextStyle.current.copy(
         fontSize = LocalTextStyle.current.fontSize * settings.fontSizeRatio,
@@ -210,21 +255,67 @@ fun ChatMessage(
             }
         }
         ProvideTextStyle(textStyle) {
-            MessagePartsBlock(
-                assistant = assistant,
-                role = message.role,
-                parts = message.parts,
-                annotations = message.annotations,
-                messageState = message.state,
-                loading = loading,
-                model = model,
-                onToolApproval = onToolApproval,
-                onToolAnswer = onToolAnswer,
-                onUserMessageClick = if (message.role == MessageRole.USER) onEdit else null,
-                agentTimingTools = agentTimingTools,
-            )
+            val onTtsSpeak: ((String) -> Unit)? = if (message.role == MessageRole.ASSISTANT) {
+                { text ->
+                    chatTts.speak(
+                        message = message,
+                        text = text,
+                        onUpdateMessage = onUpdateTtsMessage,
+                    )
+                }
+            } else {
+                null
+            }
+            when {
+                chatVoiceReply != null && message.role == MessageRole.ASSISTANT -> {
+                    ChatVoiceReplyMessageContent(
+                        message = message,
+                        reply = chatVoiceReply,
+                        assistant = assistant,
+                        model = model,
+                        loading = loading,
+                        onTtsSpeak = onTtsSpeak,
+                        onTranslateSegment = onTranslateChatVoiceSegment,
+                        onClearSegmentTranslation = onClearChatVoiceSegmentTranslation,
+                        onToolApproval = onToolApproval,
+                        onToolAnswer = onToolAnswer,
+                    )
+                }
 
-            message.translation?.let { translation ->
+                pendingChatVoiceReply && message.role == MessageRole.ASSISTANT -> {
+                    ChatVoiceReplyPendingContent(
+                        textSegments = chatVoiceReplyDraft?.segments.orEmpty().filter {
+                            it.type == me.rerere.ai.ui.ChatVoiceReplySegmentType.TEXT
+                        }.takeIf { loading }.orEmpty(),
+                        assistant = assistant,
+                        loading = loading,
+                        onTtsSpeak = onTtsSpeak,
+                    )
+                }
+
+                else -> {
+                    MessagePartsBlock(
+                        assistant = assistant,
+                        role = message.role,
+                        parts = if (message.role == MessageRole.ASSISTANT) {
+                            message.parts.withoutVoiceCallAudioTagsForChatDisplay()
+                        } else {
+                            message.parts
+                        },
+                        annotations = message.annotations,
+                        messageState = message.state,
+                        messageTerminal = message.terminal,
+                        loading = loading,
+                        model = model,
+                        onToolApproval = onToolApproval,
+                        onToolAnswer = onToolAnswer,
+                        onUserMessageClick = if (message.role == MessageRole.USER) onEdit else null,
+                        agentTimingTools = agentTimingTools,
+                    )
+                }
+            }
+
+            message.translation?.takeIf { chatVoiceReply == null }?.let { translation ->
                 CollapsibleTranslationText(
                     content = translation,
                     onClickCitation = {}
@@ -232,7 +323,9 @@ fun ChatMessage(
             }
         }
 
-        val showActions = if (lastMessage) {
+        val showActions = if (pendingChatVoiceReply) {
+            false
+        } else if (lastMessage) {
             !loading
         } else {
             message.parts.isEmptyUIMessage().not()
@@ -256,7 +349,7 @@ fun ChatMessage(
                     },
                     onHelpfulFeedback = onHelpfulFeedback,
                     onNotHelpfulFeedback = onNotHelpfulFeedback,
-                    onTranslate = onTranslate,
+                    onTranslate = onTranslate.takeIf { chatVoiceReply == null },
                     onClearTranslation = onClearTranslation
                 )
             }
@@ -267,8 +360,10 @@ fun ChatMessage(
             assistant = assistant,
         )
 
-        ProvideTextStyle(textStyle) {
-            ChatMessageNerdLine(message = message, agentTiming = agentTiming)
+        if (!pendingChatVoiceReply) {
+            ProvideTextStyle(textStyle) {
+                ChatMessageNerdLine(message = message, agentTiming = agentTiming)
+            }
         }
 
     }
@@ -317,13 +412,14 @@ fun ChatMessage(
 
 @OptIn(FlowPreview::class)
 @Composable
-private fun MessagePartsBlock(
+internal fun MessagePartsBlock(
     assistant: Assistant?,
     role: MessageRole,
     model: Model?,
     parts: List<UIMessagePart>,
     annotations: List<UIMessageAnnotation>,
     messageState: UIMessageState,
+    messageTerminal: me.rerere.ai.ui.GenerationTerminal? = null,
     loading: Boolean,
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String, scope: me.rerere.rikkahub.service.ChatService.ApprovalScope, toolName: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
@@ -671,7 +767,10 @@ private fun MessagePartsBlock(
         it is UIMessageAnnotation.FinalAnswerRecovery ||
             it is UIMessageAnnotation.QuickCapture ||
             it is UIMessageAnnotation.PetHandoff ||
-            it is UIMessageAnnotation.ManualCompressionSummary
+            it is UIMessageAnnotation.ManualCompressionSummary ||
+            it is UIMessageAnnotation.VoiceCallRecord ||
+            it is UIMessageAnnotation.TtsAudio ||
+            it is UIMessageAnnotation.ChatVoiceReply
     }
 
     if (recovery != null && recovery.status != FinalAnswerRecoveryStatus.SUCCEEDED) {
@@ -712,6 +811,48 @@ private fun MessagePartsBlock(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.labelMedium,
             )
+        }
+    }
+
+    // Truncation surfacing: an interruption caused by the transport/provider (silent EOF,
+    // output cap, early provider stop) must look different from a deliberate user stop.
+    // The category rides on the message since jude2 so the reason survives an app restart.
+    val truncationTerminal = messageTerminal?.takeIf { terminal ->
+        messageState == UIMessageState.INTERRUPTED &&
+            terminal.category in setOf(
+                me.rerere.ai.ui.FinishCategory.EOF,
+                me.rerere.ai.ui.FinishCategory.LENGTH,
+                me.rerere.ai.ui.FinishCategory.INCOMPLETE,
+                me.rerere.ai.ui.FinishCategory.UNKNOWN,
+            )
+    }
+    if (recovery == null && truncationTerminal != null) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.errorContainer,
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Text(
+                    text = stringResource(R.string.gen_truncated_banner_title),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Text(
+                    text = stringResource(
+                        when (truncationTerminal.category) {
+                            me.rerere.ai.ui.FinishCategory.EOF -> R.string.gen_truncated_banner_eof
+                            me.rerere.ai.ui.FinishCategory.LENGTH -> R.string.gen_truncated_banner_length
+                            me.rerere.ai.ui.FinishCategory.INCOMPLETE -> R.string.gen_truncated_banner_incomplete
+                            else -> R.string.gen_truncated_banner_unknown
+                        }
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+                Text(
+                    text = stringResource(R.string.gen_truncated_hint_retry),
+                    modifier = Modifier.padding(top = 2.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
         }
     }
 
@@ -779,6 +920,12 @@ private fun MessagePartsBlock(
                                 is UIMessageAnnotation.QuickCapture -> Unit
                                 is UIMessageAnnotation.PetHandoff -> Unit
                                 is UIMessageAnnotation.ManualCompressionSummary -> Unit
+                                // Voice-suite annotations (voice call record anchor, cached TTS
+                                // audio, voice reply) are internal bookkeeping for bubbles/calls;
+                                // they must not render as citation entries.
+                                is UIMessageAnnotation.VoiceCallRecord -> Unit
+                                is UIMessageAnnotation.TtsAudio -> Unit
+                                is UIMessageAnnotation.ChatVoiceReply -> Unit
                             }
                         }
                     }
@@ -800,5 +947,14 @@ private fun MessagePartsBlock(
                 )
             }
         }
+    }
+}
+
+private fun formatVoiceCallDuration(totalSeconds: Int): String {
+    val seconds = totalSeconds.coerceAtLeast(0)
+    return if (seconds >= 3600) {
+        "%d:%02d:%02d".format(seconds / 3600, (seconds % 3600) / 60, seconds % 60)
+    } else {
+        "%02d:%02d".format(seconds / 60, seconds % 60)
     }
 }

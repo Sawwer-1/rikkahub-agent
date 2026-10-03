@@ -580,6 +580,14 @@ val appModule = module {
         TTSManager(get())
     }
 
+    // 语音通话（jude 移植）：语音回复音频合成器与物化器
+    single {
+        me.rerere.rikkahub.data.voice.ChatVoiceReplyAudioGenerator(get(), get())
+    }
+    single {
+        me.rerere.rikkahub.data.voice.ChatVoiceReplyMaterializer(get())
+    }
+
     single {
         me.rerere.rikkahub.tts.PersistentTtsLibrary(
             context = get(),
@@ -945,6 +953,7 @@ val appModule = module {
             finalConversationAuthority = get(),
             executionMessageAuthorityBinder = get(),
             folderRepository = get(),
+            chatVoiceReplyMaterializer = get(),
         )
     }
     single {

@@ -16,6 +16,7 @@ import me.rerere.rikkahub.data.db.entity.MemoryLinkRevisionEntity
 import me.rerere.rikkahub.data.db.entity.MemoryRelationCandidateEntity
 import me.rerere.rikkahub.data.db.entity.MemoryRevisionEntity
 import me.rerere.rikkahub.data.db.entity.MemorySourceTombstoneEntity
+import me.rerere.rikkahub.data.model.MemoryScope
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.MemoryRetrievalRequest
 import me.rerere.rikkahub.data.repository.MemoryRetriever
@@ -150,6 +151,18 @@ class RoomMemoryProcessingStore(
                 assistantId = null,
                 query = query,
                 includeGlobal = true,
+                limit = limit,
+                maxChars = 20_000,
+                frozenNowMs = frozenNowMs,
+            )).matches
+        } else if (scopeId.startsWith("conversation:")) {
+            // Conversation-scoped memories dedupe within their own scope, never against the
+            // owning assistant's long-term memory.
+            retriever.retrieve(MemoryRetrievalRequest(
+                assistantId = null,
+                query = query,
+                includeGlobal = false,
+                scopeIdOverride = scopeId,
                 limit = limit,
                 maxChars = 20_000,
                 frozenNowMs = frozenNowMs,
@@ -668,7 +681,13 @@ class RoomMemoryProcessingStore(
         val byScope = linkedMapOf<String, NormalizedSourceInvalidation>()
         batch.scopes.forEach { request ->
             requireValidScope(request.scopeId)
-            val canonicalScope = DreamScopeId.requireCanonical(request.scopeId).value
+            val canonicalScope = if (MemoryScope.conversationKeyOrNull(request.scopeId) != null) {
+                // Conversation scopes never register with the dream scope registry; the key
+                // itself is already canonical (validated above), so use it directly.
+                request.scopeId
+            } else {
+                DreamScopeId.requireCanonical(request.scopeId).value
+            }
             require(request.removedMessageIds.all { it.isNotBlank() && it == it.trim() }) {
                 "memory_source_message_id_invalid"
             }
@@ -3279,6 +3298,10 @@ internal class AuthorityMutationCollector(
         operation: AuthorityChangeOperation,
         reason: AuthorityChangeReason,
     ) {
+        // Conversation-level memories are a short-lived isolation layer excluded from the
+        // long-term portrait by design; they must never advance a dream authority epoch or
+        // create a dream scope-state parent. The underlying memory rows still mutate.
+        if (MemoryScope.conversationKeyOrNull(scopeId) != null) return
         val scope = DreamScopeId.requireCanonical(scopeId)
         val key = Key(scope, entityKind, entityId)
         changes[key] = AuthorityChange(
@@ -3360,7 +3383,10 @@ private fun MemoryEntity.semanticHash(json: Json): String = memoryContentHash(
 private fun requireValidScope(scopeId: String) {
     require(
         scopeId == MemoryRepository.GLOBAL_MEMORY_ID ||
-            runCatching { Uuid.parse(scopeId) }.isSuccess,
+            runCatching { Uuid.parse(scopeId) }.isSuccess ||
+            // Conversation-level scopes are tool-writable short-lived buckets; they use the
+            // same storage tables keyed by the conversation-prefixed string.
+            MemoryScope.conversationKeyOrNull(scopeId) != null,
     ) { "memory_scope_invalid" }
 }
 
@@ -3368,6 +3394,9 @@ private fun validCreateScope(scopeId: String, originAssistantId: String?): Boole
     val origin = originAssistantId?.let { raw -> runCatching { Uuid.parse(raw) }.getOrNull() }
         ?: return false
     if (scopeId == MemoryRepository.GLOBAL_MEMORY_ID) return true
+    // Conversation scopes are keyed by the owning conversation, not the assistant, so the
+    // create is bound to the assistant only through the required origin identity.
+    if (MemoryScope.conversationKeyOrNull(scopeId) != null) return true
     val scope = runCatching { Uuid.parse(scopeId) }.getOrNull() ?: return false
     return scope == origin
 }

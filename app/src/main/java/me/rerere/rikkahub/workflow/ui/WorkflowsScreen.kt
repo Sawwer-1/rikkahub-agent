@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.workflow.ui
 
+import android.content.Context
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
@@ -127,9 +129,10 @@ private fun WorkflowRow(
     onTap: () -> Unit,
 ) {
     val rel = relativeStrings()
+    val context = LocalContext.current
     val nowMs by rememberTickingNowMs()
-    val triggerSummary = remember(loaded.definition) {
-        oneLineTriggerSummary(loaded.definition)
+    val triggerSummary = remember(loaded.definition, context) {
+        oneLineTriggerSummary(loaded.definition, context)
     }
     val statusLine: String = when {
         loaded.entity.lastRunAtMs == null -> stringResource(R.string.setting_page_workflows_subtitle_never_run)
@@ -166,28 +169,39 @@ private fun WorkflowRow(
     HorizontalDivider()
 }
 
-internal fun oneLineTriggerSummary(def: WorkflowDefinition): String = when (val t = def.trigger) {
+internal fun oneLineTriggerSummary(def: WorkflowDefinition, context: Context): String = when (val t = def.trigger) {
     is TriggerSpec.TimeCron ->
-        if (!t.timeOfDay.isNullOrBlank()) "every ${t.timeOfDay}" else "schedule"
-    is TriggerSpec.WifiConnected -> "WiFi connects" + (t.ssid?.let { " to $it" }.orEmpty())
-    is TriggerSpec.WifiDisconnected -> "WiFi disconnects" + (t.ssid?.let { " from $it" }.orEmpty())
-    is TriggerSpec.BluetoothDeviceConnected -> "Bluetooth connects"
-    is TriggerSpec.BluetoothDeviceDisconnected -> "Bluetooth disconnects"
-    is TriggerSpec.HeadphonesPlugged -> "headphones plugged"
-    is TriggerSpec.HeadphonesUnplugged -> "headphones unplugged"
-    is TriggerSpec.PowerConnected -> "power connected"
-    is TriggerSpec.PowerDisconnected -> "power disconnected"
-    is TriggerSpec.BatteryBelow -> "battery < ${t.thresholdPercent}%"
-    is TriggerSpec.BatteryAbove -> "battery > ${t.thresholdPercent}%"
-    is TriggerSpec.GeofenceEnter -> "you arrive at ${t.label ?: "a place"}"
-    is TriggerSpec.GeofenceExit -> "you leave ${t.label ?: "a place"}"
-    is TriggerSpec.AppLaunched -> "${t.packageName} launches"
-    is TriggerSpec.AppClosed -> "${t.packageName} closes"
-    is TriggerSpec.NotificationReceived -> "notification${t.packageName?.let { " from $it" } ?: ""}"
-    is TriggerSpec.BootCompleted -> "device boots"
-    is TriggerSpec.ScreenOn -> "screen on"
-    is TriggerSpec.ScreenOff -> "screen off"
-    is TriggerSpec.Manual -> "manual run only"
+        if (!t.timeOfDay.isNullOrBlank()) context.getString(R.string.wf_trigger_every_time, t.timeOfDay)
+        else context.getString(R.string.wf_trigger_schedule)
+    is TriggerSpec.WifiConnected ->
+        if (t.ssid.isNullOrBlank()) context.getString(R.string.wf_trigger_wifi_connects)
+        else context.getString(R.string.wf_trigger_wifi_connects_to, t.ssid)
+    is TriggerSpec.WifiDisconnected ->
+        if (t.ssid.isNullOrBlank()) context.getString(R.string.wf_trigger_wifi_disconnects)
+        else context.getString(R.string.wf_trigger_wifi_disconnects_from, t.ssid)
+    is TriggerSpec.BluetoothDeviceConnected -> context.getString(R.string.wf_trigger_bluetooth_connects)
+    is TriggerSpec.BluetoothDeviceDisconnected -> context.getString(R.string.wf_trigger_bluetooth_disconnects)
+    is TriggerSpec.HeadphonesPlugged -> context.getString(R.string.wf_trigger_headphones_plugged)
+    is TriggerSpec.HeadphonesUnplugged -> context.getString(R.string.wf_trigger_headphones_unplugged)
+    is TriggerSpec.PowerConnected -> context.getString(R.string.wf_trigger_power_connected)
+    is TriggerSpec.PowerDisconnected -> context.getString(R.string.wf_trigger_power_disconnected)
+    is TriggerSpec.BatteryBelow -> context.getString(R.string.wf_trigger_battery_below, t.thresholdPercent)
+    is TriggerSpec.BatteryAbove -> context.getString(R.string.wf_trigger_battery_above, t.thresholdPercent)
+    is TriggerSpec.GeofenceEnter ->
+        if (t.label.isNullOrBlank()) context.getString(R.string.wf_trigger_geofence_enter_place)
+        else context.getString(R.string.wf_trigger_geofence_enter_label, t.label)
+    is TriggerSpec.GeofenceExit ->
+        if (t.label.isNullOrBlank()) context.getString(R.string.wf_trigger_geofence_exit_place)
+        else context.getString(R.string.wf_trigger_geofence_exit_label, t.label)
+    is TriggerSpec.AppLaunched -> context.getString(R.string.wf_trigger_app_launched, t.packageName)
+    is TriggerSpec.AppClosed -> context.getString(R.string.wf_trigger_app_closed, t.packageName)
+    is TriggerSpec.NotificationReceived ->
+        if (t.packageName.isNullOrBlank()) context.getString(R.string.wf_trigger_notification)
+        else context.getString(R.string.wf_trigger_notification_from, t.packageName)
+    is TriggerSpec.BootCompleted -> context.getString(R.string.wf_trigger_boot_completed)
+    is TriggerSpec.ScreenOn -> context.getString(R.string.wf_trigger_screen_on)
+    is TriggerSpec.ScreenOff -> context.getString(R.string.wf_trigger_screen_off)
+    is TriggerSpec.Manual -> context.getString(R.string.wf_trigger_manual)
 }
 
 @Composable

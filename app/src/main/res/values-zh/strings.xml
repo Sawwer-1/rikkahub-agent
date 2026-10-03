@@ -3005,6 +3005,13 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="assistant_page_local_tools_web_fetch_desc">轻量级 HTTP GET/POST 工具。超时 30 秒，响应体上限 8 KB。每次调用都需要审批。</string>
   <string name="assistant_page_local_tools_web_fetch_title">网页抓取</string>
   <string name="final_answer_missing">模型结束时没有给出可见的最终答案。</string>
+  <string name="gen_truncated_banner_title">回复被截断</string>
+  <string name="gen_truncated_banner_eof">上游连接在发出结束信号前被静默断开。</string>
+  <string name="gen_truncated_banner_length">达到输出上限，回复提前结束。</string>
+  <string name="gen_truncated_banner_incomplete">上游在完成回复前结束了本轮输出。</string>
+  <string name="gen_truncated_banner_unknown">本轮生成以未知原因结束。</string>
+  <string name="gen_truncated_hint_retry">可重新生成或继续补全。</string>
+  <string name="gen_stopped_banner">已停止</string>
   <string name="final_answer_recovery_failed">尝试 %1$d 次后仍未得到可见的最终答案。</string>
   <string name="final_answer_recovery_in_progress">正在生成最终答案（%1$d/%2$d）</string>
   <string name="language_arabic">🇸🇦 العربية</string>

@@ -149,9 +149,24 @@ class HeartbeatForegroundService : Service(), KoinComponent {
                 ?.let { it <= System.currentTimeMillis() }
                 == true
             )
-        // jude skipped heartbeat runs while a voice call was active
-        // (VoiceCallSessionRegistry.isActive()); AAA has no voice-call session registry,
-        // so that hazard is structurally absent and the skip branch is gone.
+        // Never start a heartbeat run while a voice call is live (ported jude gate; the
+        // session registry arrived with the voice-call stack).
+        if (me.rerere.rikkahub.service.VoiceCallSessionRegistry.isActive()) {
+            val callStore = HeartbeatConfigStore(this, runAssistantId)
+            callStore.recordRunStatus(
+                phase = HeartbeatRunPhase.SKIPPED_BUSY,
+                reason = HeartbeatRunReason.VOICE_CALL_ACTIVE,
+                assistantId = runAssistantId,
+                triggerSource = source,
+                completionImpact = if (readOnlyTest) {
+                    HeartbeatRunImpact.NEUTRAL
+                } else {
+                    HeartbeatRunImpact.SKIPPED
+                },
+            )
+            callStore.close()
+            return
+        }
         if (executionJob?.isActive == true) {
             val busyStore = HeartbeatConfigStore(this, runAssistantId)
             busyStore.recordRunStatus(

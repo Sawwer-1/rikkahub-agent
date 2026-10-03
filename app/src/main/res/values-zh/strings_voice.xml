@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 语音通话字符串（jude 快照移植），键统一使用 vc_ 前缀。 -->
+<resources>
+  <!-- 聊天页入口 / 通话记录卡片 -->
+  <string name="vc_entry">语音通话</string>
+  <string name="vc_call_record">通话记录</string>
+  <string name="vc_delete_record_title">是否删除</string>
+  <string name="vc_delete_record_warning">删除后将同时删除这次通话的原始对话和音频，无法撤销。</string>
+
+  <!-- 来电浮层 -->
+  <string name="vc_incoming_title">正在邀请你进行语音通话</string>
+  <string name="vc_incoming_default_reason">想和你聊聊</string>
+  <string name="vc_missed_after_seconds">%1$d 秒后视为未接</string>
+  <string name="vc_reject">拒接</string>
+  <string name="vc_slide_to_answer">滑动接听</string>
+
+  <!-- 通话浮层 -->
+  <string name="vc_no_chat_model">请先选择聊天模型</string>
+  <string name="vc_model_initializing">语音模型正在初始化，请稍后再试</string>
+  <string name="vc_select_tts_model">请先到「设置 &gt; 语音服务 &gt; 文本转语音」选择语音模型</string>
+  <string name="vc_no_speech_recognized">没有识别到语音</string>
+  <string name="vc_diagnostics">排查流程</string>
+  <string name="vc_diagnostics_clip_label">语音通话排查流程</string>
+  <string name="vc_copied_diagnostics">已复制排查流程</string>
+  <string name="vc_diagnostics_input_title">语音输入问题/流程</string>
+  <string name="vc_got_it">知道了</string>
+  <string name="vc_play_call_tts_cd">播放通话 TTS</string>
+  <string name="vc_hang_up">挂断</string>
+  <string name="vc_close">关闭</string>
+  <string name="vc_emotion_tag">情绪标签：%1$s</string>
+  <string name="vc_status_tts_connecting">正在连接语音模型...</string>
+  <string name="vc_status_tts_hint">电话里的 AI 声音使用「文本转语音」里选中的语音模型。</string>
+  <string name="vc_status_mic_permission">电话输入需要麦克风权限。</string>
+  <string name="vc_status_tap_to_speak">点按语音输入，用输入法麦克风说话。</string>
+  <string name="vc_grant_mic">获取麦克风权限</string>
+  <string name="vc_voice_input">语音输入</string>
+  <string name="vc_interrupt_and_speak">打断并说话</string>
+  <string name="vc_voice_message">语音消息</string>
+  <string name="vc_tag_mode_disabled">关闭标签</string>
+  <string name="vc_tag_mode_second_pass">二次情绪标签</string>
+  <string name="vc_tag_mode_realtime">模型实时标签</string>
+
+  <!-- 通话浮层标题状态 -->
+  <string name="vc_title_no_chat_model">请先选择聊天模型</string>
+  <string name="vc_title_tts_connecting">正在连接语音模型</string>
+  <string name="vc_title_select_tts">请先到「设置 &gt; 语音服务 &gt; 文本转语音」选择语音模型</string>
+  <string name="vc_title_mic_permission">请允许麦克风权限</string>
+  <string name="vc_title_waiting_ime">等待输入法语音</string>
+  <string name="vc_title_ai_replying">AI 正在回复</string>
+  <string name="vc_title_ime_voice_mode">输入法语音模式</string>
+
+  <!-- 排查流程对话框 -->
+  <string name="vc_diagnostics_realtime">排查流程（实时）</string>
+  <string name="vc_diagnostics_empty">暂时还没有流程记录。</string>
+  <string name="vc_copy_all">复制全部</string>
+  <string name="vc_clear">清空</string>
+
+  <!-- ElevenLabs TTS 供应商设置（jude 移植） -->
+  <string name="vc_tts_elevenlabs_api_key_desc">必填，通过 xi-api-key 请求头发送</string>
+  <string name="vc_tts_elevenlabs_base_url_desc">可选，默认为 ElevenLabs 官方 API</string>
+  <string name="vc_tts_elevenlabs_voice_id_desc">必填，请求路径中使用的 ElevenLabs 音色 ID</string>
+  <string name="vc_tts_elevenlabs_model_desc">选择 ElevenLabs 语音合成模型</string>
+  <string name="vc_tts_language">语言</string>
+  <string name="vc_tts_language_desc">可选。用于指定语言和文本规范化；口音仍由所选音色决定。Eleven Multilingual v2 不支持此参数。</string>
+  <string name="vc_tts_lang_auto">自动</string>
+  <string name="vc_tts_lang_zh">普通话</string>
+  <string name="vc_tts_lang_en">英语</string>
+  <string name="vc_tts_lang_ja">日语</string>
+  <string name="vc_tts_lang_ko">韩语</string>
+  <string name="vc_tts_lang_fr">法语</string>
+  <string name="vc_tts_lang_de">德语</string>
+  <string name="vc_tts_lang_es">西班牙语</string>
+  <string name="vc_tts_lang_pt">葡萄牙语</string>
+  <string name="vc_tts_stability">稳定性</string>
+  <string name="vc_tts_stability_desc">0.0–1.0，数值越低越有表现力；默认 0.5</string>
+  <string name="vc_tts_similarity_boost">相似度提升</string>
+  <string name="vc_tts_similarity_boost_desc">0.0–1.0，数值越高越贴近所选音色；默认 0.75</string>
+  <string name="vc_tts_speaker_boost">说话人增强</string>
+  <string name="vc_tts_speaker_boost_desc">增强与原说话人的相似度，可能增加延迟</string>
+  <string name="vc_tts_style">风格</string>
+  <string name="vc_tts_style_desc">0.0–1.0，默认 0；数值过高可能显得夸张或不稳定</string>
+  <string name="vc_tts_speed_desc">0.7–1.2，默认 1.0；Eleven v3 可能忽略此设置</string>
+
+  <!-- 语音通话情绪标签模型设置 -->
+  <string name="vc_model_voice_tag_model">语音通话情绪标签模型</string>
+  <string name="vc_model_voice_tag_model_desc">通话中为语音自动挑选情绪标签的模型</string>
+  <string name="vc_model_voice_tag_separate_api_title">语音标签专用 OpenAI API</string>
+  <string name="vc_model_voice_tag_separate_api_desc">开启后，通话中的语音情绪标签会使用这里的 API，不影响当前对话模型 API。</string>
+  <string name="vc_model_provider_name_voice_tag">语音标签专用 OpenAI API</string>
+  <string name="chat_voice_reply_play">播放语音消息</string>
+  <string name="chat_voice_reply_pause">暂停语音消息</string>
+  <string name="chat_voice_reply_show_text">显示文字</string>
+  <string name="chat_voice_reply_hide_text">隐藏文字</string>
+  <string name="notification_voice_call_title">%1$s 邀请你语音通话</string>
+  <string name="notification_voice_call_default_reason">助手想和你通话。</string>
+</resources>

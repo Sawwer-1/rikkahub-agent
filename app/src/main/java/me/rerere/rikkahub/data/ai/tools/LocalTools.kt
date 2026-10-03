@@ -26,6 +26,9 @@ import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.ai.tools.local.BiometricResultBuffer
+import me.rerere.rikkahub.data.voice.CHAT_VOICE_REPLY_TOOL_NAME
+import me.rerere.rikkahub.data.voice.CHAT_VOICE_REPLY_TOOL_RESULT_PROMPT
+import me.rerere.rikkahub.data.voice.VOICE_CALL_UNAVAILABLE_MESSAGE
 import me.rerere.rikkahub.personal.heartbeat.buildHeartbeatScheduleTool
 import me.rerere.rikkahub.data.ai.tools.local.CameraResultBuffer
 import me.rerere.rikkahub.data.ai.tools.local.InteractiveToolStreamer
@@ -150,6 +153,9 @@ import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.uuid.Uuid
 
+/** Model-facing entry tool for the jude-style proactive voice call (IncomingVoiceCallOverlay). */
+const val REQUEST_VOICE_CALL_TOOL_NAME = "request_voice_call"
+
 @Serializable
 sealed class LocalToolOption {
     @Serializable
@@ -184,6 +190,13 @@ sealed class LocalToolOption {
     @Serializable
     @SerialName("weather")
     data object Weather : LocalToolOption()
+
+    // Voice-call (ported from jude): master opt-in for the "phone call" experience. When
+    // enabled together with a configured TTS provider, the protocol text_to_speech tool
+    // replaces the direct-synthesis tool so assistant replies can carry 【语音条】 segments.
+    @Serializable
+    @SerialName("voice_call")
+    data object VoiceCall : LocalToolOption()
 
     @Serializable
     @SerialName("calendar")
@@ -701,6 +714,75 @@ class LocalTools(
             }
         )
     }
+
+    // Voice-call tools (ported from jude). request_voice_call invites the user to a live
+    // call; the protocol text_to_speech tool switches the NEXT reply into 【语音条】
+    // composition (materialized into voice bubbles by ChatVoiceReplyMaterializer). Only
+    // one text_to_speech variant may exist per tool list: the protocol variant replaces
+    // the direct-synthesis ttsTool when the VoiceCall option is on and TTS is configured.
+    private fun requestVoiceCallTool(voiceCallConfigured: Boolean) = Tool(
+        name = REQUEST_VOICE_CALL_TOOL_NAME,
+        description = """
+            Invite the user to start a voice call in the current chat.
+            Use this sparingly, only when a real-time spoken conversation would feel more natural or helpful than text.
+            Provide one short, natural reason that can be shown on the incoming-call screen.
+            The user may answer, decline, or miss the call, and the result will be returned to you.
+            当前对话确实更适合实时语音交流时，才主动邀请用户通话；不要频繁发起。
+        """.trimIndent().replace("\n", " "),
+        parameters = {
+            InputSchema.Obj(
+                properties = buildJsonObject {
+                    put("reason", buildJsonObject {
+                        put("type", "string")
+                        put("description", "A short natural reason for calling, suitable for the incoming-call screen.")
+                    })
+                },
+                required = listOf("reason")
+            )
+        },
+        needsApproval = { voiceCallConfigured },
+        execute = { params ->
+            if (!voiceCallConfigured) {
+                listOf(
+                    UIMessagePart.Text(
+                        buildJsonObject {
+                            put("success", false)
+                            put("error", VOICE_CALL_UNAVAILABLE_MESSAGE)
+                        }.toString()
+                    )
+                )
+            } else {
+                val reason = params.jsonObject["reason"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
+                listOf(
+                    UIMessagePart.Text(
+                        buildJsonObject {
+                            put("success", true)
+                            put("status", "answered")
+                            put("reason", reason)
+                        }.toString()
+                    )
+                )
+            }
+        }
+    )
+
+    private fun chatVoiceReplyProtocolTool() = Tool(
+        name = CHAT_VOICE_REPLY_TOOL_NAME,
+        description = """
+            Switch the current reply into voice-message composition mode.
+            Call this tool exactly once when all or part of your reply would feel more natural as one or more voice messages.
+            After calling it, you will receive a hard protocol lock for a complete mixed text-and-voice reply. Your next assistant message is invalid unless it contains at least one 【语音条】 segment.
+            Do not call it merely because the user mentioned audio, and do not call it again for additional voice segments in the same reply.
+        """.trimIndent().replace("\n", " "),
+        parameters = {
+            InputSchema.Obj(
+                properties = buildJsonObject { }
+            )
+        },
+        execute = {
+            listOf(UIMessagePart.Text(CHAT_VOICE_REPLY_TOOL_RESULT_PROMPT.trimIndent()))
+        }
+    )
 
     val askUserTool by lazy {
         Tool(
@@ -1352,6 +1434,7 @@ class LocalTools(
         options: List<LocalToolOption>,
         invocationContext: ToolInvocationContext = ToolInvocationContext.EMPTY,
         usageLockEnabled: Boolean = false,
+        voiceCallConfigured: Boolean = false,
     ): List<Tool> {
         val tools = mutableListOf<Tool>()
         tools.addAll(petDiaryToolProvider.tools(invocationContext))
@@ -1366,8 +1449,18 @@ class LocalTools(
             tools.add(clipboardTool)
         }
         if (options.contains(LocalToolOption.Tts)) {
-            tools.add(ttsTool(me.rerere.rikkahub.tts.secondUserTtsOwnerKey(invocationContext)))
             tools.addAll(ttsLibraryToolProvider.tools(invocationContext))
+        }
+        if (options.contains(LocalToolOption.VoiceCall)) {
+            tools.add(requestVoiceCallTool(voiceCallConfigured))
+            if (voiceCallConfigured) {
+                // Protocol variant owns the text_to_speech name while the call feature is on.
+                tools.add(chatVoiceReplyProtocolTool())
+            } else if (options.contains(LocalToolOption.Tts)) {
+                tools.add(ttsTool(me.rerere.rikkahub.tts.secondUserTtsOwnerKey(invocationContext)))
+            }
+        } else if (options.contains(LocalToolOption.Tts)) {
+            tools.add(ttsTool(me.rerere.rikkahub.tts.secondUserTtsOwnerKey(invocationContext)))
         }
         if (options.contains(LocalToolOption.AskUser)) {
             tools.add(askUserTool)

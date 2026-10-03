@@ -2043,6 +2043,13 @@
   <string name="final_answer_recovery_in_progress">Generating final answer (%1$d/%2$d)</string>
   <string name="final_answer_recovery_failed">No visible final answer after %1$d attempts.</string>
   <string name="final_answer_missing">The model ended without a visible final answer.</string>
+  <string name="gen_truncated_banner_title">Response was truncated</string>
+  <string name="gen_truncated_banner_eof">The upstream stream was closed before a finish event arrived.</string>
+  <string name="gen_truncated_banner_length">The output token limit was reached before the reply finished.</string>
+  <string name="gen_truncated_banner_incomplete">The provider ended this turn before completing the reply.</string>
+  <string name="gen_truncated_banner_unknown">This turn ended for an unrecognized reason.</string>
+  <string name="gen_truncated_hint_retry">Regenerate or continue to finish it.</string>
+  <string name="gen_stopped_banner">Stopped</string>
   <string name="setting_files_page_cleanup_content_description">Clear uploaded files</string>
   <string name="setting_files_page_cleanup_success">Deleted %1$d files.</string>
   <string name="setting_files_page_cleanup_partial">Deleted %1$d files; %2$d files could not be removed.</string>

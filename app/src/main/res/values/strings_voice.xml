@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Voice call strings ported from jude snapshot. Keys use the vc_ prefix. -->
+<resources>
+  <!-- Chat page entry / call record card -->
+  <string name="vc_entry">Voice call</string>
+  <string name="vc_call_record">Call record</string>
+  <string name="vc_delete_record_title">Delete this call record?</string>
+  <string name="vc_delete_record_warning">The original conversation and the audio of this call will be deleted as well. This cannot be undone.</string>
+
+  <!-- Incoming call overlay -->
+  <string name="vc_incoming_title">Inviting you to a voice call</string>
+  <string name="vc_incoming_default_reason">Wants to chat with you</string>
+  <string name="vc_missed_after_seconds">Marked as missed after %1$d s</string>
+  <string name="vc_reject">Decline</string>
+  <string name="vc_slide_to_answer">Slide to answer</string>
+
+  <!-- Voice call overlay -->
+  <string name="vc_no_chat_model">Select a chat model first</string>
+  <string name="vc_model_initializing">Voice model is initializing, please try again shortly</string>
+  <string name="vc_select_tts_model">Select a voice model in Settings &gt; Speech &gt; Text-to-speech first</string>
+  <string name="vc_no_speech_recognized">No speech detected</string>
+  <string name="vc_diagnostics">Diagnostics</string>
+  <string name="vc_diagnostics_clip_label">Voice call diagnostics</string>
+  <string name="vc_copied_diagnostics">Diagnostics copied</string>
+  <string name="vc_diagnostics_input_title">Voice input issue / flow</string>
+  <string name="vc_got_it">Got it</string>
+  <string name="vc_play_call_tts_cd">Play call TTS</string>
+  <string name="vc_hang_up">Hang up</string>
+  <string name="vc_close">Close</string>
+  <string name="vc_emotion_tag">Emotion tags: %1$s</string>
+  <string name="vc_status_tts_connecting">Connecting to the voice model...</string>
+  <string name="vc_status_tts_hint">The AI voice on the call uses the voice model selected under Text-to-speech.</string>
+  <string name="vc_status_mic_permission">Microphone permission is required for call input.</string>
+  <string name="vc_status_tap_to_speak">Tap voice input and speak with the IME microphone.</string>
+  <string name="vc_grant_mic">Grant microphone</string>
+  <string name="vc_voice_input">Voice input</string>
+  <string name="vc_interrupt_and_speak">Interrupt and speak</string>
+  <string name="vc_voice_message">Voice message</string>
+  <string name="vc_tag_mode_disabled">Tags off</string>
+  <string name="vc_tag_mode_second_pass">Second-pass tags</string>
+  <string name="vc_tag_mode_realtime">Model realtime tags</string>
+
+  <!-- Voice call overlay title states -->
+  <string name="vc_title_no_chat_model">Select a chat model first</string>
+  <string name="vc_title_tts_connecting">Connecting to the voice model</string>
+  <string name="vc_title_select_tts">Select a voice model in Settings &gt; Speech &gt; Text-to-speech first</string>
+  <string name="vc_title_mic_permission">Allow microphone access</string>
+  <string name="vc_title_waiting_ime">Waiting for IME voice input</string>
+  <string name="vc_title_ai_replying">The AI is replying</string>
+  <string name="vc_title_ime_voice_mode">IME voice mode</string>
+
+  <!-- Voice call diagnostics dialog -->
+  <string name="vc_diagnostics_realtime">Diagnostics (live)</string>
+  <string name="vc_diagnostics_empty">No steps recorded yet.</string>
+  <string name="vc_copy_all">Copy all</string>
+  <string name="vc_clear">Clear</string>
+
+  <!-- ElevenLabs TTS provider settings (ported from jude) -->
+  <string name="vc_tts_elevenlabs_api_key_desc">Required. Sent in the xi-api-key header</string>
+  <string name="vc_tts_elevenlabs_base_url_desc">Optional. Defaults to the official ElevenLabs API</string>
+  <string name="vc_tts_elevenlabs_voice_id_desc">Required. The ElevenLabs voice ID used in the request path</string>
+  <string name="vc_tts_elevenlabs_model_desc">Select an ElevenLabs text-to-speech model</string>
+  <string name="vc_tts_language">Language</string>
+  <string name="vc_tts_language_desc">Optional. Sets the language and text normalization; the accent is still decided by the selected voice. Eleven Multilingual v2 does not support this parameter.</string>
+  <string name="vc_tts_lang_auto">Auto</string>
+  <string name="vc_tts_lang_zh">Mandarin</string>
+  <string name="vc_tts_lang_en">English</string>
+  <string name="vc_tts_lang_ja">Japanese</string>
+  <string name="vc_tts_lang_ko">Korean</string>
+  <string name="vc_tts_lang_fr">French</string>
+  <string name="vc_tts_lang_de">German</string>
+  <string name="vc_tts_lang_es">Spanish</string>
+  <string name="vc_tts_lang_pt">Portuguese</string>
+  <string name="vc_tts_stability">Stability</string>
+  <string name="vc_tts_stability_desc">0.0–1.0. Lower values are more expressive; default is 0.5</string>
+  <string name="vc_tts_similarity_boost">Similarity boost</string>
+  <string name="vc_tts_similarity_boost_desc">0.0–1.0. Higher values follow the selected voice more closely; default is 0.75</string>
+  <string name="vc_tts_speaker_boost">Speaker boost</string>
+  <string name="vc_tts_speaker_boost_desc">Boosts similarity to the original speaker; may increase latency</string>
+  <string name="vc_tts_style">Style</string>
+  <string name="vc_tts_style_desc">0.0–1.0. Default is 0; high values can sound theatrical or unstable</string>
+  <string name="vc_tts_speed_desc">0.7–1.2. Default is 1.0; Eleven v3 may ignore this setting</string>
+
+  <!-- Voice call emotion tag model setting -->
+  <string name="vc_model_voice_tag_model">Voice call emotion tag model</string>
+  <string name="vc_model_voice_tag_model_desc">Model used to pick emotion tags for call speech</string>
+  <string name="vc_model_voice_tag_separate_api_title">Dedicated OpenAI API for voice tags</string>
+  <string name="vc_model_voice_tag_separate_api_desc">When enabled, the emotion tags during a call use this API and leave the current chat model API untouched.</string>
+  <string name="vc_model_provider_name_voice_tag">Voice tag dedicated OpenAI API</string>
+  <string name="chat_voice_reply_play">Play voice message</string>
+  <string name="chat_voice_reply_pause">Pause voice message</string>
+  <string name="chat_voice_reply_show_text">Show text</string>
+  <string name="chat_voice_reply_hide_text">Hide text</string>
+  <string name="notification_voice_call_title">%1$s is inviting you to a voice call</string>
+  <string name="notification_voice_call_default_reason">The assistant would like to talk with you.</string>
+</resources>

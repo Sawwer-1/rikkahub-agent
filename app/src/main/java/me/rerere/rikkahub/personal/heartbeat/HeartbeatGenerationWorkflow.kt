@@ -21,6 +21,7 @@ import me.rerere.rikkahub.data.ai.GenerationChunk
 import me.rerere.rikkahub.data.ai.GenerationHandler
 import me.rerere.rikkahub.data.ai.ToolCallOrigin
 import me.rerere.rikkahub.data.ai.mcp.McpManager
+import me.rerere.rikkahub.data.ai.tools.REQUEST_VOICE_CALL_TOOL_NAME
 import me.rerere.rikkahub.data.ai.tools.ToolInvocationContext
 import me.rerere.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
 import me.rerere.rikkahub.data.ai.transformers.DocumentAsPromptTransformer
@@ -35,12 +36,14 @@ import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
+import me.rerere.rikkahub.data.datastore.getSelectedTTSProvider
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.toMessageNode
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.service.ChatService
+import me.rerere.rikkahub.service.VoiceCallNotifications
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.time.Instant
@@ -451,6 +454,7 @@ class HeartbeatGenerationWorkflow(
         assistant: Assistant,
         conversationId: Uuid,
     ): List<Tool> = buildList {
+        val voiceCallConfigured = settings.getSelectedTTSProvider() != null
         val invocationContext = ToolInvocationContext(
             callerAssistantId = assistant.id.toString(),
             callerConversationId = conversationId.toString(),
@@ -460,45 +464,71 @@ class HeartbeatGenerationWorkflow(
             localTools.getTools(
                 options = assistant.localTools.distinct(),
                 invocationContext = invocationContext,
+                voiceCallConfigured = voiceCallConfigured,
             ).map { tool ->
-                if (tool.name == "ask_user") {
-                    // Heartbeat runs headless: ask_user would block on an approval card no one
-                    // can see, so replace its body with a system notification delivery.
-                    tool.copy(
+                when {
+                    tool.name == "ask_user" -> {
+                        // Heartbeat runs headless: ask_user would block on an approval card no one
+                        // can see, so replace its body with a system notification delivery.
+                        tool.copy(
+                            needsApproval = { false },
+                            execute = { arguments ->
+                                val questions = arguments.jsonObject["questions"]
+                                    ?.jsonArray
+                                    .orEmpty()
+                                    .mapNotNull { question ->
+                                        question.jsonObject["question"]
+                                            ?.jsonPrimitive
+                                            ?.contentOrNull
+                                            ?.trim()
+                                            ?.takeIf(String::isNotEmpty)
+                                    }
+                                val questionText = questions.joinToString("\n")
+                                    .ifBlank { "The assistant has a question for you." }
+                                HeartbeatNotifications.showQuestion(
+                                    context = context,
+                                    conversationId = conversationId.toString(),
+                                    senderName = assistant.name.ifBlank { "AI" },
+                                    question = questionText,
+                                )
+                                listOf(
+                                    UIMessagePart.Text(
+                                        buildJsonObject {
+                                            put("delivered", true)
+                                            put("delivery", "notification")
+                                            put("question", questionText)
+                                            put("instruction", "Repeat the question in the final assistant message.")
+                                        }.toString(),
+                                    ),
+                                )
+                            },
+                        )
+                    }
+                    // Proactive call from a heartbeat run (jude): headless runs cannot show the
+                    // approval card either, so the call request degrades into a full-screen
+                    // incoming-call notification and the result is fed back to the model.
+                    tool.name == REQUEST_VOICE_CALL_TOOL_NAME && voiceCallConfigured -> tool.copy(
                         needsApproval = { false },
                         execute = { arguments ->
-                            val questions = arguments.jsonObject["questions"]
-                                ?.jsonArray
-                                .orEmpty()
-                                .mapNotNull { question ->
-                                    question.jsonObject["question"]
-                                        ?.jsonPrimitive
-                                        ?.contentOrNull
-                                        ?.trim()
-                                        ?.takeIf(String::isNotEmpty)
-                                }
-                            val questionText = questions.joinToString("\n")
-                                .ifBlank { "The assistant has a question for you." }
-                            HeartbeatNotifications.showQuestion(
+                            VoiceCallNotifications.show(
                                 context = context,
                                 conversationId = conversationId.toString(),
                                 senderName = assistant.name.ifBlank { "AI" },
-                                question = questionText,
+                                reasonPayload = arguments.toString(),
+                                channelId = HeartbeatNotifications.CHANNEL_ID,
                             )
                             listOf(
                                 UIMessagePart.Text(
                                     buildJsonObject {
-                                        put("delivered", true)
-                                        put("delivery", "notification")
-                                        put("question", questionText)
-                                        put("instruction", "Repeat the question in the final assistant message.")
+                                        put("success", true)
+                                        put("status", "notified")
+                                        put("instruction", "The user was notified. The call is not connected yet.")
                                     }.toString(),
                                 ),
                             )
                         },
                     )
-                } else {
-                    tool
+                    else -> tool
                 }
             },
         )

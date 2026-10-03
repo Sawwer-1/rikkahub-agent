@@ -212,6 +212,8 @@ enum class MemoryCaptureSkipReason {
     NEEDS_FINAL_ANSWER,
     EMPTY_TURN,
     INVALID_SCOPE,
+    /** Conversation-level memory is a short-lived isolation layer and never enters extraction. */
+    CONVERSATION_SCOPE_NOT_ELIGIBLE,
     INVALID_SOURCE_IDENTITY,
 }
 

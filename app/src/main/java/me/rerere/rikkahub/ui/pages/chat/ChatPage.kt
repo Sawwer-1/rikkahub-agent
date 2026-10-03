@@ -76,7 +76,10 @@ import me.rerere.hugeicons.stroke.Menu03
 import me.rerere.hugeicons.stroke.MessageAdd01
 import me.rerere.hugeicons.stroke.View
 import me.rerere.hugeicons.stroke.ViewOff
+import me.rerere.hugeicons.stroke.Voice
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.voice.voiceCallRecord
+import me.rerere.rikkahub.ui.components.ui.RikkaConfirmDialog
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.authority.reward.RewardFeedbackWriteResult
 import me.rerere.rikkahub.data.datastore.Settings
@@ -324,6 +327,17 @@ private fun ChatPageContent(
     val anonymousQuestionBoxVM: AnonymousQuestionBoxVM = koinViewModel()
     var momentsVisible by rememberSaveable(conversation.id) { mutableStateOf(false) }
     var anonymousQuestionBoxVisible by rememberSaveable(conversation.id) { mutableStateOf(false) }
+    // 语音通话（jude 移植）
+    var voiceCallVisible by rememberSaveable(conversation.id) { mutableStateOf(false) }
+    var voiceCallHistoryId by rememberSaveable(conversation.id) { mutableStateOf<String?>(null) }
+    var awaitInitialVoiceCallReply by rememberSaveable(conversation.id) { mutableStateOf(false) }
+    var initialVoiceCallAssistantMessageId by rememberSaveable(conversation.id) { mutableStateOf<String?>(null) }
+    var initialVoiceCallToolCallId by rememberSaveable(conversation.id) { mutableStateOf<String?>(null) }
+    var handledIncomingVoiceCallId by rememberSaveable(conversation.id) { mutableStateOf<String?>(null) }
+    var pendingVoiceCallDeleteId by rememberSaveable(conversation.id) { mutableStateOf<String?>(null) }
+    val incomingVoiceCall = conversation.currentMessages
+        .pendingIncomingVoiceCall(stringResource(R.string.vc_incoming_default_reason))
+        ?.takeUnless { it.toolCallId == handledIncomingVoiceCallId }
     val momentsUnread by remember(conversation.assistantId) {
         momentsVM.observeHasUnread(conversation.assistantId)
     }.collectAsStateWithLifecycle(false)
@@ -439,6 +453,13 @@ private fun ChatPageContent(
                         anonymousQuestionBoxUnread = anonymousQuestionUnread,
                         onOpenMoments = { momentsVisible = true },
                         onOpenAnonymousQuestionBox = { anonymousQuestionBoxVisible = true },
+                        onOpenVoiceCall = {
+                            voiceCallHistoryId = null
+                            awaitInitialVoiceCallReply = false
+                            initialVoiceCallAssistantMessageId = null
+                            initialVoiceCallToolCallId = null
+                            voiceCallVisible = true
+                        },
                         onUpdateTitle = { vm.updateTitle(it) },
                     )
                     PetDialogueCard(
@@ -788,11 +809,19 @@ private fun ChatPageContent(
                     if (loadingJob != null) {
                         vm.showDeleteBlockedWhileGeneratingError()
                     } else {
-                        vm.deleteMessage(it)
+                        val record = it.voiceCallRecord()
+                        if (record?.standalone == true) {
+                            pendingVoiceCallDeleteId = record.callId
+                        } else {
+                            vm.deleteMessage(it)
+                        }
                     }
                 },
                 onUpdateMessage = { nodeId, messageId ->
                     vm.selectMessageVersion(nodeId, messageId)
+                },
+                onUpdateTtsMessage = { messageId, transform ->
+                    vm.updateMessage(messageId, transform)
                 },
                 onHelpfulFeedback = if (rewardFeedbackAvailable) {
                     { message ->
@@ -818,6 +847,16 @@ private fun ChatPageContent(
                 },
                 onClearTranslation = { message ->
                     vm.clearTranslationField(message.id)
+                },
+                onTranslateChatVoiceSegment = { message, segmentIndex, sourceText, locale ->
+                    vm.translateChatVoiceSegment(message, segmentIndex, sourceText, locale)
+                },
+                onClearChatVoiceSegmentTranslation = { message, segmentIndex ->
+                    vm.clearChatVoiceSegmentTranslation(message.id, segmentIndex)
+                },
+                onOpenVoiceCallRecord = { callId ->
+                    voiceCallHistoryId = callId
+                    voiceCallVisible = true
                 },
                 onJumpToMessage = { index ->
                     previewMode = false
@@ -947,7 +986,79 @@ private fun ChatPageContent(
             vm = anonymousQuestionBoxVM,
             onDismiss = { anonymousQuestionBoxVisible = false },
         )
+        VoiceCallOverlay(
+            visible = voiceCallVisible,
+            historyCallId = voiceCallHistoryId,
+            awaitInitialAssistantReply = awaitInitialVoiceCallReply,
+            initialAssistantMessageId = initialVoiceCallAssistantMessageId,
+            initialVoiceCallToolCallId = initialVoiceCallToolCallId,
+            conversation = conversation,
+            userAvatar = setting.displaySetting.userAvatar,
+            userName = setting.displaySetting.userNickname.ifBlank { "我" },
+            assistantAvatar = assistant.avatar,
+            assistantName = assistant.name.ifBlank { "AI" },
+            loadingJob = loadingJob,
+            hasChatModel = currentChatModel != null,
+            vm = vm,
+            onDismiss = {
+                voiceCallVisible = false
+                voiceCallHistoryId = null
+                awaitInitialVoiceCallReply = false
+                initialVoiceCallAssistantMessageId = null
+                initialVoiceCallToolCallId = null
+            },
+            onVoiceCallClosed = { failureMessage, completion ->
+                vm.reportVoiceCallClosed(initialVoiceCallToolCallId, failureMessage, completion)
+            },
+            onMessageSubmitted = {
+                scope.launch {
+                    chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
+                }
+            }
+        )
+        incomingVoiceCall?.let { request ->
+            IncomingVoiceCallOverlay(
+                request = request,
+                setting = setting,
+                assistant = assistant,
+                userAvatar = setting.displaySetting.userAvatar,
+                userName = setting.displaySetting.userNickname.ifBlank { "我" },
+                assistantAvatar = assistant.avatar,
+                assistantName = assistant.name.ifBlank { "AI" },
+                onAccept = {
+                    handledIncomingVoiceCallId = request.toolCallId
+                    awaitInitialVoiceCallReply = true
+                    initialVoiceCallAssistantMessageId = request.assistantMessageId
+                    initialVoiceCallToolCallId = request.toolCallId
+                    voiceCallVisible = true
+                    vm.handleToolApproval(
+                        toolCallId = request.toolCallId,
+                        approved = true,
+                    )
+                },
+                onReject = { reason ->
+                    handledIncomingVoiceCallId = request.toolCallId
+                    vm.handleToolApproval(
+                        toolCallId = request.toolCallId,
+                        approved = false,
+                        reason = reason,
+                    )
+                },
+            )
+        }
     }
+    RikkaConfirmDialog(
+        show = pendingVoiceCallDeleteId != null,
+        title = stringResource(R.string.vc_delete_record_title),
+        confirmText = stringResource(R.string.delete),
+        dismissText = stringResource(R.string.cancel),
+        onConfirm = {
+            pendingVoiceCallDeleteId?.let(vm::deleteVoiceCallRecord)
+            pendingVoiceCallDeleteId = null
+        },
+        onDismiss = { pendingVoiceCallDeleteId = null },
+        text = { Text(stringResource(R.string.vc_delete_record_warning)) },
+    )
 }
 
 @Composable
@@ -1222,6 +1333,7 @@ private fun TopBar(
     anonymousQuestionBoxUnread: Boolean,
     onOpenMoments: () -> Unit,
     onOpenAnonymousQuestionBox: () -> Unit,
+    onOpenVoiceCall: () -> Unit,
     onNewChat: () -> Unit,
     onUpdateTitle: (String) -> Unit
 ) {
@@ -1281,6 +1393,9 @@ private fun TopBar(
             }
         },
         actions = {
+            IconButton(onClick = onOpenVoiceCall) {
+                Icon(HugeIcons.Voice, stringResource(R.string.vc_entry))
+            }
             if (conversation.hasCompressedMessages && !summaryEditorVisible) {
                 IconButton(onClick = onToggleCompressedMessages) {
                     Icon(

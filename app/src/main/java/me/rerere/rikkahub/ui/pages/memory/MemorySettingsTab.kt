@@ -62,10 +62,12 @@ fun MemoryScopeSummary(
         stringResource(R.string.memory_v2_narrative_companion_fallback)
     }
     val privateScopeName = stringResource(R.string.memory_v2_private_scope_named, companionName)
-    val activeScopeName = if (assistant.useGlobalMemory) {
-        stringResource(R.string.memory_v2_global_scope)
-    } else {
-        privateScopeName
+    val activeScopeName = when {
+        assistant.useGlobalMemory -> stringResource(R.string.memory_v2_global_scope)
+        // Conversation-level scope is resolved per chat window at generation time; here it
+        // only reflects the assistant's configured intent.
+        assistant.useConversationMemory -> stringResource(R.string.mem_conversation_memory)
+        else -> privateScopeName
     }
     Card(
         modifier = Modifier
@@ -225,7 +227,30 @@ fun MemorySettingsTab(
                     ),
                     checked = assistant.useGlobalMemory,
                     enabled = assistant.enableMemory,
-                    onCheckedChange = { enabled -> onUpdateAssistant { it.copy(useGlobalMemory = enabled) } },
+                    // Jude parity: turning one scope switch on turns the other two-level
+                    // counterpart off, so at most one of the two is ever active.
+                    onCheckedChange = { enabled ->
+                        onUpdateAssistant {
+                            it.copy(
+                                useGlobalMemory = enabled,
+                                useConversationMemory = false,
+                            )
+                        }
+                    },
+                )
+                SettingSwitchRow(
+                    title = stringResource(R.string.mem_conversation_memory),
+                    description = stringResource(R.string.mem_conversation_memory_desc),
+                    checked = assistant.useConversationMemory,
+                    enabled = assistant.enableMemory,
+                    onCheckedChange = { enabled ->
+                        onUpdateAssistant {
+                            it.copy(
+                                useConversationMemory = enabled,
+                                useGlobalMemory = false,
+                            )
+                        }
+                    },
                 )
                 SettingSwitchRow(
                     title = stringResource(R.string.memory_v21_narrative_events),

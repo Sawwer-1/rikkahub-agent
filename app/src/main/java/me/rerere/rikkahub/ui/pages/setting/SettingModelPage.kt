@@ -167,6 +167,13 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
             )
         }
         item {
+            // 语音通话情绪标签模型（jude 移植）
+            VoiceCallAudioTagModelSettingItem(
+                settings = settings,
+                vm = vm,
+            )
+        }
+        item {
             CompressModelSettingItem(
                 settings = settings,
                 vm = vm,
@@ -538,6 +545,47 @@ private fun OcrModelSettingItem(settings: Settings, vm: SettingVM) {
         },
         onFallbackModelSelect = { model ->
             vm.updateSettings(settings.copy(ocrModelId = model.id))
+        },
+    )
+}
+
+@Composable
+private fun VoiceCallAudioTagModelSettingItem(settings: Settings, vm: SettingVM) {
+    // 语音通话情绪标签（jude 移植）：默认用主对话模型，也可单独配一路 OpenAI 兼容 API。
+    val config = settings.voiceCallAudioTagConfig
+    SeparateApiModelSettingItem(
+        title = stringResource(R.string.vc_model_voice_tag_model),
+        description = stringResource(R.string.vc_model_voice_tag_model_desc),
+        sheetTitle = stringResource(R.string.vc_model_voice_tag_separate_api_title),
+        sheetDescription = stringResource(R.string.vc_model_voice_tag_separate_api_desc),
+        providerName = stringResource(R.string.vc_model_provider_name_voice_tag),
+        enabled = config.enabled,
+        modelId = config.modelId,
+        apiKey = config.apiKey,
+        baseUrl = config.baseUrl,
+        chatCompletionsPath = config.chatCompletionsPath,
+        useResponseApi = config.useResponseApi,
+        fallbackModelId = settings.voiceCallAudioTagModelId ?: settings.chatModelId,
+        fallbackProviders = settings.providers,
+        onEnabledChange = { enabled ->
+            vm.updateSettings(settings.copy(voiceCallAudioTagConfig = config.copy(enabled = enabled)))
+        },
+        onConfigUpdate = { enabled, modelId, apiKey, baseUrl, path, useResponseApi ->
+            vm.updateSettings(
+                settings.copy(
+                    voiceCallAudioTagConfig = config.copy(
+                        enabled = enabled,
+                        modelId = modelId,
+                        apiKey = apiKey,
+                        baseUrl = baseUrl,
+                        chatCompletionsPath = path,
+                        useResponseApi = useResponseApi,
+                    )
+                )
+            )
+        },
+        onFallbackModelSelect = { model ->
+            vm.updateSettings(settings.copy(voiceCallAudioTagModelId = model.id))
         },
     )
 }
