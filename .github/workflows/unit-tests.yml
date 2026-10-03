@@ -43,7 +43,7 @@ jobs:
       - name: Run JVM unit tests
         run: |
           chmod +x gradlew
-          ./gradlew testReleaseUnitTest --continue
+          ./gradlew testDebugUnitTest --continue
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
