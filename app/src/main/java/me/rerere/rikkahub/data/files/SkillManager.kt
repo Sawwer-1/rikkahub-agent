@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.data.datastore.SettingsStore
 
@@ -248,9 +249,19 @@ class SkillManager(
      * launches skip the copy without checking individual file mtimes — and so the user can
      * delete a default skill and we will not silently re-install it.
      */
-    fun seedDefaultSkillsIfNeeded() {
+    suspend fun seedDefaultSkillsIfNeeded() {
         val assetRoot = "default-skills"
         val assetMgr = context.assets
+        // One-shot jude3 migration: jude1/jude2 seeded copies predate the display_name
+        // frontmatter, and the pure hash-tracking path can silently no-op if a sentinel
+        // survived without a version file. While the migration flag is unset, any
+        // non-core skill directory that WE seeded before (sentinel present) is force
+        // refreshed from the bundled assets; user-installed directories (no sentinel)
+        // are still preserved. The flag is cleared after the pass completes.
+        val forceNonCoreReseed = runCatching {
+            !settingsStore.settingsFlowRaw.first().skillsJude3ReseedDone
+        }.getOrDefault(false)
+        var reseedFailures = 0
         val skillNames = try {
             assetMgr.list(assetRoot).orEmpty()
         } catch (e: Exception) {
@@ -334,8 +345,13 @@ class SkillManager(
                 continue
             }
             val currentHash = if (coreVersionFile.exists()) coreVersionFile.readText().trim() else ""
-            if (bundledHash == currentHash) continue
-            val installedHash = targetDir.takeIf(File::exists)?.let(::computeInstalledSkillHash)
+            // Migration force: the directory was seeded by a previous jude build
+            // (sentinel present) but predates display_name. Refresh it once.
+            val migrationForce = forceNonCoreReseed && sentinel.exists()
+            if (!migrationForce && bundledHash == currentHash) continue
+            val installedHash = targetDir.takeIf(File::exists)?.let { dir ->
+                runCatching { computeInstalledSkillHash(dir) }.getOrNull()
+            }
             if (currentHash.isNotBlank() && installedHash != null && installedHash != currentHash) {
                 // The user edited their seeded copy: record that this bundled version
                 // has been considered and keep their files.
@@ -351,7 +367,15 @@ class SkillManager(
                 Log.i(TAG, "seedDefaultSkillsIfNeeded: re-seeded skill $skillName (hash=$bundledHash)")
             } catch (e: Exception) {
                 Log.w(TAG, "seedDefaultSkillsIfNeeded: failed to re-seed $skillName", e)
+                reseedFailures++
             }
+        }
+        if (forceNonCoreReseed && reseedFailures == 0) {
+            // Migration pass fully applied: flip the one-shot flag so later launches go
+            // back to plain hash tracking (and user edits keep winning).
+            runCatching {
+                settingsStore.update { it.copy(skillsJude3ReseedDone = true) }
+            }.onFailure { Log.w(TAG, "seedDefaultSkillsIfNeeded: failed to persist reseed flag", it) }
         }
     }
 

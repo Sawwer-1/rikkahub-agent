@@ -222,6 +222,9 @@ class SettingsStore(
         val WEB_SERVER_LOCALHOST_ONLY = booleanPreferencesKey("web_server_localhost_only")
         val VOICE_FEATURES_ENABLED = booleanPreferencesKey("voice_features_enabled")
         val SOCIAL_TOOLS_SEEDED = booleanPreferencesKey("social_tools_seeded")
+        // One-shot migration: force-refresh non-core bundled skills (jude2-era copies lack
+        // display_name) the first time jude3 runs; afterwards hash tracking takes over.
+        val SKILLS_JUDE3_RESEED_DONE = booleanPreferencesKey("skills_jude3_reseed_done")
 
         // AI logging
         val AI_LOG_LEVEL = stringPreferencesKey("ai_log_level")
@@ -419,6 +422,7 @@ class SettingsStore(
                 webServerAccessPassword = preferences[WEB_SERVER_ACCESS_PASSWORD] ?: "",
                 voiceFeaturesEnabled = preferences[VOICE_FEATURES_ENABLED] != false,
                 socialToolsSeeded = preferences[SOCIAL_TOOLS_SEEDED] == true,
+                skillsJude3ReseedDone = preferences[SKILLS_JUDE3_RESEED_DONE] == true,
                 // LAN is fail-closed until the paired TLS transport is configured. Existing
                 // installs that stored false are still forced local by WebServerManager.
                 webServerLocalhostOnly = preferences[WEB_SERVER_LOCALHOST_ONLY] != false,
@@ -725,6 +729,7 @@ class SettingsStore(
             preferences[WEB_SERVER_LOCALHOST_ONLY] = settings.webServerLocalhostOnly
             preferences[VOICE_FEATURES_ENABLED] = settings.voiceFeaturesEnabled
             preferences[SOCIAL_TOOLS_SEEDED] = settings.socialToolsSeeded
+            preferences[SKILLS_JUDE3_RESEED_DONE] = settings.skillsJude3ReseedDone
             preferences[AI_LOG_LEVEL] = settings.aiLogLevel.preferenceName
             preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
             preferences[LAUNCH_COUNT] = settings.launchCount
@@ -1004,6 +1009,8 @@ data class Settings(
     val autoEnabledDefaultSkills: Set<String> = emptySet(),
     /** One-shot guard: social local tools (Moments/QuestionBox) seeded into assistants. */
     val socialToolsSeeded: Boolean = false,
+    /** One-shot: non-core bundled skills force-refreshed on first jude3 launch. */
+    val skillsJude3ReseedDone: Boolean = false,
     /**
      * Master switch for voice features. When off, voice quick entries (chat top-bar voice
      * call, attachment-sheet voice item, input-bar ASR mic) are hidden; provider config
