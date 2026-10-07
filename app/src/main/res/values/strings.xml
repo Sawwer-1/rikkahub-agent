@@ -3154,7 +3154,7 @@
   <string name="setting_waifu_char_delay_desc">Wait time per character of a sentence before its bubble appears. 0 shows sentences immediately.</string>
   <string name="setting_waifu_max_delay_title">Max delay per sentence</string>
   <string name="setting_waifu_max_delay_label">Upper bound (ms)</string>
-  <string name="setting_waifu_max_delay_desc">Cap for a single sentence's delay so long sentences are not stalled.</string>
+  <string name="setting_waifu_max_delay_desc">Cap for a single sentence\'s delay so long sentences are not stalled.</string>
   <string name="setting_waifu_extra_prompt_title">Extra prompt</string>
   <string name="setting_waifu_extra_prompt_label">Appended to the assistant system prompt</string>
 </resources>

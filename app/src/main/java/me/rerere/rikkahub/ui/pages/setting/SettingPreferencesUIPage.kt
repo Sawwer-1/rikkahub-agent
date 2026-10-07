@@ -488,7 +488,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                                 label = {
                                     Text(stringResource(R.string.setting_waifu_char_delay_label))
                                 },
-                                supportingContent = {
+                                supportingText = {
                                     Text(stringResource(R.string.setting_waifu_char_delay_desc))
                                 },
                                 keyboardOptions = KeyboardOptions(
@@ -508,7 +508,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                                 label = {
                                     Text(stringResource(R.string.setting_waifu_max_delay_label))
                                 },
-                                supportingContent = {
+                                supportingText = {
                                     Text(stringResource(R.string.setting_waifu_max_delay_desc))
                                 },
                                 keyboardOptions = KeyboardOptions(
