@@ -773,7 +773,10 @@ internal fun MessagePartsBlock(
             it is UIMessageAnnotation.ManualCompressionSummary ||
             it is UIMessageAnnotation.VoiceCallRecord ||
             it is UIMessageAnnotation.TtsAudio ||
-            it is UIMessageAnnotation.ChatVoiceReply
+            it is UIMessageAnnotation.ChatVoiceReply ||
+            // 群聊成员归属是内部簿记：发言名已由气泡名签（ChatMessageAssistantAvatar）
+            // 渲染，不得重复出现在引用展开区。
+            it is UIMessageAnnotation.GroupMember
     }
 
     if (recovery != null && recovery.status != FinalAnswerRecoveryStatus.SUCCEEDED) {
@@ -932,6 +935,8 @@ internal fun MessagePartsBlock(
                                 // Waifu typewriter group marker is internal bookkeeping;
                                 // it must not render as a citation entry.
                                 is UIMessageAnnotation.WaifuGroup -> Unit
+                                // 群聊成员归属同上：名签处已渲染，此处仅为穷尽性。
+                                is UIMessageAnnotation.GroupMember -> Unit
                             }
                         }
                     }

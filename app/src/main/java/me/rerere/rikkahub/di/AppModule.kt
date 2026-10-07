@@ -892,6 +892,7 @@ val appModule = module {
             memoryV2Coordinator = get(),
             dreamExperienceIngestor = get(),
             generationHandler = get(),
+            groupChatEngine = get(),
             templateTransformer = get(),
             providerManager = get(),
             localTools = get(),

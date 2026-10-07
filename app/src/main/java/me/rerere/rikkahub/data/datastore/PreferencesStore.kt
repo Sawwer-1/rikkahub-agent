@@ -45,6 +45,7 @@ import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV3Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV4Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV5Migration
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.data.model.GroupChatConfig
 import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.model.InjectionPosition
 import me.rerere.rikkahub.data.model.Lorebook
@@ -195,6 +196,9 @@ class SettingsStore(
 
         // 子代理
         val SUB_AGENTS = stringPreferencesKey("sub_agents")
+
+        // 群聊（多成员会话）
+        val GROUP_CHATS = stringPreferencesKey("group_chats")
 
         // 网络
         val NETWORK_SETTING = stringPreferencesKey("network_setting")
@@ -381,6 +385,12 @@ class SettingsStore(
                 subAgents = preferences[SUB_AGENTS]?.let { raw ->
                     runCatching { JsonInstant.decodeFromString<List<SubAgentProfile>>(raw) }.getOrElse {
                         Log.w(TAG, "Failed to decode subAgents, using default", it)
+                        emptyList()
+                    }
+                } ?: emptyList(),
+                groupChats = preferences[GROUP_CHATS]?.let { raw ->
+                    runCatching { JsonInstant.decodeFromString<List<GroupChatConfig>>(raw) }.getOrElse {
+                        Log.w(TAG, "Failed to decode groupChats, using default", it)
                         emptyList()
                     }
                 } ?: emptyList(),
@@ -709,6 +719,7 @@ class SettingsStore(
 
             preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers)
             preferences[SUB_AGENTS] = JsonInstant.encodeToString(settings.subAgents)
+            preferences[GROUP_CHATS] = JsonInstant.encodeToString(settings.groupChats)
             preferences[NETWORK_SETTING] = JsonInstant.encodeToString(settings.networkSetting)
             preferences[RESPONSE_STREAM_MAX_RETRIES] = settings.responseStreamMaxRetries.coerceIn(0, 10)
             preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
@@ -1066,6 +1077,12 @@ data class Settings(
      * [mcpServers]).
      */
     val subAgents: List<SubAgentProfile> = emptyList(),
+    /**
+     * Multi-member group chat configs, keyed by conversation id. MUST default to an empty
+     * list so an install that predates this field decodes cleanly (same convention as
+     * [subAgents]).
+     */
+    val groupChats: List<GroupChatConfig> = emptyList(),
     val networkSetting: NetworkSetting = NetworkSetting(),
     /** 流式请求失败重试上限。目标仓暂无消费点, 先持久化, 见 SettingPreferencesNetworkPage。 */
     val responseStreamMaxRetries: Int = 5,

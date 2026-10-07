@@ -15,6 +15,7 @@ import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.isEmptyUIMessage
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.ai.group.groupMemberOrNull
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.ui.components.ui.AutoAIIcon
@@ -61,13 +62,39 @@ fun ChatMessageAssistantAvatar(
     val settings = LocalSettings.current
     val showIcon = settings.displaySetting.showModelIcon
     val useAssistantAvatar = assistant?.useAssistantAvatar == true
-    if (message.role == MessageRole.ASSISTANT && (model != null || useAssistantAvatar)) {
+    // 群聊成员消息：气泡归属是发言成员而非会话主持人，名签始终显示（身份是群聊的
+    // 必要信息，不随 showModelName 装饰开关隐藏）；头像用字母占位（成员 Assistant
+    // 未传入该组件，避免为名签拉整份 settings）。
+    val groupMember = message.groupMemberOrNull()
+    if (message.role == MessageRole.ASSISTANT && (groupMember != null || model != null || useAssistantAvatar)) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
             modifier = modifier
         ) {
-            if (useAssistantAvatar) {
+            if (groupMember != null) {
+                if (showIcon) {
+                    UIAvatar(
+                        name = groupMember.displayName,
+                        modifier = Modifier.size(28.dp),
+                        value = Avatar.Dummy,
+                        loading = loading,
+                    )
+                }
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        text = groupMember.displayName.ifEmpty {
+                            stringResource(R.string.assistant_page_default_assistant)
+                        },
+                        style = MaterialTheme.typography.labelLargeEmphasized,
+                        maxLines = 1,
+                    )
+                }
+            } else if (useAssistantAvatar) {
                 if (showIcon) {
                     UIAvatar(
                         name = assistant.name,

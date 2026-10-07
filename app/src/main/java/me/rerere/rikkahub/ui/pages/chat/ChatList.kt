@@ -97,6 +97,7 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.model.GroupChatConfig
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.diagnostics.agenttiming.AgentTimingConversationSnapshot
 import me.rerere.rikkahub.diagnostics.agenttiming.AgentTimingEventKind
@@ -155,6 +156,8 @@ fun ChatList(
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
+    groupChatConfig: GroupChatConfig? = null,
+    onGroupChatConfigChange: ((GroupChatConfig?) -> Unit)? = null,
     onAddSelectionToMemory: (Set<Uuid>) -> Unit = {},
     showCompressedMessages: Boolean = false,
     onOpenVoiceCallRecord: ((String) -> Unit)? = null,
@@ -205,6 +208,8 @@ fun ChatList(
                 onToolAnswer = onToolAnswer,
                 onToggleFavorite = onToggleFavorite,
                 onConversationSystemPromptChange = onConversationSystemPromptChange,
+                groupChatConfig = groupChatConfig,
+                onGroupChatConfigChange = onGroupChatConfigChange,
                 onAddSelectionToMemory = onAddSelectionToMemory,
                 showCompressedMessages = showCompressedMessages,
                 onOpenVoiceCallRecord = onOpenVoiceCallRecord,
@@ -243,6 +248,8 @@ private fun ChatListNormal(
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
+    groupChatConfig: GroupChatConfig? = null,
+    onGroupChatConfigChange: ((GroupChatConfig?) -> Unit)? = null,
     onAddSelectionToMemory: (Set<Uuid>) -> Unit = {},
     showCompressedMessages: Boolean = false,
     onOpenVoiceCallRecord: ((String) -> Unit)? = null,
@@ -479,6 +486,18 @@ private fun ChatListNormal(
                     ConversationSystemPromptButton(
                         customSystemPrompt = conversation.customSystemPrompt,
                         onSystemPromptChange = onConversationSystemPromptChange,
+                    )
+                }
+            }
+
+            if (!loading && onGroupChatConfigChange != null) {
+                item(key = "GroupChatConfig") {
+                    GroupChatConfigButton(
+                        conversationId = conversation.id,
+                        conversationAssistantId = conversation.assistantId,
+                        assistants = settings.assistants,
+                        config = groupChatConfig,
+                        onConfigChange = onGroupChatConfigChange,
                     )
                 }
             }

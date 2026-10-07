@@ -597,6 +597,22 @@ class ChatVM(
         viewModelScope.launch { chatService.mutateConversationMetadata(_conversationId, mutation) }
     }
 
+    /** 群聊配置（B 炉）：null 表示退出群聊模式，否则按会话 id 覆盖保存。 */
+    fun updateGroupChatConfig(config: me.rerere.rikkahub.data.model.GroupChatConfig?) {
+        viewModelScope.launch {
+            settingsStore.update { settings ->
+                settings.copy(
+                    groupChats = if (config == null) {
+                        settings.groupChats.filterNot { it.conversationId == _conversationId }
+                    } else {
+                        settings.groupChats
+                            .filterNot { it.conversationId == _conversationId } + config
+                    },
+                )
+            }
+        }
+    }
+
     fun updateTitle(title: String) =
         mutateMetadata(me.rerere.rikkahub.data.repository.ConversationMetadataMutation.Title(title))
 
