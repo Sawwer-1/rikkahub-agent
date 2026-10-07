@@ -156,6 +156,20 @@ class AnonymousQuestionRepository(private val dao: AnonymousQuestionDAO) {
             .filter { it.kind == AnonymousQuestionReplyKind.ANSWER.value }
             .map { it.toReply() }
 
+    /**
+     * Earliest pending user-interaction due time (questions + answers) for this scope,
+     * or null when nothing waits for a reply. Mirrors MomentRepository.nextPendingDueAt.
+     */
+    suspend fun nextPendingDueAt(scopeId: Uuid): Long? {
+        val author = AnonymousQuestionAuthor.USER.value
+        val status = AnonymousQuestionReplyStatus.PENDING.value
+        val key = scopeId.toString()
+        return listOfNotNull(
+            dao.getNextDueQuestionAt(key, author, status),
+            dao.getNextDueReplyAt(key, author, status),
+        ).minOrNull()
+    }
+
     suspend fun markViewed(scopeId: Uuid, viewedAt: Long = System.currentTimeMillis()) {
         dao.upsertProfile(AnonymousQuestionProfileEntity(scopeId.toString(), viewedAt))
     }

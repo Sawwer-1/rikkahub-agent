@@ -1351,6 +1351,10 @@ val dataSourceModule = module {
     single { get<AppDatabase>().anonymousQuestionDao() }
     single { me.rerere.rikkahub.data.repository.MomentRepository(get()) }
     single { me.rerere.rikkahub.data.repository.AnonymousQuestionRepository(get()) }
+    // Auto-reply engines: shared by the overlay VMs and the background InteractionReplyWorker.
+    single { me.rerere.rikkahub.data.ai.interaction.MomentsAutoReplyEngine(get(), get(), get(), get(), get()) }
+    single { me.rerere.rikkahub.data.ai.interaction.QuestionBoxAutoReplyEngine(get(), get(), get(), get(), get()) }
+    single { me.rerere.rikkahub.service.InteractionReplyScheduler(context = get()) }
 
     single {
         McpManager(

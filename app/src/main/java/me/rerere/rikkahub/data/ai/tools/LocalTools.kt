@@ -1433,6 +1433,292 @@ class LocalTools(
         )
     }
 
+    private fun listMomentsTool(assistantId: Uuid): Tool {
+        return Tool(
+            name = "list_moments",
+            description = """
+                Read the current assistant's Moments timeline, including every comment thread.
+                Use this to notice new user moments or comments worth reacting to (for example from a scheduled
+                check), and to look up moment_id values before commenting. Newest entries first.
+                当需要查看朋友圈里有哪些动态和评论（尤其是要回复用户互动、获取 moment_id）时使用。
+            """.trimIndent().replace("\n", " "),
+            parameters = {
+                InputSchema.Obj(
+                    properties = buildJsonObject {
+                        put("limit", buildJsonObject {
+                            put("type", "integer")
+                            put("description", "Maximum number of moments to return, 1 to 50. Default 10.")
+                        })
+                    }
+                )
+            },
+            execute = { params ->
+                val limit = params.jsonObject["limit"]?.jsonPrimitive?.intOrNull?.coerceIn(1, 50) ?: 10
+                val entries = momentRepository.getTimeline(assistantId).take(limit)
+                listOf(
+                    UIMessagePart.Text(
+                        buildJsonObject {
+                            put("success", true)
+                            put("total_count", entries.size)
+                            put("moments", buildJsonArray {
+                                entries.forEach { entry ->
+                                    addJsonObject {
+                                        put("moment_id", entry.moment.id.toString())
+                                        put("author", entry.moment.author.value)
+                                        put("content", entry.moment.content)
+                                        put("context_note", entry.moment.contextNote)
+                                        put("image_description", entry.moment.imageDescription)
+                                        put("image_count", entry.moment.imageUris.size)
+                                        put("ai_liked", entry.moment.aiLiked)
+                                        put("ai_reply_content", entry.moment.aiReplyContent)
+                                        put("created_at_timestamp_ms", entry.moment.createdAt)
+                                        put("comments", buildJsonArray {
+                                            entry.comments.forEach { comment ->
+                                                addJsonObject {
+                                                    put("comment_id", comment.id.toString())
+                                                    put("author", comment.author.value)
+                                                    put("content", comment.content)
+                                                    put("created_at_timestamp_ms", comment.createdAt)
+                                                }
+                                            }
+                                        })
+                                    }
+                                }
+                            })
+                        }.toString()
+                    )
+                )
+            }
+        )
+    }
+
+    private fun commentMomentTool(assistantId: Uuid): Tool {
+        return Tool(
+            name = "comment_moment",
+            description = """
+                Leave the assistant's comment on a Moments post from the current assistant's timeline.
+                Use this to reply to a user's moment or to a user's comment after reading the timeline
+                (list_moments), for example from a scheduled interaction check. Keep it natural and short;
+                do not comment repeatedly on the same post.
+                当想要回应某条朋友圈（评论用户的动态或回复用户评论）时使用，先用 list_moments 拿 moment_id。
+            """.trimIndent().replace("\n", " "),
+            parameters = {
+                InputSchema.Obj(
+                    properties = buildJsonObject {
+                        put("moment_id", buildJsonObject {
+                            put("type", "string")
+                            put("description", "Exact moment ID to comment on, from list_moments.")
+                        })
+                        put("content", buildJsonObject {
+                            put("type", "string")
+                            put("description", "Visible comment text, one or two natural sentences.")
+                        })
+                    },
+                    required = listOf("moment_id", "content")
+                )
+            },
+            execute = { params ->
+                val obj = params.jsonObject
+                val content = obj["content"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
+                val momentId = obj["moment_id"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
+                    .let { runCatching { Uuid.parse(it) }.getOrNull() }
+                when {
+                    content.isBlank() -> listOf(
+                        UIMessagePart.Text(
+                            buildJsonObject {
+                                put("success", false)
+                                put("error", "content is required")
+                            }.toString()
+                        )
+                    )
+                    momentId == null -> listOf(
+                        UIMessagePart.Text(
+                            buildJsonObject {
+                                put("success", false)
+                                put("error", "moment_id is required and must be a valid ID from list_moments")
+                            }.toString()
+                        )
+                    )
+                    else -> {
+                        val moment = momentRepository.getMoment(momentId)
+                        if (moment == null || moment.assistantId != assistantId) {
+                            listOf(
+                                UIMessagePart.Text(
+                                    buildJsonObject {
+                                        put("success", false)
+                                        put("error", "moment not found in the current assistant's timeline")
+                                    }.toString()
+                                )
+                            )
+                        } else {
+                            val commentId = momentRepository.addAssistantComment(momentId, content)
+                            listOf(
+                                UIMessagePart.Text(
+                                    buildJsonObject {
+                                        put("success", true)
+                                        put("comment_id", commentId.toString())
+                                        put("moment_id", momentId.toString())
+                                    }.toString()
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    private fun readQuestionBoxTool(scopeId: Uuid): Tool {
+        return Tool(
+            name = "read_question_box",
+            description = """
+                Read the current assistant's anonymous question box, including every question and its answers
+                or comments. Use this to notice new anonymous questions or answers worth responding to (for
+                example from a scheduled check), and to look up question_id values before answering.
+                当需要查看提问箱里有哪些匿名提问和回答（尤其是要回应互动、获取 question_id）时使用。
+            """.trimIndent().replace("\n", " "),
+            parameters = {
+                InputSchema.Obj(
+                    properties = buildJsonObject {
+                        put("limit", buildJsonObject {
+                            put("type", "integer")
+                            put("description", "Maximum number of questions to return, 1 to 50. Default 10.")
+                        })
+                    }
+                )
+            },
+            execute = { params ->
+                val limit = params.jsonObject["limit"]?.jsonPrimitive?.intOrNull?.coerceIn(1, 50) ?: 10
+                val entries = anonymousQuestionRepository.getEntries(scopeId).take(limit)
+                listOf(
+                    UIMessagePart.Text(
+                        buildJsonObject {
+                            put("success", true)
+                            put("total_count", entries.size)
+                            put("questions", buildJsonArray {
+                                entries.forEach { entry ->
+                                    addJsonObject {
+                                        put("question_id", entry.question.id.toString())
+                                        put("author", entry.question.author.value)
+                                        put("content", entry.question.content)
+                                        put("created_at_timestamp_ms", entry.question.createdAt)
+                                        put("replies", buildJsonArray {
+                                            entry.replies.forEach { reply ->
+                                                addJsonObject {
+                                                    put("reply_id", reply.id.toString())
+                                                    put("author", reply.author.value)
+                                                    put("kind", reply.kind.value)
+                                                    put("content", reply.content)
+                                                    put("created_at_timestamp_ms", reply.createdAt)
+                                                }
+                                            }
+                                        })
+                                    }
+                                }
+                            })
+                        }.toString()
+                    )
+                )
+            }
+        )
+    }
+
+    private fun answerQuestionTool(scopeId: Uuid): Tool {
+        return Tool(
+            name = "answer_question",
+            description = """
+                Respond inside the current assistant's anonymous question box.
+                kind=answer writes the assistant's answer to an anonymous question; kind=comment writes a short
+                comment on an existing answer. Use this after reading the box (read_question_box) to respond to
+                new interactions, for example from a scheduled check. Stay anonymous: never claim or imply the
+                assistant's identity. Keep it within 200 characters.
+                回应提问箱互动时使用：kind=answer 回答匿名提问，kind=comment 评论已有回答；先 read_question_box 拿 question_id。
+            """.trimIndent().replace("\n", " "),
+            parameters = {
+                InputSchema.Obj(
+                    properties = buildJsonObject {
+                        put("question_id", buildJsonObject {
+                            put("type", "string")
+                            put("description", "Exact anonymous question ID, from read_question_box.")
+                        })
+                        put("content", buildJsonObject {
+                            put("type", "string")
+                            put("description", "Answer or comment text, within 200 characters.")
+                        })
+                        put("kind", buildJsonObject {
+                            put("type", "string")
+                            put("description", "Either \"answer\" (default) or \"comment\".")
+                        })
+                    },
+                    required = listOf("question_id", "content")
+                )
+            },
+            execute = { params ->
+                val obj = params.jsonObject
+                val content = obj["content"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
+                val kind = obj["kind"]?.jsonPrimitive?.contentOrNull.orEmpty().trim().lowercase()
+                    .ifBlank { "answer" }
+                val questionId = obj["question_id"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
+                    .let { runCatching { Uuid.parse(it) }.getOrNull() }
+                when {
+                    content.isBlank() -> listOf(
+                        UIMessagePart.Text(
+                            buildJsonObject {
+                                put("success", false)
+                                put("error", "content is required")
+                            }.toString()
+                        )
+                    )
+                    kind != "answer" && kind != "comment" -> listOf(
+                        UIMessagePart.Text(
+                            buildJsonObject {
+                                put("success", false)
+                                put("error", "kind must be \"answer\" or \"comment\"")
+                            }.toString()
+                        )
+                    )
+                    questionId == null -> listOf(
+                        UIMessagePart.Text(
+                            buildJsonObject {
+                                put("success", false)
+                                put("error", "question_id is required and must be a valid ID from read_question_box")
+                            }.toString()
+                        )
+                    )
+                    else -> {
+                        val question = anonymousQuestionRepository.getQuestion(questionId)
+                        if (question == null || question.scopeId != scopeId) {
+                            listOf(
+                                UIMessagePart.Text(
+                                    buildJsonObject {
+                                        put("success", false)
+                                        put("error", "question not found in the current question box")
+                                    }.toString()
+                                )
+                            )
+                        } else {
+                            val replyId = if (kind == "answer") {
+                                anonymousQuestionRepository.addAssistantAnswer(questionId, content)
+                            } else {
+                                anonymousQuestionRepository.addAssistantComment(questionId, content)
+                            }
+                            listOf(
+                                UIMessagePart.Text(
+                                    buildJsonObject {
+                                        put("success", true)
+                                        put("reply_id", replyId.toString())
+                                        put("question_id", questionId.toString())
+                                        put("kind", kind)
+                                    }.toString()
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        )
+    }
+
     fun getTools(
         options: List<LocalToolOption>,
         invocationContext: ToolInvocationContext = ToolInvocationContext.EMPTY,
@@ -1934,10 +2220,14 @@ class LocalTools(
             if (options.contains(LocalToolOption.Moments)) {
                 tools.add(postMomentTool(momentAssistantId))
                 tools.add(deleteMomentTool(momentAssistantId))
+                tools.add(listMomentsTool(momentAssistantId))
+                tools.add(commentMomentTool(momentAssistantId))
             }
             if (options.contains(LocalToolOption.QuestionBox)) {
                 tools.add(postAnonymousQuestionTool(momentAssistantId))
                 tools.add(deleteAnonymousQuestionTool(momentAssistantId))
+                tools.add(readQuestionBoxTool(momentAssistantId))
+                tools.add(answerQuestionTool(momentAssistantId))
             }
         }
         // Centralised opt-in to needsApproval. Tool factories themselves don't have to know

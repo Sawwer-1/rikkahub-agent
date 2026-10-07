@@ -58,6 +58,25 @@ interface AnonymousQuestionDAO {
     )
     suspend fun getDueReplies(scopeId: String, author: String, replyStatus: String, now: Long, limit: Int): List<AnonymousQuestionReplyEntity>
 
+    @Query(
+        """
+        SELECT MIN(reply_due_at) FROM anonymous_questions
+        WHERE scope_id = :scopeId AND author = :author
+        AND reply_status = :replyStatus AND reply_due_at IS NOT NULL
+        """
+    )
+    suspend fun getNextDueQuestionAt(scopeId: String, author: String, replyStatus: String): Long?
+
+    @Query(
+        """
+        SELECT MIN(r.reply_due_at) FROM anonymous_question_replies r
+        INNER JOIN anonymous_questions q ON q.id = r.question_id
+        WHERE q.scope_id = :scopeId AND r.author = :author
+        AND r.reply_status = :replyStatus AND r.reply_due_at IS NOT NULL
+        """
+    )
+    suspend fun getNextDueReplyAt(scopeId: String, author: String, replyStatus: String): Long?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertQuestion(question: AnonymousQuestionEntity)
 
