@@ -902,6 +902,10 @@ private fun ChatPageContent(
                 onConversationSystemPromptChange = { newPrompt ->
                     vm.mutateMetadata(me.rerere.rikkahub.data.repository.ConversationMetadataMutation.SystemPrompt(newPrompt))
                 },
+                groupChatConfig = setting.groupChats.firstOrNull { it.conversationId == conversation.id },
+                onGroupChatConfigChange = { config ->
+                    vm.updateGroupChatConfig(config)
+                },
                 onAddSelectionToMemory = { selectedNodeIds ->
                     scope.launch {
                         when (vm.captureMemorySelection(selectedNodeIds)) {

@@ -76,6 +76,7 @@ import me.rerere.rikkahub.RouteActivity
 import me.rerere.rikkahub.assistant.SecondUserAuthorityRegistry
 import me.rerere.rikkahub.data.ai.GenerationChunk
 import me.rerere.rikkahub.data.ai.GenerationHandler
+import me.rerere.rikkahub.data.ai.group.GroupChatEngine
 import me.rerere.rikkahub.data.ai.GenerationPersistenceBarrier
 import me.rerere.rikkahub.data.ai.resolveInteractiveGenerationMaxSteps
 import me.rerere.rikkahub.data.ai.resolveInteractiveGenerationTurnBudgetMs
@@ -1130,6 +1131,7 @@ class ChatService(
     private val dreamExperienceIngestor:
         me.rerere.rikkahub.memory.dreaming.experience.DreamExperienceIngestor,
     private val generationHandler: GenerationHandler,
+    private val groupChatEngine: me.rerere.rikkahub.data.ai.group.GroupChatEngine,
     private val chatVoiceReplyMaterializer:
         me.rerere.rikkahub.data.voice.ChatVoiceReplyMaterializer,
     private val templateTransformer: TemplateTransformer,
@@ -2908,6 +2910,25 @@ class ChatService(
                         }.onFailure {
                             Log.w(TAG, "autoCompressConversationIfNeeded crashed", it)
                         }
+                        // 群聊分支（handover §三.B）：群会话的普通文本消息走 planner+多成员
+                        // 管线，主持人不直接生成；语音通话等其他请求模式维持原路。用户消息
+                        // 已在上文落库，群组轮次从当前状态起算。
+                        val groupChatConfig = if (content.requestMode == ChatRequestMode.Normal) {
+                            settings.groupChats.firstOrNull { it.conversationId == conversationId }
+                        } else {
+                            null
+                        }
+                        if (groupChatConfig != null) {
+                            return executeGroupTurnScoped(
+                                config = groupChatConfig,
+                                conversationId = conversationId,
+                                commandId = commandId,
+                                control = control,
+                                hostAssistant = assistant,
+                                responseCorrelationAnnotation = responseCorrelationAnnotation,
+                                agentTiming = agentTiming,
+                            )
+                        }
                         // Voice-call runtime state machine (ported from jude sendMessage).
                         val voiceCallRuntimeState =
                             if (endedEventConsumption?.shouldNotifyModel == true) {
@@ -2965,6 +2986,122 @@ class ChatService(
                 ?: (getConversationFlow(conversationId).value.latestFinalAnswerFailure()?.let {
                     RunOutcome.Failed(it)
                 } ?: RunOutcome.Completed())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            addError(e, conversationId, title = context.getString(R.string.error_title_send_message))
+            return RunOutcome.Failed(e)
+        }
+    }
+
+    /**
+     * Group turn: planner picks member speakers, each member answers over a projected
+     * history (own past replies stay assistant turns, everyone else becomes "[From X]"
+     * user turns), replies persist as GroupMember-annotated assistant nodes. Runs inside
+     * the runtime's run job — StopCommand cancels it via plain coroutine cancellation.
+     */
+    private suspend fun executeGroupTurnScoped(
+        config: me.rerere.rikkahub.data.model.GroupChatConfig,
+        conversationId: Uuid,
+        commandId: Uuid,
+        control: GenerationRunControl,
+        hostAssistant: Assistant,
+        responseCorrelationAnnotation: UIMessageAnnotation?,
+        agentTiming: AgentTimingHandle?,
+    ): RunOutcome {
+        try {
+            val settings = settingsStore.settingsFlow.first()
+            val members = config.memberAssistantIds.mapNotNull { settings.getAssistantById(it) }
+            if (members.isEmpty()) {
+                finishControlAuthority(conversationId, control)
+                return RunOutcome.Completed()
+            }
+            val conversation = getConversationFlow(conversationId).value
+            val maxSpeakers = config.maxSpeakersPerTurn.coerceIn(1, 5)
+            val plans = if (config.plannerEnabled) {
+                groupChatEngine.planSpeakers(
+                    config = config,
+                    conversation = conversation,
+                    members = members,
+                    hostAssistant = hostAssistant,
+                    maxSpeakers = maxSpeakers,
+                )
+            } else {
+                emptyList()
+            }
+            val speakers: List<Pair<Assistant, String?>> = if (plans.isEmpty()) {
+                // Planner failure/empty fallback: the first roster member answers so the
+                // group never goes silent (planner errors must not break the chat).
+                listOf(members.first() to null)
+            } else {
+                plans.mapNotNull { plan ->
+                    members.find { it.id == plan.memberAssistantId }?.let { it to plan.hint }
+                }
+            }
+            val memberNames = members.associate { it.id to it.name }
+            var lastMemberMessage: UIMessage? = null
+            for ((speaker, hint) in speakers) {
+                val text = groupChatEngine.generateMemberReply(
+                    conversation = getConversationFlow(conversationId).value,
+                    member = speaker,
+                    memberNames = memberNames,
+                    hostAssistantName = hostAssistant.name,
+                    hint = hint,
+                )
+                if (text.isBlank()) continue
+                val memberMessage = UIMessage(
+                    role = MessageRole.ASSISTANT,
+                    parts = listOf(UIMessagePart.Text(text)),
+                    annotations = buildList {
+                        add(me.rerere.ai.ui.UIMessageAnnotation.GroupMember(
+                            memberAssistantId = speaker.id,
+                            displayName = speaker.name,
+                        ))
+                        if (responseCorrelationAnnotation != null) add(responseCorrelationAnnotation)
+                    },
+                )
+                val current = getConversationFlow(conversationId).value
+                val updated = current.copy(
+                    messageNodes = current.messageNodes + memberMessage.toMessageNode(),
+                )
+                if (control.runtimeCommandAuthority() == null) {
+                    saveConversation(conversationId, updated)
+                } else {
+                    updateConversation(conversationId, updated)
+                }
+                lastMemberMessage = memberMessage
+            }
+            val authority = control.runtimeCommandAuthority()
+            if (lastMemberMessage != null && authority != null) {
+                // A generation happened: terminalize like the normal path, anchored on the
+                // last member message so a post-kill replay cannot double-run this turn.
+                val graph = conversationRepo.getConversationById(conversationId)
+                    ?: error("control_conversation_missing")
+                try {
+                    authority.finish(
+                        conversation = graph,
+                        terminalState = me.rerere.rikkahub.service.chat.DurableCommandState.COMPLETED,
+                        kind = me.rerere.rikkahub.service.chat.RuntimeAuthorityTerminalKind
+                            .GENERATION_FINAL_SAVED,
+                        resultAssistantMessageId = lastMemberMessage.id,
+                        executionIds = emptyList(),
+                    )
+                } catch (saveError: Throwable) {
+                    if (!authority.isTerminalCommitted()) {
+                        runCatching { authority.finishAfterFinalSaveFailure() }
+                    }
+                    throw saveError
+                }
+            } else {
+                finishControlAuthority(conversationId, control)
+            }
+            agentTiming?.mark(AgentTimingEventKind.GENERATION_DONE_NOTIFY_STARTED)
+            try {
+                _generationDoneFlow.emit(conversationId)
+            } finally {
+                agentTiming?.mark(AgentTimingEventKind.GENERATION_DONE_NOTIFY_FINISHED)
+            }
+            return RunOutcome.Completed()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {

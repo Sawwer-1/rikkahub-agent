@@ -1355,6 +1355,8 @@ val dataSourceModule = module {
     single { me.rerere.rikkahub.data.ai.interaction.MomentsAutoReplyEngine(get(), get(), get(), get(), get()) }
     single { me.rerere.rikkahub.data.ai.interaction.QuestionBoxAutoReplyEngine(get(), get(), get(), get(), get()) }
     single { me.rerere.rikkahub.service.InteractionReplyScheduler(context = get()) }
+    // Group chat (multi-member) pipeline: planner + per-member generation over a projected history.
+    single { me.rerere.rikkahub.data.ai.group.GroupChatEngine(get(), get(), get()) }
 
     single {
         McpManager(

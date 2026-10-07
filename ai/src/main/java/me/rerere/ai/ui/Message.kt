@@ -968,6 +968,20 @@ sealed class UIMessageAnnotation {
     data class WaifuGroup(
         val groupId: String,
     ) : UIMessageAnnotation()
+
+    /**
+     * Group chat (multi-member conversation): marks an assistant-role message as spoken by
+     * a specific group member rather than the conversation's host assistant. Persisted so
+     * the request-side group projection can attribute history (other members become
+     * "[From X]" user turns, own replies stay assistant turns) and so the UI can label the
+     * speaking member on each bubble.
+     */
+    @Serializable
+    @SerialName("group_member")
+    data class GroupMember(
+        val memberAssistantId: Uuid,
+        val displayName: String,
+    ) : UIMessageAnnotation()
 }
 
 @Serializable
