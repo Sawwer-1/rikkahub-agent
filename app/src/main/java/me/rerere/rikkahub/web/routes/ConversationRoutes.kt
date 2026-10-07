@@ -344,7 +344,8 @@ fun Route.conversationRoutes(
             val request = call.receive<EditMessageRequest>()
 
             chatService.initializeConversation(uuid)
-            chatService.editMessage(uuid, messageId, request.parts)
+            val editResult = chatService.editMessage(uuid, messageId, request.parts)
+            if (editResult is SubmitResult.Rejected) throw BadRequestException(editResult.reason)
 
             call.respond(HttpStatusCode.Accepted, mapOf("status" to "accepted"))
         }

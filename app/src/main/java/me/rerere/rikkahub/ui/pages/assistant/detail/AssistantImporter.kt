@@ -185,7 +185,8 @@ private class CharaCardV2Parser : TavernCardParser {
 
         return Assistant(
             name = name,
-            presetMessages = if (firstMessage != null) listOf(UIMessage.assistant(firstMessage)) else emptyList(),
+            // 酒馆卡允许 first_mes 为空串：空串当开场白会在新会话物化出一条空消息。
+            presetMessages = if (!firstMessage.isNullOrBlank()) listOf(UIMessage.assistant(firstMessage)) else emptyList(),
             systemPrompt = prompt,
             background = background
         )
@@ -223,7 +224,8 @@ private class CharaCardV3Parser : TavernCardParser {
 
         return Assistant(
             name = name,
-            presetMessages = if (firstMessage != null) listOf(UIMessage.assistant(firstMessage)) else emptyList(),
+            // 酒馆卡允许 first_mes 为空串：空串当开场白会在新会话物化出一条空消息。
+            presetMessages = if (!firstMessage.isNullOrBlank()) listOf(UIMessage.assistant(firstMessage)) else emptyList(),
             systemPrompt = prompt,
             background = background
         )

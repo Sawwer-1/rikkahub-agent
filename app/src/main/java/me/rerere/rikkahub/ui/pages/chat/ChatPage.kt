@@ -637,6 +637,25 @@ private fun ChatPageContent(
                             }
                         }
                     }
+                    // 恢复入口兜底：队列空时排队面板不渲染，Paused（含异常路径钉死）
+                    // 必须仍有一个可达的恢复按钮（ExTV 停止不钉死语义的 UI 侧保险）。
+                    if (queueStatus.paused && queuedMessages.isEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = "消息队列已暂停",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            TextButton(onClick = vm::resumeQueue) {
+                                Text("恢复队列")
+                            }
+                        }
+                    }
                     if (statusText != null) {
                         Text(
                             text = statusText,

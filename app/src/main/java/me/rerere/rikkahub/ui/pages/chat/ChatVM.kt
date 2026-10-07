@@ -463,7 +463,7 @@ class ChatVM(
         if (parts.isEmptyInputMessage()) return
 
         viewModelScope.launch {
-            chatService.editMessage(_conversationId, messageId, parts)
+            reportSubmitResult(chatService.editMessage(_conversationId, messageId, parts))
         }
     }
 

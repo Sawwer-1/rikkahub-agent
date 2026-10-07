@@ -67,6 +67,7 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.ui.isEmptyUIMessage
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.transformers.DefaultPlaceholderProvider
 import me.rerere.rikkahub.data.ai.transformers.TemplateTransformer
@@ -473,7 +474,13 @@ private fun AssistantPromptContent(
                 }
                 Button(
                     onClick = {
-                        val lastRole = assistant.presetMessages.lastOrNull()?.role ?: MessageRole.ASSISTANT
+                        // 避免空文本条目堆积：最后一条还没填内容时不追加新空条目
+                        // （空 preset 条目会在新会话物化成一条只剩操作行的空消息）。
+                        val last = assistant.presetMessages.lastOrNull()
+                        if (last != null && last.parts.isEmptyUIMessage()) {
+                            return@Button
+                        }
+                        val lastRole = last?.role ?: MessageRole.ASSISTANT
                         val nextRole = when (lastRole) {
                             MessageRole.USER -> MessageRole.ASSISTANT
                             MessageRole.ASSISTANT -> MessageRole.USER

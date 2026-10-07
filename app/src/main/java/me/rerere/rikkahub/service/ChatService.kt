@@ -59,6 +59,7 @@ import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessageAnnotation
+import me.rerere.ai.ui.isEmptyUIMessage
 import me.rerere.ai.ui.FinalAnswerRecoveryStatus
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.UIMessageState
@@ -293,6 +294,29 @@ internal fun backgroundTextGenerationParams(
     customHeaders = model.customHeaders,
     customBody = model.customBodies,
 )
+
+/** Timeout bounding one edit outcome await; a paused/unavailable runtime must not hang the UI. */
+internal val EDIT_MESSAGE_OUTCOME_TIMEOUT: kotlin.time.Duration = 15.seconds
+
+/**
+ * ExTV 语义：编辑必须给调用方一个确定的终局。超时（outcome 为 null）与任何非 Completed
+ * 终局都折叠成用户可见的拒绝，绝不 error() 崩溃。
+ */
+internal fun messageEditSubmissionResult(
+    submission: SubmitResult,
+    outcome: CommandOutcome?,
+): SubmitResult = when {
+    outcome == null -> SubmitResult.Rejected("消息编辑等待超时，请稍后重试")
+    outcome == CommandOutcome.Completed -> submission
+    else -> SubmitResult.Rejected("消息编辑未能生效：$outcome")
+}
+
+/**
+ * 空文本 preset 条目（手写空行、酒馆卡空 first_mes）在新会话物化成一条只剩操作行的
+ * 空消息。出生点统一过滤：空条目不入会话，非空 preset 原样保留。
+ */
+internal fun effectivePresetMessages(presetMessages: List<UIMessage>): List<UIMessage> =
+    presetMessages.filterNot { it.parts.isEmptyUIMessage() }
 
 internal fun splitMessagesForCompression(
     messages: List<UIMessage>,
@@ -2307,7 +2331,7 @@ class ChatService(
                         id = conversationId,
                         assistantId = assistant.id,
                         newConversation = true,
-                    ).updateCurrentMessages(assistant.presetMessages)
+                    ).updateCurrentMessages(effectivePresetMessages(assistant.presetMessages))
                 )
             }
         }
@@ -7019,21 +7043,26 @@ class ChatService(
         conversationId: Uuid,
         messageId: Uuid,
         parts: List<UIMessagePart>
-    ) {
-        if (parts.isEmptyInputMessage()) return
+    ): SubmitResult {
+        if (parts.isEmptyInputMessage()) {
+            return SubmitResult.Rejected("编辑内容为空")
+        }
 
-        val current = conversationRepo.getConversationById(conversationId) ?: return
-        val node = current.getMessageNodeByMessageId(messageId) ?: return
+        // 未入库草稿会话读不到 Room 副本：直接给用户可见的拒绝，而不是静默 no-op。
+        val current = conversationRepo.getConversationById(conversationId)
+            ?: return SubmitResult.Rejected("会话还没保存，先发送一条消息后再编辑")
+        val node = current.getMessageNodeByMessageId(messageId)
+            ?: return SubmitResult.Rejected("找不到要编辑的消息")
         val settings = settingsStore.settingsFlow.first()
         val assistant = settings.getAssistantById(current.assistantId) ?: settings.getCurrentAssistant()
         val processed = preprocessUserInputParts(parts, assistant)
         val tracked = submitCommandTracked(conversationId,
             me.rerere.rikkahub.service.chat.MutateMessageCommand(node.id, messageId, processed),
             CommandOrigin.APP_UI, null, null, emptyList())
-        when (val result = tracked.outcome.await()) {
-            CommandOutcome.Completed -> Unit
-            else -> error("Message edit not applied: $result")
-        }
+        // ExTV 语义：编辑必须给用户一个确定的终局。无界 await 曾把 UI 永久挂死在
+        // Paused 的 runtime 上，error() 则把任何拒绝变成崩溃线。
+        val outcome = withTimeoutOrNull(EDIT_MESSAGE_OUTCOME_TIMEOUT) { tracked.outcome.await() }
+        return messageEditSubmissionResult(tracked.submission, outcome)
     }
 
     suspend fun forkConversationAtMessage(
@@ -7119,6 +7148,17 @@ class ChatService(
             if (failIfMissing) {
                 throw NotFoundException("Message not found")
             }
+            return
+        }
+
+        // 未持久化草稿（draft 守卫：未入库+标题空+节点空 → saveConversation 静默 return）
+        // 会把删除后的内存态冻在原地：空 preset 节点删不掉、操作行一直残留。
+        // 直接更新内存态绕开 draft 守卫；仅当会话确无持久化行且仍标记 newConversation 时走此路，
+        // 第二道守卫（防未水合空快照覆盖已持久化历史）不受影响。
+        if (!conversationRepo.existsConversationById(conversationId) &&
+            updatedConversation.newConversation
+        ) {
+            updateConversationState(conversationId) { updatedConversation }
             return
         }
 
