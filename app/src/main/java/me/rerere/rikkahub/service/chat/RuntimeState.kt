@@ -23,6 +23,13 @@ data class QueueStatus(
     val activeCommandId: Uuid?,
     /** Pending normal commands in FIFO order, excluding the active run. */
     val pendingCommandIds: List<Uuid> = emptyList(),
+    /**
+     * Lightweight observability for pinned Paused states: why the runtime stopped consuming
+     * work. Null for user-initiated pauses (stop with pauseQueue, explicit queue pause) —
+     * those are normal states, not anomalies. Failure-driven pins (durable terminal
+     * confirmation, repair, persistence) carry a fixed, redaction-safe reason string.
+     */
+    val pausedReason: String? = null,
 )
 
 data class QueuedMessageUiEntry(

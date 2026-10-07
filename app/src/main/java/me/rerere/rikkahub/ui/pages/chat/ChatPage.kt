@@ -647,7 +647,11 @@ private fun ChatPageContent(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                text = "消息队列已暂停",
+                                // 异常钉死时带上 runtime 上报的暂停原因（QueueStatus.pausedReason），
+                                // 用户暂停/普通暂停无原因，仍显示通用文案。
+                                text = queueStatus.pausedReason
+                                    ?.let { "消息队列已暂停（$it）" }
+                                    ?: "消息队列已暂停",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

@@ -140,6 +140,7 @@ import me.rerere.rikkahub.diagnostics.agenttiming.AgentTimingTraceStatus
 import me.rerere.rikkahub.diagnostics.agenttiming.hasAgentTimingRenderableContent
 import me.rerere.rikkahub.workflow.repository.WorkflowRepository
 import me.rerere.rikkahub.web.BadRequestException
+import me.rerere.rikkahub.web.ConflictException
 import me.rerere.rikkahub.web.NotFoundException
 import me.rerere.rikkahub.utils.applyPlaceholders
 import me.rerere.rikkahub.utils.sendNotification
@@ -7133,7 +7134,20 @@ class ChatService(
         val tracked = submitCommandTracked(conversationId,
             me.rerere.rikkahub.service.chat.MutateMessageCommand(nodeId, target.id),
             CommandOrigin.WEB_API, null, null, emptyList())
-        check(tracked.outcome.await() == CommandOutcome.Completed) { "Branch selection not applied" }
+        // ExTV 语义（同 editMessage）：分支选择必须给 web 调用方一个确定的终局。无界 await
+        // 会把停在 Paused 的 runtime 上的请求永久吊死，check() 则把任何拒绝折叠成裸 500。
+        val outcome = withTimeoutOrNull(EDIT_MESSAGE_OUTCOME_TIMEOUT) { tracked.outcome.await() }
+        when (outcome) {
+            CommandOutcome.Completed -> Unit
+            null -> throw ConflictException("分支选择等待超时，请稍后重试")
+            is CommandOutcome.Rejected ->
+                throw ConflictException("分支选择被拒绝：${outcome.reason}")
+            is CommandOutcome.Conflict ->
+                throw ConflictException("分支选择冲突：${outcome.reason}")
+            is CommandOutcome.Failed ->
+                throw ConflictException("分支选择未能生效：${outcome.error.message ?: "未知错误"}")
+            else -> throw ConflictException("分支选择未能生效：$outcome")
+        }
     }
 
     suspend fun deleteMessage(
