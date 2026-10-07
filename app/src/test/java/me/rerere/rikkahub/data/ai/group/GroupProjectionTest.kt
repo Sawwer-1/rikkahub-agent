@@ -41,8 +41,12 @@ class GroupProjectionTest {
             memberMessage(bob, "Bob", "hey!"),
         )
         val projected = projectMessagesForMember(messages, alice, names, "Host")
-        assertEquals(MessageRole.USER, projected[1].role)
-        assertEquals("[From Bob]: hey!", projected[1].toText())
+        // The live user message and the projected member turn are consecutive USER turns,
+        // so by design they merge into one alternation-clean user turn.
+        assertEquals(1, projected.size)
+        assertEquals(MessageRole.USER, projected[0].role)
+        assertTrue(projected[0].toText().contains("hello"))
+        assertTrue(projected[0].toText().contains("[From Bob]: hey!"))
     }
 
     @Test
@@ -64,13 +68,15 @@ class GroupProjectionTest {
             memberMessage(alice, "Alice", "own reply"),
         )
         val projected = projectMessagesForMember(messages, alice, names, "Host")
-        // user, merged [From Bob] user turn, own assistant reply
-        assertEquals(3, projected.size)
-        val merged = projected[1]
+        // user(first) + both [From Bob] turns are all consecutive USER turns and merge
+        // into one; the own assistant reply stays a separate assistant turn.
+        assertEquals(2, projected.size)
+        val merged = projected[0]
         assertEquals(MessageRole.USER, merged.role)
+        assertTrue(merged.toText().contains("first"))
         assertTrue(merged.toText().contains("[From Bob]: reply one"))
         assertTrue(merged.toText().contains("reply two"))
-        assertEquals(MessageRole.ASSISTANT, projected[2].role)
+        assertEquals(MessageRole.ASSISTANT, projected[1].role)
     }
 
     @Test
