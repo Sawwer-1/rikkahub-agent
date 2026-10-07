@@ -922,23 +922,30 @@ class ConversationRuntimeTest {
         assertTrue(runtime.enqueueEnvelope(first) is SubmitResult.Accepted)
         withTimeout(5_000) { firstStarted.await() }
 
-        val stop = CommandEnvelope(
-            conversationId = runtime.conversationId,
-            command = StopCommand(),
-            origin = CommandOrigin.APP_UI,
-            sequence = 2,
-        )
-        assertTrue(runtime.replaceEmergencyEnvelope(stop) is SubmitResult.Accepted)
-        assertEquals(CommandOutcome.Cancelled, withTimeout(5_000) { first.result.await() })
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { stop.result.await() })
-
+        // 排队消息先于停止提交：带排队工作的停止保留 Paused（纯停止才会回落 Idle）。
         val queued = CommandEnvelope(
             conversationId = runtime.conversationId,
             command = messageCommand("B"),
             origin = CommandOrigin.APP_UI,
-            sequence = 3,
+            sequence = 2,
         )
         assertTrue(runtime.enqueueEnvelope(queued) is SubmitResult.Accepted)
+
+        val stop = CommandEnvelope(
+            conversationId = runtime.conversationId,
+            command = StopCommand(),
+            origin = CommandOrigin.APP_UI,
+            sequence = 3,
+        )
+        assertTrue(runtime.replaceEmergencyEnvelope(stop) is SubmitResult.Accepted)
+        assertEquals(CommandOutcome.Cancelled, withTimeout(5_000) { first.result.await() })
+        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { stop.result.await() })
+        withTimeout(5_000) {
+            while (runtime.runtimeState.value != RuntimeState.Paused) {
+                kotlinx.coroutines.delay(10)
+            }
+        }
+
         val promote = CommandEnvelope(
             conversationId = runtime.conversationId,
             command = PromoteQueuedMessageToSteeringCommand(queued.id),
@@ -965,6 +972,207 @@ class ConversationRuntimeTest {
         releaseSecond.complete(Unit)
         assertEquals(CommandOutcome.Completed, withTimeout(5_000) { queued.result.await() })
         assertEquals(CommandOutcome.Completed, withTimeout(5_000) { resume.result.await() })
+        runtime.close()
+        scope.cancel()
+    }
+
+    @Test
+    fun `message edit executes while queue is paused with queued work`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val firstStarted = CompletableDeferred<Unit>()
+        val editApplied = CompletableDeferred<Unit>()
+        val secondStarted = CompletableDeferred<Unit>()
+        val runtime = ConversationRuntime(
+            appScope = scope,
+            conversationId = Uuid.random(),
+            executor = RuntimeCommandExecutor { envelope, _ ->
+                val text = (envelope.command as? SendMessageCommand)
+                    ?.content?.parts?.filterIsInstance<UIMessagePart.Text>()?.firstOrNull()?.text
+                when {
+                    envelope.command is MutateMessageCommand -> editApplied.complete(Unit)
+                    text == "A" -> {
+                        firstStarted.complete(Unit)
+                        kotlinx.coroutines.awaitCancellation()
+                    }
+                    text == "B" -> secondStarted.complete(Unit)
+                }
+                RunOutcome.Completed()
+            },
+        )
+        val first = CommandEnvelope(
+            conversationId = runtime.conversationId,
+            command = messageCommand("A"),
+            origin = CommandOrigin.APP_UI,
+            sequence = 1,
+        )
+        val second = CommandEnvelope(
+            conversationId = runtime.conversationId,
+            command = messageCommand("B"),
+            origin = CommandOrigin.APP_UI,
+            sequence = 2,
+        )
+        assertTrue(runtime.enqueueEnvelope(first) is SubmitResult.Accepted)
+        withTimeout(5_000) { firstStarted.await() }
+        assertTrue(runtime.enqueueEnvelope(second) is SubmitResult.Accepted)
+
+        val stop = CommandEnvelope(
+            conversationId = runtime.conversationId,
+            command = StopCommand(),
+            origin = CommandOrigin.APP_UI,
+            sequence = 3,
+        )
+        assertTrue(runtime.replaceEmergencyEnvelope(stop) is SubmitResult.Accepted)
+        assertEquals(CommandOutcome.Cancelled, withTimeout(5_000) { first.result.await() })
+        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { stop.result.await() })
+        withTimeout(5_000) {
+            while (runtime.runtimeState.value != RuntimeState.Paused) {
+                kotlinx.coroutines.delay(10)
+            }
+        }
+
+        // Paused（queuePaused=true）且有排队消息：编辑仍立即执行，不被 FIFO 门禁拦死。
+        val edit = CommandEnvelope(
+            conversationId = runtime.conversationId,
+            command = MutateMessageCommand(Uuid.random(), Uuid.random()),
+            origin = CommandOrigin.APP_UI,
+            sequence = 4,
+        )
+        assertTrue(runtime.enqueueEnvelope(edit) is SubmitResult.Accepted)
+        withTimeout(5_000) { editApplied.await() }
+        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { edit.result.await() })
+
+        // 编辑不解除暂停：排队的 B 依旧被拦，恢复入口（ResumeQueueCommand）才放行。
+        kotlinx.coroutines.delay(100)
+        assertTrue(!secondStarted.isCompleted)
+        assertTrue(runtime.queueStatus.value.paused)
+        assertEquals(RuntimeState.Paused, runtime.runtimeState.value)
+        val resume = CommandEnvelope(
+            conversationId = runtime.conversationId,
+            command = ResumeQueueCommand(),
+            origin = CommandOrigin.APP_UI,
+            sequence = 5,
+        )
+        assertTrue(runtime.enqueueEnvelope(resume) is SubmitResult.Accepted)
+        withTimeout(5_000) { secondStarted.await() }
+        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { second.result.await() })
+        runtime.close()
+        scope.cancel()
+    }
+
+    @Test
+    fun `pure stop with empty queue falls back to idle instead of paused`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val started = CompletableDeferred<Unit>()
+        val runtime = ConversationRuntime(
+            appScope = scope,
+            conversationId = Uuid.random(),
+            executor = RuntimeCommandExecutor { envelope, _ ->
+                val text = (envelope.command as? SendMessageCommand)
+                    ?.content?.parts?.filterIsInstance<UIMessagePart.Text>()?.firstOrNull()?.text
+                if (text == "A") {
+                    started.complete(Unit)
+                    kotlinx.coroutines.awaitCancellation()
+                }
+                RunOutcome.Completed()
+            },
+        )
+        val first = CommandEnvelope(
+            conversationId = runtime.conversationId,
+            command = messageCommand("A"),
+            origin = CommandOrigin.APP_UI,
+            sequence = 1,
+        )
+        assertTrue(runtime.enqueueEnvelope(first) is SubmitResult.Accepted)
+        withTimeout(5_000) { started.await() }
+
+        val stop = CommandEnvelope(
+            conversationId = runtime.conversationId,
+            command = StopCommand(),
+            origin = CommandOrigin.APP_UI,
+            sequence = 2,
+        )
+        assertTrue(runtime.replaceEmergencyEnvelope(stop) is SubmitResult.Accepted)
+        assertEquals(CommandOutcome.Cancelled, withTimeout(5_000) { first.result.await() })
+        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { stop.result.await() })
+        // 纯停止 + 空队列：runtime 回落 Idle，不再永久钉死 Paused。
+        withTimeout(5_000) {
+            while (runtime.runtimeState.value != RuntimeState.Idle) {
+                kotlinx.coroutines.delay(10)
+            }
+        }
+        assertFalse(runtime.queueStatus.value.paused)
+        // Idle 后普通命令不再被门禁拦截。
+        val next = CommandEnvelope(
+            conversationId = runtime.conversationId,
+            command = messageCommand("C"),
+            origin = CommandOrigin.APP_UI,
+            sequence = 3,
+        )
+        assertTrue(runtime.enqueueEnvelope(next) is SubmitResult.Accepted)
+        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { next.result.await() })
+        runtime.close()
+        scope.cancel()
+    }
+
+    @Test
+    fun `message edit executes while an approval barrier gates the fifo`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val dao = FakePendingChatCommandDao()
+        val queue = DurableCommandQueue(
+            dao = dao,
+            commandStateTransaction = CommandStateTransaction(dao),
+        )
+        val conversationId = Uuid.random()
+        val rootId = Uuid.random()
+        val editId = Uuid.random()
+        val editExecuted = CompletableDeferred<Unit>()
+        val runtime = ConversationRuntime(
+            appScope = scope,
+            conversationId = conversationId,
+            durableQueue = queue,
+            executor = RuntimeCommandExecutor { envelope, _ ->
+                if (envelope.command is MutateMessageCommand) {
+                    editExecuted.complete(Unit)
+                    RunOutcome.Completed()
+                } else {
+                    RunOutcome.WaitingApproval(setOf("tool-1"))
+                }
+            },
+        )
+        val root = CommandEnvelope(
+            id = rootId,
+            conversationId = conversationId,
+            command = messageCommand("root"),
+            origin = CommandOrigin.APP_UI,
+            sequence = 1L,
+        ).withRootLineage()
+        assertEquals(SubmitResult.Accepted(rootId), runtime.enqueueEnvelope(root))
+        withTimeout(5_000) {
+            while (
+                dao.row(rootId)?.state != DurableCommandState.WAITING_APPROVAL.name ||
+                runtime.queueStatus.value.activeCommandId != null
+            ) {
+                kotlinx.coroutines.delay(10)
+            }
+        }
+        assertEquals(RuntimeState.WaitingApproval, runtime.runtimeState.value)
+
+        // 审批等待态（waitingCommandIds 非空）：编辑可用且立即落终局。
+        val edit = CommandEnvelope(
+            id = editId,
+            conversationId = conversationId,
+            command = MutateMessageCommand(Uuid.random(), Uuid.random()),
+            origin = CommandOrigin.APP_UI,
+            sequence = 2L,
+        ).withRootLineage()
+        assertEquals(SubmitResult.Accepted(editId), runtime.enqueueEnvelope(edit))
+        withTimeout(5_000) { editExecuted.await() }
+        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { edit.result.await() })
+        assertEquals(DurableCommandState.COMPLETED.name, dao.row(editId)?.state)
+        // 审批屏障不受编辑影响。
+        assertEquals(DurableCommandState.WAITING_APPROVAL.name, dao.row(rootId)?.state)
+        assertEquals(RuntimeState.WaitingApproval, runtime.runtimeState.value)
+
         runtime.close()
         scope.cancel()
     }

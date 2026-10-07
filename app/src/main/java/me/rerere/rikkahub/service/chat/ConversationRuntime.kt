@@ -442,6 +442,17 @@ class ConversationRuntime(
                     8,
                     queueControlWakeup,
                 )
+            is MutateMessageCommand ->
+                // ExTV parity: an edit is a graph repair, not a queued turn. Route it through
+                // the control channel so a paused queue, an approval barrier or FIFO position
+                // can never hold an already-admitted edit hostage; handleQueueControl applies
+                // it immediately.
+                tryEnqueue(
+                    queueControlChannel,
+                    admittedEnvelope as CommandEnvelope<out NormalCommand>,
+                    8,
+                    queueControlWakeup,
+                )
             is NormalCommand -> enqueueNormal(admittedEnvelope as CommandEnvelope<NormalCommand>)
         }
     }
@@ -913,6 +924,23 @@ class ConversationRuntime(
         else -> RuntimeState.Idle
     }
 
+    /**
+     * ExTV parity: pause only stays meaningful while there is queued ordinary work (or an
+     * approval barrier that still needs reconciliation, which is never cleared here). A stop
+     * with an empty queue must fall back to Idle — with the queue panel hidden there is no
+     * in-UI way back from a pinned Paused state, so the runtime used to stay stuck until
+     * restart while every ordinary command, including edits, was gated forever.
+     */
+    private fun reconcileStopPause() {
+        if (
+            pendingNormalIndex.size == 0 &&
+            waitingCommandIds.isEmpty() &&
+            !approvalBarrierReconciliationRequired
+        ) {
+            queuePaused = false
+        }
+    }
+
     private suspend fun restoreDurableCommands() {
         val queue = durableQueue ?: return
         queue.recoverExpiredFenced()
@@ -1146,6 +1174,10 @@ class ConversationRuntime(
                         }
                         CommandWaitingCancellationResult.NoOp -> {
                             stop?.let { complete(it, CommandOutcome.Completed) }
+                            // ExTV parity: a pure stop with nothing queued must not pin the
+                            // runtime in Paused — the queue panel hides itself when empty, so
+                            // the pause would be unrecoverable from the UI.
+                            reconcileStopPause()
                         }
                         is CommandWaitingCancellationResult.Conflict -> {
                             approvalBarrierReconciliationRequired = true
@@ -1490,6 +1522,18 @@ class ConversationRuntime(
                         envelope,
                         CommandOutcome.Rejected(result.reason),
                     )
+                }
+            }
+            is MutateMessageCommand -> {
+                // ExTV parity: an edit must apply even while the queue is paused or an
+                // approval barrier is up — those gates only exist to hold back queued turns.
+                // While a run owns the graph the edit falls back to the FIFO and applies
+                // after the run finishes, keeping graph writes single-authority.
+                if (activeRun == null) {
+                    startRun(envelope)
+                } else {
+                    @Suppress("UNCHECKED_CAST")
+                    enqueueNormal(envelope as CommandEnvelope<NormalCommand>)
                 }
             }
             else -> complete(envelope, CommandOutcome.Rejected("Unsupported queue control"))
@@ -2023,6 +2067,12 @@ class ConversationRuntime(
                 val stop = pendingStop
                 pendingStop = null
                 stop?.let { complete(it, CommandOutcome.Completed) }
+                // ExTV parity: a pure stop falls back to Idle. Cleanup/persistence failures
+                // keep the pause on purpose — the resume entry (queueStatus.paused) is the
+                // recovery path for those, and must not be silently cleared here.
+                if (repairFailure == null && persistenceFailure == null) {
+                    reconcileStopPause()
+                }
                 _runtimeState.value = restingRuntimeState()
             }
             run.control.interruptedBy != null -> {

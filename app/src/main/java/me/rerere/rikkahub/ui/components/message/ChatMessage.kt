@@ -147,6 +147,9 @@ fun ChatMessage(
     agentTimingDrawMarker: AgentTimingFirstVisibleDrawMarker? = null,
     agentTimingStreamMarker: AgentTimingStreamRenderMarker? = null,
 ) {
+    // 空节点防御（ExTV 同款）：checkInvalidMessages 清理或删除竞态可能留下
+    // messages 为空的节点，直接索引 selectIndex 会崩溃；空节点不渲染任何内容。
+    if (node.messages.isEmpty()) return
     val message = node.messages[node.selectIndex]
     val chatVoiceReply = message.chatVoiceReply()
     val chatVoiceReplyDraft = message.chatVoiceReplyDraft()
