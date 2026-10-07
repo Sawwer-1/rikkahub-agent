@@ -204,6 +204,8 @@ class ConversationRuntime(
     private var cancellationWatchdog: Job? = null
     private val pendingNormalIndex = PendingNormalIndex()
     private var queuePaused = false
+    /** Why the queue is pinned, when pinned by a failure path. Null for user-initiated pauses. */
+    private var queuePausedReason: String? = null
     /** Cleared only by rebuilding/reconciling the runtime with the approval authority. */
     private var approvalBarrierReconciliationRequired = false
     private val stateRevision = AtomicLong(0L)
@@ -649,6 +651,7 @@ class ConversationRuntime(
                 // let the original STEER replay after restart even though the caller was told it
                 // had been parked for recovery. Keep the Deferred open and stop consuming work
                 // until durable reconciliation can establish one terminal truth.
+                queuePausedReason = "补充指引终态未能落库确认"
                 queuePaused = true
                 _runtimeState.value = RuntimeState.Paused
                 refreshQueueStatus()
@@ -817,6 +820,7 @@ class ConversationRuntime(
                 } else {
                     // Keep the marker: the row is still the authority and will be reconciled after
                     // restart. Never publish success to the caller before its terminal CAS commits.
+                    queuePausedReason = "命令终态未能落库确认"
                     queuePaused = true
                     _runtimeState.value = RuntimeState.Paused
                     refreshQueueStatus()
@@ -909,11 +913,19 @@ class ConversationRuntime(
 
     private fun refreshQueueStatus() {
         val snapshot = pendingNormalIndex.snapshot()
+        val paused = queuePaused || approvalBarrierReconciliationRequired
         _queueStatus.value = QueueStatus(
-            paused = queuePaused || approvalBarrierReconciliationRequired,
+            paused = paused,
             pendingCount = snapshot.size,
             activeCommandId = activeRun?.commandId,
             pendingCommandIds = snapshot.map { it.id },
+            // Failure pins carry their recorded reason; a barrier-only pause falls back to a
+            // fixed reconciliation note so the UI never shows a bare Paused with no cause.
+            pausedReason = when {
+                !paused -> null
+                queuePausedReason != null -> queuePausedReason
+                else -> "审批状态需对账"
+            },
         )
         _queuedMessages.value = pendingNormalIndex.uiSnapshot()
     }
@@ -938,6 +950,7 @@ class ConversationRuntime(
             !approvalBarrierReconciliationRequired
         ) {
             queuePaused = false
+            queuePausedReason = null
         }
     }
 
@@ -1155,6 +1168,9 @@ class ConversationRuntime(
                 pendingAfterCancel = null
                 pendingStop?.let { complete(it, CommandOutcome.Superseded(envelope.id)) }
                 pendingStop = envelope as CommandEnvelope<StopCommand>
+                // A stop-initiated pause is a user state, not an anomaly: any stale failure
+                // reason from a previous pinned episode must not survive into this pause.
+                queuePausedReason = null
                 queuePaused = command.pauseQueue
                 val run = activeRun
                 if (run == null) {
@@ -1210,6 +1226,7 @@ class ConversationRuntime(
                 pendingStop?.let { complete(it, CommandOutcome.Superseded(envelope.id)) }
                 pendingStop = null
                 queuePaused = false
+                queuePausedReason = null
                 val run = activeRun
                 if (run == null) {
                     when (val cancellation = cancelWaitingApprovalBarrier("USER_INTERRUPTED")) {
@@ -1481,6 +1498,7 @@ class ConversationRuntime(
                     )
                 } else {
                     queuePaused = false
+                    queuePausedReason = null
                     complete(envelope, CommandOutcome.Completed)
                     startPendingIfReady()
                 }
@@ -1977,7 +1995,12 @@ class ConversationRuntime(
             }.getOrElse { InterruptCleanupResult.PartialFailure(it.message ?: "Interrupt repair failed") }
         }
         val repairFailure = (cleanup as? InterruptCleanupResult.PartialFailure)?.reason
-        if (repairFailure != null) queuePaused = true
+        if (repairFailure != null) {
+            // PartialFailure.reason is already a user-visible curated message elsewhere; cap it
+            // and never append raw throwable output to keep this report redaction-safe.
+            queuePausedReason = ("中断清理未完成：$repairFailure").take(120)
+            queuePaused = true
+        }
 
         // The active run finishing is the lock boundary for purple/yellow selection.
         // Close first, then persist from one immutable final snapshot so a UI toggle
@@ -2017,7 +2040,10 @@ class ConversationRuntime(
             persistenceCoordinator.flushThrough(stateRevision.get())
         }.getOrElse { PersistResult.Failed(it) }
         val persistenceFailure = steeringHistoryFailure ?: (persistenceResult as? PersistResult.Failed)?.error
-        if (persistenceFailure != null) queuePaused = true
+        if (persistenceFailure != null) {
+            queuePausedReason = "会话状态未能落库"
+            queuePaused = true
+        }
         unfinishedSteering.forEach { transition ->
             val steeringEnvelope = acceptedCommands[transition.commandId]
             if (steeringEnvelope?.command is SteerCommand) {
@@ -2147,6 +2173,7 @@ class ConversationRuntime(
                 if (envelope.command is ResumeAfterApprovalCommand) {
                     approvalBarrierReconciliationRequired = true
                 }
+                queuePausedReason = "命令终态未能落库确认"
                 queuePaused = true
                 activeRun = null
                 activeEnvelope = null
