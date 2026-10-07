@@ -926,6 +926,9 @@ internal fun MessagePartsBlock(
                                 is UIMessageAnnotation.VoiceCallRecord -> Unit
                                 is UIMessageAnnotation.TtsAudio -> Unit
                                 is UIMessageAnnotation.ChatVoiceReply -> Unit
+                                // Waifu typewriter group marker is internal bookkeeping;
+                                // it must not render as a citation entry.
+                                is UIMessageAnnotation.WaifuGroup -> Unit
                             }
                         }
                     }

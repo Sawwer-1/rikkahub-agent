@@ -12,6 +12,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The build's Gradle toolchain requests a vendor-specific JetBrains Runtime 21
+      # ({languageVersion=21, vendor=JetBrains, implementation=vendor-specific}).
+      # The foojay resolver path currently fails server-side ("Package id not found"
+      # on the provisioning redirect), so provision JBR 21 directly and expose it to
+      # Gradle via the JAVA_HOME_21_X64 env var (see the gradle invocation below).
+      - name: Set up JetBrains Runtime 21 (toolchain)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'jetbrains'
+          java-version: '21'
+
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
@@ -43,7 +54,7 @@ jobs:
       - name: Run JVM unit tests
         run: |
           chmod +x gradlew
-          ./gradlew testDebugUnitTest --continue
+          ./gradlew testDebugUnitTest --continue -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64
 
       - name: Upload test results
         uses: actions/upload-artifact@v4

@@ -17,6 +17,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -28,12 +29,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
@@ -46,6 +49,7 @@ import me.rerere.hugeicons.stroke.FileImport
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.ChatFontFamily
 import me.rerere.rikkahub.data.datastore.DisplaySetting
+import me.rerere.rikkahub.data.datastore.WaifuSetting
 import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.files.FileUtils
 import me.rerere.rikkahub.diagnostics.agenttiming.AgentTimingStore
@@ -103,6 +107,36 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
     }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+
+    // Waifu typewriter (sentence-split bubbles). Numeric drafts mirror the
+    // max-retries pattern in SettingPreferencesNetworkPage: the draft keeps raw
+    // keystrokes, only parsed in-range values reach the store.
+    var waifuCharDelayDraft by remember(settings.waifuSetting.charDelayMs) {
+        mutableStateOf(settings.waifuSetting.charDelayMs.toString())
+    }
+    var waifuMaxDelayDraft by remember(settings.waifuSetting.maxDelayMs) {
+        mutableStateOf(settings.waifuSetting.maxDelayMs.toString())
+    }
+
+    fun updateWaifuSetting(setting: WaifuSetting) {
+        vm.updateSettings(settings.copy(waifuSetting = setting))
+    }
+
+    fun updateWaifuCharDelay(value: String) {
+        waifuCharDelayDraft = value
+        val normalized = value.toIntOrNull()?.coerceIn(0, 5000) ?: return
+        if (normalized != settings.waifuSetting.charDelayMs) {
+            updateWaifuSetting(settings.waifuSetting.copy(charDelayMs = normalized))
+        }
+    }
+
+    fun updateWaifuMaxDelay(value: String) {
+        waifuMaxDelayDraft = value
+        val normalized = value.toIntOrNull()?.coerceIn(0, 30000) ?: return
+        if (normalized != settings.waifuSetting.maxDelayMs) {
+            updateWaifuSetting(settings.waifuSetting.copy(maxDelayMs = normalized))
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -419,6 +453,86 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                                 onCheckedChange = {
                                     updateDisplaySetting(displaySetting.copy(showLineNumbers = it))
                                 }
+                            )
+                        },
+                    )
+                }
+            }
+
+            item {
+                CardGroup(
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    title = { Text(stringResource(R.string.setting_page_waifu_typewriter)) },
+                ) {
+                    item(
+                        headlineContent = { Text(stringResource(R.string.setting_waifu_enable_title)) },
+                        supportingContent = { Text(stringResource(R.string.setting_waifu_enable_desc)) },
+                        trailingContent = {
+                            Switch(
+                                checked = settings.waifuSetting.enabled,
+                                onCheckedChange = { enabled ->
+                                    updateWaifuSetting(
+                                        settings.waifuSetting.copy(enabled = enabled)
+                                    )
+                                }
+                            )
+                        },
+                    )
+                    item(
+                        headlineContent = { Text(stringResource(R.string.setting_waifu_char_delay_title)) },
+                        supportingContent = {
+                            OutlinedTextField(
+                                value = waifuCharDelayDraft,
+                                onValueChange = ::updateWaifuCharDelay,
+                                modifier = Modifier.fillMaxWidth(),
+                                label = {
+                                    Text(stringResource(R.string.setting_waifu_char_delay_label))
+                                },
+                                supportingText = {
+                                    Text(stringResource(R.string.setting_waifu_char_delay_desc))
+                                },
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number
+                                ),
+                                singleLine = true,
+                            )
+                        },
+                    )
+                    item(
+                        headlineContent = { Text(stringResource(R.string.setting_waifu_max_delay_title)) },
+                        supportingContent = {
+                            OutlinedTextField(
+                                value = waifuMaxDelayDraft,
+                                onValueChange = ::updateWaifuMaxDelay,
+                                modifier = Modifier.fillMaxWidth(),
+                                label = {
+                                    Text(stringResource(R.string.setting_waifu_max_delay_label))
+                                },
+                                supportingText = {
+                                    Text(stringResource(R.string.setting_waifu_max_delay_desc))
+                                },
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number
+                                ),
+                                singleLine = true,
+                            )
+                        },
+                    )
+                    item(
+                        headlineContent = { Text(stringResource(R.string.setting_waifu_extra_prompt_title)) },
+                        supportingContent = {
+                            OutlinedTextField(
+                                value = settings.waifuSetting.extraPrompt,
+                                onValueChange = { prompt ->
+                                    updateWaifuSetting(
+                                        settings.waifuSetting.copy(extraPrompt = prompt)
+                                    )
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = {
+                                    Text(stringResource(R.string.setting_waifu_extra_prompt_label))
+                                },
+                                minLines = 3,
                             )
                         },
                     )

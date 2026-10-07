@@ -942,6 +942,23 @@ data class NetworkSetting(
     val enableAutoRetry: Boolean = true,
 )
 
+/**
+ * Waifu typewriter (sentence-split bubbles): the model reply is split into sentences
+ * client-side, each sentence becomes its own chat bubble, and a per-character delay
+ * paces them. The request-side merge transformer reassembles the bubbles before the
+ * history is sent to the model. New fields must keep default values for backward
+ * compatibility (same convention as [DisplaySetting]).
+ */
+@Serializable
+data class WaifuSetting(
+    val enabled: Boolean = false,
+    val charDelayMs: Int = 50, // 每字符延迟
+    val maxDelayMs: Int = 3000, // 单句延迟上限
+    val minSentenceChars: Int = 2,
+    val maxSentenceChars: Int = 120,
+    val extraPrompt: String = "", // 提示词追加
+)
+
 @Serializable
 data class Settings(
     @Transient
@@ -951,6 +968,7 @@ data class Settings(
     val customThemes: List<CustomTheme> = emptyList(),
     val developerMode: Boolean = false,
     val displaySetting: DisplaySetting = DisplaySetting(),
+    val waifuSetting: WaifuSetting = WaifuSetting(),
     val enableWebSearch: Boolean = false,
     val parallelReadOnlyToolsEnabled: Boolean = false,
     val maxParallelReadOnlyTools: Int = 3,

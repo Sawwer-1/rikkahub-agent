@@ -3146,4 +3146,15 @@
   <string name="assistant_page_local_tools_question_box_desc">Let this assistant publish or remove anonymous questions in its question box (post_anonymous_question / delete_anonymous_question).</string>
   <string name="voice_master_title">Enable voice features</string>
   <string name="voice_master_desc">Master switch for TTS / ASR and voice entries. When off, voice quick entries (chat top-bar voice call, attachment-sheet voice, input mic) are hidden.</string>
+  <string name="setting_page_waifu_typewriter">Waifu Typewriter</string>
+  <string name="setting_waifu_enable_title">Enable waifu typewriter</string>
+  <string name="setting_waifu_enable_desc">Split the model reply into sentences; each sentence appears as its own chat bubble, paced by a per-character delay. History sent back to the model stays merged as a normal single reply.</string>
+  <string name="setting_waifu_char_delay_title">Per-character delay</string>
+  <string name="setting_waifu_char_delay_label">Delay (ms per character)</string>
+  <string name="setting_waifu_char_delay_desc">Wait time per character of a sentence before its bubble appears. 0 shows sentences immediately.</string>
+  <string name="setting_waifu_max_delay_title">Max delay per sentence</string>
+  <string name="setting_waifu_max_delay_label">Upper bound (ms)</string>
+  <string name="setting_waifu_max_delay_desc">Cap for a single sentence\'s delay so long sentences are not stalled.</string>
+  <string name="setting_waifu_extra_prompt_title">Extra prompt</string>
+  <string name="setting_waifu_extra_prompt_label">Appended to the assistant system prompt</string>
 </resources>

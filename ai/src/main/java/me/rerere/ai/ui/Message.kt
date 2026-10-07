@@ -955,6 +955,19 @@ sealed class UIMessageAnnotation {
     data class ChatVoiceReply(
         val segments: List<ChatVoiceReplySegment>,
     ) : UIMessageAnnotation()
+
+    /**
+     * Waifu typewriter (sentence-split bubbles): marks the sentence bubbles produced by
+     * splitting one assistant streaming message. All bubbles of the same turn share the
+     * group id (the original streaming message id), so the request-side merge
+     * transformer can reassemble them into a single assistant message and keep the
+     * provider-visible history shape identical to a normal chat.
+     */
+    @Serializable
+    @SerialName("waifu_group")
+    data class WaifuGroup(
+        val groupId: String,
+    ) : UIMessageAnnotation()
 }
 
 @Serializable
