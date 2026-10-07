@@ -250,6 +250,21 @@ class MomentRepository(
             limit = limit,
         ).map { it.toMomentComment() }
 
+    /**
+     * Earliest pending user-interaction due time (moments + comments) for this assistant,
+     * or null when nothing waits for a reply. Lets the background reply worker chain itself
+     * to the exact due instant instead of polling on a fixed interval.
+     */
+    suspend fun nextPendingDueAt(assistantId: Uuid): Long? {
+        val author = MomentAuthor.USER.value
+        val status = MomentReplyStatus.PENDING.value
+        val key = assistantId.toString()
+        return listOfNotNull(
+            dao.getNextDueMomentAt(key, author, status),
+            dao.getNextDueCommentAt(key, author, status),
+        ).minOrNull()
+    }
+
     suspend fun getRefreshUserComments(assistantId: Uuid, limit: Int): List<MomentComment> {
         val candidates = dao.getMoments(assistantId.toString()).flatMap { moment ->
             val comments = dao.getComments(moment.id)

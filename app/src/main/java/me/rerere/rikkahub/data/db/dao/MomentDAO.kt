@@ -85,6 +85,29 @@ interface MomentDAO {
         limit: Int,
     ): List<MomentCommentEntity>
 
+    @Query(
+        """
+        SELECT MIN(reply_due_at) FROM moments
+        WHERE assistant_id = :assistantId
+        AND author = :author
+        AND reply_status = :replyStatus
+        AND reply_due_at IS NOT NULL
+        """
+    )
+    suspend fun getNextDueMomentAt(assistantId: String, author: String, replyStatus: String): Long?
+
+    @Query(
+        """
+        SELECT MIN(c.reply_due_at) FROM moment_comments c
+        INNER JOIN moments m ON m.id = c.moment_id
+        WHERE m.assistant_id = :assistantId
+        AND c.author = :author
+        AND c.reply_status = :replyStatus
+        AND c.reply_due_at IS NOT NULL
+        """
+    )
+    suspend fun getNextDueCommentAt(assistantId: String, author: String, replyStatus: String): Long?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertComment(comment: MomentCommentEntity)
 
