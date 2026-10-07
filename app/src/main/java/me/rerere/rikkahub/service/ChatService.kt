@@ -41,6 +41,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
@@ -97,6 +98,9 @@ import me.rerere.rikkahub.data.ai.transformers.TemplateTransformer
 import me.rerere.rikkahub.data.ai.transformers.ThinkTagTransformer
 import me.rerere.rikkahub.data.ai.transformers.TimeReminderTransformer
 import me.rerere.rikkahub.data.ai.transformers.WorkspaceReminderTransformer
+import me.rerere.rikkahub.data.ai.waifu.WaifuMergeTransformer
+import me.rerere.rikkahub.data.ai.waifu.WaifuSentenceSplitter
+import me.rerere.rikkahub.data.ai.waifu.withWaifuText
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.DEFAULT_AUTO_MODEL_ID
@@ -790,6 +794,265 @@ private val outputTransformers by lazy {
         Base64ImageToLocalFileTransformer,
         RegexOutputTransformer,
     )
+}
+
+/** Visible text of a message: the Text parts joined verbatim (splitter offset math). */
+private fun UIMessage.textPartsJoined(): String =
+    parts.filterIsInstance<UIMessagePart.Text>().joinToString(separator = "") { it.text }
+
+/**
+ * Waifu typewriter streaming state, scoped to one [ChatService.handleMessageComplete]
+ * run's collect loop (chunks are consumed sequentially in one coroutine, so plain
+ * mutable state needs no locking).
+ *
+ * The sentence splitter runs on the not-yet-split remainder of the current streaming
+ * message on every chunk. Finished sentences become independent annotated bubbles:
+ * - Bubble 1 reuses the original streaming message id (annotated, text trimmed to the
+ *   sentence).
+ * - Bubbles 2..n promote the current tail bubble in place to the finished sentence and
+ *   mint a fresh tail id for the remainder, so the same-id streaming fast path keeps
+ *   updating exactly one node.
+ * - The growing tail is itself annotated with the group, so even a process kill
+ *   mid-stream leaves a shape the request-side merge transformer can reassemble.
+ */
+private class WaifuStreamState(
+    private val splitter: WaifuSentenceSplitter,
+    private val charDelayMs: Long,
+    private val maxDelayMs: Long,
+) {
+    /** One split group == one streaming assistant message (one generation step). */
+    private class GroupState(val groupId: Uuid) {
+        /** Committed bubbles as (messageId, text); bubble 1's id == groupId. */
+        val bubbles = mutableListOf<Pair<Uuid, String>>()
+        var committedChars = 0
+        var tailMessageId: Uuid? = null
+        var flushed = false
+    }
+
+    private class Rebuilt(
+        val messages: List<UIMessage>,
+        /** The still-growing tail bubble, when one is materialized. */
+        val tail: UIMessage?,
+    )
+
+    private var activeGroup: GroupState? = null
+    private val finishedGroups = linkedMapOf<Uuid, GroupState>()
+    private var turnHasToolCall = false
+
+    /** True once any sentence bubble was materialized in this run. */
+    var committedAnyText: Boolean = false
+        private set
+
+    val hasCommittedBubbles: Boolean
+        get() = activeGroup?.bubbles?.isNotEmpty() == true ||
+            finishedGroups.values.any { it.bubbles.isNotEmpty() }
+
+    class Advance(
+        val hasNewSentences: Boolean,
+        val hasCommittedBubbles: Boolean,
+        /** Rebuilt bubble 1 (original message id) for the same-id fast path. */
+        val firstBubbleMessage: UIMessage?,
+        /** Current tail bubble for the same-id fast path; null when nothing to write. */
+        val tailMessage: UIMessage?,
+    ) {
+        companion object {
+            val NO_CHANGE = Advance(
+                hasNewSentences = false,
+                hasCommittedBubbles = false,
+                firstBubbleMessage = null,
+                tailMessage = null,
+            )
+        }
+    }
+
+    /**
+     * Advances the split state for one chunk. Suspending: applies the per-sentence
+     * typewriter delay (the turn's first sentence: 0) and, after each committed
+     * sentence, invokes [writeBubbles] so the bubble appears before the next delay.
+     * [forceFlush] (end-of-stream FINAL barrier) commits the unfinished tail as the
+     * last bubble so the final sentence always reaches disk.
+     */
+    suspend fun advance(
+        messages: List<UIMessage>,
+        forceFlush: Boolean,
+        writeBubbles: suspend () -> Unit,
+    ): Advance {
+        val streamMessage = messages.lastOrNull() ?: return Advance.NO_CHANGE
+        if (streamMessage.role != MessageRole.ASSISTANT) return Advance.NO_CHANGE
+        if (streamMessage.parts.any { part ->
+                part is UIMessagePart.Tool || part is UIMessagePart.ToolCall ||
+                    part is UIMessagePart.ToolResult
+            }
+        ) {
+            // A tool-call turn is never split (whole-turn rule). Bubbles committed
+            // before the tool call deltas appeared stay split; the request-side merge
+            // transformer keeps the provider-visible shape valid either way.
+            turnHasToolCall = true
+        }
+        if (turnHasToolCall) return Advance.NO_CHANGE
+
+        var hasNewSentences = false
+        val current = activeGroup
+        if (current == null) {
+            activeGroup = GroupState(streamMessage.id)
+        } else if (streamMessage.id != current.groupId) {
+            // Step boundary: the previous step's message is complete — flush its tail.
+            val previous = messages.firstOrNull { it.id == current.groupId }
+            if (previous != null && commitTail(current, previous.textPartsJoined())) {
+                hasNewSentences = true
+                writeBubbles()
+            }
+            finishedGroups[current.groupId] = current
+            activeGroup = GroupState(streamMessage.id)
+        }
+        val group = requireNotNull(activeGroup)
+
+        if (!group.flushed) {
+            val fullText = streamMessage.textPartsJoined()
+            val safeCommitted = group.committedChars.coerceAtMost(fullText.length)
+            val split = splitter.split(fullText.substring(safeCommitted))
+            for (sentence in split.sentences) {
+                // Turn's first sentence appears immediately (首句 0); every later
+                // sentence waits out its per-character delay first.
+                if (group.bubbles.isNotEmpty()) {
+                    delay(sentenceDelayMs(sentence.length))
+                }
+                if (group.bubbles.isEmpty()) {
+                    // First bubble reuses the original streaming message id.
+                    group.bubbles.add(group.groupId to sentence)
+                } else {
+                    group.bubbles.add((group.tailMessageId ?: Uuid.random()) to sentence)
+                }
+                group.tailMessageId = Uuid.random()
+                group.committedChars += sentence.length
+                hasNewSentences = true
+                committedAnyText = true
+                writeBubbles()
+            }
+            if (forceFlush && commitTail(group, fullText)) {
+                hasNewSentences = true
+                writeBubbles()
+            }
+        }
+
+        if (!hasCommittedBubbles) return Advance.NO_CHANGE
+        val rebuilt = rebuildGroup(group, streamMessage)
+        return Advance(
+            hasNewSentences = hasNewSentences,
+            hasCommittedBubbles = true,
+            firstBubbleMessage = rebuilt.messages.firstOrNull(),
+            tailMessage = rebuilt.tail,
+        )
+    }
+
+    /**
+     * Rebuilds the generation message list with every waifu-split message replaced by
+     * its bubble sequence. Messages that do not belong to a split group pass through
+     * untouched. Returns null when nothing was ever committed (zero-change guarantee).
+     */
+    fun project(messages: List<UIMessage>): List<UIMessage>? = projectInternal(messages)
+
+    /**
+     * Non-suspending end-of-run projection: flushes the active group's tail first (so
+     * the last sentence reaches disk even when the collect loop was cancelled
+     * mid-delay), then projects. Returns null when there is nothing to change.
+     */
+    fun projectFinal(messages: List<UIMessage>?): List<UIMessage>? {
+        if (messages == null) return null
+        val active = activeGroup
+        if (active != null) {
+            if (!active.flushed) {
+                val origin = messages.firstOrNull { it.id == active.groupId }
+                if (origin != null) {
+                    commitTail(active, origin.textPartsJoined())
+                }
+            }
+            finishedGroups[active.groupId] = active
+            activeGroup = null
+        }
+        return projectInternal(messages)
+    }
+
+    private fun projectInternal(messages: List<UIMessage>): List<UIMessage>? {
+        if (!committedAnyText) return null
+        var touched = false
+        val result = mutableListOf<UIMessage>()
+        for (message in messages) {
+            val group = finishedGroups[message.id]
+                ?: activeGroup?.takeIf { message.id == it.groupId }
+            if (group == null) {
+                result.add(message)
+            } else {
+                touched = true
+                result.addAll(rebuildGroup(group, message).messages)
+            }
+        }
+        return if (touched) result else null
+    }
+
+    /** Commits the unfinished remainder as the final bubble; idempotent per group. */
+    private fun commitTail(group: GroupState, fullText: String): Boolean {
+        if (group.flushed) return false
+        group.flushed = true
+        val safeCommitted = group.committedChars.coerceAtMost(fullText.length)
+        val remaining = fullText.substring(safeCommitted)
+        if (remaining.isBlank()) return false
+        if (group.bubbles.isEmpty()) {
+            group.bubbles.add(group.groupId to remaining)
+        } else {
+            group.bubbles.add((group.tailMessageId ?: Uuid.random()) to remaining)
+        }
+        group.tailMessageId = null
+        group.committedChars = fullText.length
+        committedAnyText = true
+        return true
+    }
+
+    private fun sentenceDelayMs(sentenceLength: Int): Long {
+        if (charDelayMs <= 0L) return 0L
+        return (sentenceLength.toLong() * charDelayMs).coerceAtMost(maxDelayMs)
+    }
+
+    private fun rebuildGroup(group: GroupState, origin: UIMessage): Rebuilt {
+        if (group.bubbles.isEmpty()) return Rebuilt(listOf(origin), null)
+        val groupAnnotation = UIMessageAnnotation.WaifuGroup(groupId = group.groupId.toString())
+        val bubbles = group.bubbles.mapIndexed { index, (messageId, text) ->
+            val isLastFlushed = group.flushed && index == group.bubbles.lastIndex
+            if (messageId == group.groupId) {
+                origin
+                    .withWaifuText(text)
+                    .copy(
+                        annotations = origin.annotations + groupAnnotation,
+                        state = if (isLastFlushed) origin.state else UIMessageState.COMPLETED,
+                    )
+            } else {
+                UIMessage(
+                    id = messageId,
+                    role = MessageRole.ASSISTANT,
+                    parts = listOf(UIMessagePart.Text(text)),
+                    annotations = listOf(groupAnnotation),
+                    modelId = origin.modelId,
+                    state = if (isLastFlushed) origin.state else UIMessageState.COMPLETED,
+                    finishedAt = if (isLastFlushed) origin.finishedAt else null,
+                )
+            }
+        }
+        if (group.flushed) return Rebuilt(bubbles, null)
+        val tailId = group.tailMessageId ?: return Rebuilt(bubbles, null)
+        val fullText = origin.textPartsJoined()
+        val safeCommitted = group.committedChars.coerceAtMost(fullText.length)
+        val remaining = fullText.substring(safeCommitted)
+        if (remaining.isBlank()) return Rebuilt(bubbles, null)
+        val tail = UIMessage(
+            id = tailId,
+            role = MessageRole.ASSISTANT,
+            parts = listOf(UIMessagePart.Text(remaining)),
+            annotations = listOf(groupAnnotation),
+            modelId = origin.modelId,
+            state = origin.state,
+        )
+        return Rebuilt(bubbles + tail, tail)
+    }
 }
 
 /**
@@ -3853,6 +4116,39 @@ class ChatService(
             requestMode == ChatRequestMode.VoiceCall &&
                 voiceCallAudioTagMode == VoiceCallAudioTagMode.SECOND_PASS &&
                 voiceCallAudioTagFormat != null
+        // Waifu typewriter (sentence-split bubbles): only local chat turns split — the
+        // in-app chat UI is the surface that renders the per-sentence bubbles, while
+        // remote surfaces (Telegram/WebServer) read the last assistant message as the
+        // whole reply, which splitting would truncate. Voice-call paths are mutually
+        // exclusive with splitting as well (WAIFU_TASK).
+        val waifuSetting = settings.waifuSetting
+        val waifuActive = waifuSetting.enabled &&
+            requestMode == ChatRequestMode.Normal &&
+            !incrementalVoiceCallTagging &&
+            callOrigin == ToolCallOrigin.LocalChat
+        val waifuStream = if (waifuActive) {
+            WaifuStreamState(
+                splitter = WaifuSentenceSplitter(
+                    minSentenceChars = waifuSetting.minSentenceChars,
+                    maxSentenceChars = waifuSetting.maxSentenceChars,
+                ),
+                charDelayMs = waifuSetting.charDelayMs.coerceAtLeast(0).toLong(),
+                maxDelayMs = waifuSetting.maxDelayMs.coerceAtLeast(0).toLong(),
+            )
+        } else {
+            null
+        }
+        // extraPrompt is appended to the system prompt of THIS generation call only
+        // (assistant.copy — no global mutation).
+        val waifuAssistant = if (waifuActive && waifuSetting.extraPrompt.isNotBlank()) {
+            assistant.copy(
+                systemPrompt = listOf(assistant.systemPrompt, waifuSetting.extraPrompt.trim())
+                    .filter { it.isNotBlank() }
+                    .joinToString(separator = "\n\n"),
+            )
+        } else {
+            assistant
+        }
         val tagAssignmentsByMessageId =
             mutableMapOf<Uuid, MutableMap<Int, VoiceCallAudioTagAssignment?>>()
         val nextTagIndexByMessageId = mutableMapOf<Uuid, Int>()
@@ -4468,7 +4764,7 @@ class ChatService(
                 },
                 runtimeOnlyTools = legacyOwnerRuntimeTools,
                 messages = messagesForModel,
-                assistant = assistant,
+                assistant = waifuAssistant,
                 unrestrictedOverride = privilegeContext.unrestrictedOverride,
                 capabilitySubject = capabilitySubject,
                 selectedPrivilegedConversation = privilegeContext.isPrivileged,
@@ -4519,6 +4815,9 @@ class ChatService(
                 },
                 memories = generationMemories,
                 inputTransformers = buildList {
+                    // Waifu typewriter request-side merge runs FIRST so prompt-injection
+                    // transformers never insert between two bubbles of the same group.
+                    add(WaifuMergeTransformer)
                     addAll(inputTransformers)
                     add(templateTransformer)
                     add(workspaceReminderTransformer)
@@ -4687,24 +4986,34 @@ class ChatService(
                 // Conversation has no visibleMessageNodeIndexAt, so the target node is located
                 // by message id (the same pattern the streaming update above uses).
                 val projectedConversation = synchronized(tagProjectionLock) {
-                    val finalStreamMessage = latestPrimaryMessages?.lastOrNull()?.let { message ->
-                        tagAssignmentsByMessageId[message.id]?.let { assignments ->
-                            message.withIncrementalVoiceCallAudioTagAssignments(
-                                assignments = assignments,
-                                format = voiceCallAudioTagFormat!!,
-                            )
-                        } ?: message
-                    }
-                    if (finalStreamMessage != null) {
-                        val nodeIndex = baseConversation.messageNodes.indexOfFirst { node ->
-                            node.messages.any { it.id == finalStreamMessage.id }
-                        }.takeIf { it >= 0 }
-                        baseConversation.updateMessageAtNodeIndex(
-                            nodeIndex = nodeIndex,
-                            message = finalStreamMessage,
-                        )
+                    val waifuFinalMessages = waifuStream
+                        ?.takeIf { it.committedAnyText }
+                        ?.projectFinal(latestPrimaryMessages)
+                    if (waifuFinalMessages != null) {
+                        // Waifu run: project the flushed bubble layout (tail committed,
+                        // non-suspending so a cancelled run still lands the last sentence)
+                        // instead of writing the raw stream message back over bubble 1.
+                        baseConversation.updateCurrentMessages(waifuFinalMessages)
                     } else {
-                        baseConversation
+                        val finalStreamMessage = latestPrimaryMessages?.lastOrNull()?.let { message ->
+                            tagAssignmentsByMessageId[message.id]?.let { assignments ->
+                                message.withIncrementalVoiceCallAudioTagAssignments(
+                                    assignments = assignments,
+                                    format = voiceCallAudioTagFormat!!,
+                                )
+                            } ?: message
+                        }
+                        if (finalStreamMessage != null) {
+                            val nodeIndex = baseConversation.messageNodes.indexOfFirst { node ->
+                                node.messages.any { it.id == finalStreamMessage.id }
+                            }.takeIf { it >= 0 }
+                            baseConversation.updateMessageAtNodeIndex(
+                                nodeIndex = nodeIndex,
+                                message = finalStreamMessage,
+                            )
+                        } else {
+                            baseConversation
+                        }
                     }
                 }
                 val updatedConversation = projectedConversation.copy(
@@ -4763,8 +5072,31 @@ class ChatService(
                             annotation is UIMessageAnnotation.FinalAnswerRecovery &&
                                 annotation.status == FinalAnswerRecoveryStatus.STARTED
                         } == true
+                        // Waifu typewriter: split completed sentences off the streaming
+                        // tail into their own annotated bubbles. Suspending — applies the
+                        // per-sentence delay (turn's first sentence: 0) inline and writes
+                        // each bubble as it lands (in-memory, fenced). The FINAL barrier
+                        // also flushes the unfinished tail so the last sentence always
+                        // reaches disk.
+                        val waifuAdvance = waifuStream?.advance(
+                            messages = correlatedMessages,
+                            forceFlush = chunk.persistenceBarrier ==
+                                GenerationPersistenceBarrier.FINAL,
+                        ) {
+                            applyRunUpdate {
+                                val conversation = getConversationFlow(conversationId).value
+                                val projected = waifuStream?.project(correlatedMessages)
+                                    ?: correlatedMessages
+                                updateConversation(
+                                    conversationId,
+                                    conversation.updateCurrentMessages(projected),
+                                )
+                            }
+                            Unit
+                        }
                         val forceStreamingUiUpdate = chunk.persistenceBarrier !=
-                            GenerationPersistenceBarrier.NONE || needsImmediatePersist
+                            GenerationPersistenceBarrier.NONE || needsImmediatePersist ||
+                            waifuAdvance?.hasNewSentences == true
                         val nowNanos = System.nanoTime()
                         val shouldUpdateStreamingUi = forceStreamingUiUpdate || (
                             latestChunkMessage != null && (
@@ -4775,9 +5107,11 @@ class ChatService(
                             )
                         // Voice-call incremental projection (jude): merge the tag assignments
                         // produced so far into the streamed copy before it reaches the UI.
+                        // Waifu projection (mutually exclusive with voice-call): replace the
+                        // split-group messages with their bubble sequences.
                         val projectedMessages = synchronized(tagProjectionLock) {
                             if (!incrementalVoiceCallTagging) {
-                                correlatedMessages
+                                waifuStream?.project(correlatedMessages) ?: correlatedMessages
                             } else {
                                 correlatedMessages.map { message ->
                                     tagAssignmentsByMessageId[message.id]?.let { assignments ->
@@ -4796,6 +5130,37 @@ class ChatService(
                             ) {
                                 getConversationFlow(conversationId).value
                                     .updateCurrentMessages(projectedMessages)
+                            } else if (waifuAdvance?.hasCommittedBubbles == true) {
+                                // Waifu hot path: after the first sentence is cut, the
+                                // original message node holds bubble 1 and the growing tail
+                                // lives in the LAST waifu-group node, so the same-id fast
+                                // path must target those nodes instead of the original id.
+                                var waifuConversation = getConversationFlow(conversationId).value
+                                waifuAdvance.firstBubbleMessage?.let { firstBubble ->
+                                    val firstIndex = waifuConversation.messageNodes
+                                        .indexOfFirst { node ->
+                                            node.messages.any { it.id == firstBubble.id }
+                                        }.takeIf { it >= 0 }
+                                    if (firstIndex != null) {
+                                        waifuConversation = waifuConversation
+                                            .updateMessageAtNodeIndex(firstIndex, firstBubble)
+                                    }
+                                }
+                                waifuAdvance.tailMessage?.let { tail ->
+                                    val tailIndex = waifuConversation.messageNodes
+                                        .indexOfFirst { node ->
+                                            node.messages.any { it.id == tail.id }
+                                        }.takeIf { it >= 0 }
+                                    waifuConversation = if (tailIndex != null) {
+                                        waifuConversation.updateMessageAtNodeIndex(tailIndex, tail)
+                                    } else {
+                                        // Tail node not found (should not happen): fall back
+                                        // to the full projection pass so no bubble is lost.
+                                        waifuConversation
+                                            .updateCurrentMessages(projectedMessages)
+                                    }
+                                }
+                                waifuConversation
                             } else {
                                 val currentConversation = getConversationFlow(conversationId).value
                                 val nodeIndex = currentConversation.messageNodes.indexOfFirst { node ->

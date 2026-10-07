@@ -3146,4 +3146,15 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="assistant_page_local_tools_question_box_desc">允许该助手在提问箱中发布或移除匿名提问（post_anonymous_question / delete_anonymous_question）。</string>
   <string name="voice_master_title">启用语音功能</string>
   <string name="voice_master_desc">语音合成 / 语音识别与各语音入口的总开关。关闭后隐藏语音快捷入口（聊天页顶栏语音通话、附件面板语音、输入栏麦克风）。</string>
+  <string name="setting_page_waifu_typewriter">Waifu 打字机</string>
+  <string name="setting_waifu_enable_title">启用 Waifu 打字机</string>
+  <string name="setting_waifu_enable_desc">把模型回复切分成句子，每句以独立气泡逐句出现，句间按每字符延迟推进。发给模型的历史仍会合并为一条普通回复。</string>
+  <string name="setting_waifu_char_delay_title">每字符延迟</string>
+  <string name="setting_waifu_char_delay_label">延迟（毫秒 / 字符）</string>
+  <string name="setting_waifu_char_delay_desc">一句话在气泡出现前按字数等待的时间。设为 0 则句子立即显示。</string>
+  <string name="setting_waifu_max_delay_title">单句延迟上限</string>
+  <string name="setting_waifu_max_delay_label">上限（毫秒）</string>
+  <string name="setting_waifu_max_delay_desc">单句延迟的上限，避免长句卡住不动。</string>
+  <string name="setting_waifu_extra_prompt_title">提示词追加</string>
+  <string name="setting_waifu_extra_prompt_label">追加到助手系统提示词末尾</string>
 </resources>
