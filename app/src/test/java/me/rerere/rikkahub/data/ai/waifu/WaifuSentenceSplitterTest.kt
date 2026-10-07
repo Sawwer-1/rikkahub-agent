@@ -109,7 +109,7 @@ class WaifuSentenceSplitterTest {
     fun `splitting is prefix stable while the tail keeps growing`() {
         val splitter = splitter()
         val streamed = listOf("你", "你好。今", "你好。今天天", "你好。今天天气不错。改")
-        var previousCommitted = 0
+        var previousCommitted = ""
         streamed.forEachIndexed { index, text ->
             val result = splitter.split(text)
             result.joined(text)
