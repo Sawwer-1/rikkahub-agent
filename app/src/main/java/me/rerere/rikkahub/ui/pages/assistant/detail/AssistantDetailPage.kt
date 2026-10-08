@@ -143,17 +143,6 @@ fun AssistantDetailPage(id: String) {
                         trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                     )
                     item(
-                        onClick = { navController.navigate(Screen.LearningCenter(id)) },
-                        leadingContent = { Icon(HugeIcons.AiLearning, null) },
-                        supportingContent = {
-                            Text(stringResource(R.string.assistant_detail_learning_center_desc))
-                        },
-                        headlineContent = {
-                            Text(stringResource(R.string.learning_center_title))
-                        },
-                        trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
-                    )
-                    item(
                         onClick = { navController.navigate(Screen.AssistantRequest(id)) },
                         leadingContent = { Icon(HugeIcons.Code, null) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_request_desc)) },
