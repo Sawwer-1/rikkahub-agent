@@ -253,8 +253,7 @@ val dataSourceModule = module {
             .build()
     }
 
-    // Command authority state and its content-free learning handoff commit atomically in the
-    // primary Room database. Runtime adoption of the opaque claim API is staged separately.
+    // Command authority state commits atomically in the primary Room database.
     single<CommandTransactionRunner> { RoomCommandTransactionRunner(database = get()) }
     single<CommandAuthorityEventPort> { NoOpCommandAuthorityEventPort }
     single {
@@ -270,9 +269,7 @@ val dataSourceModule = module {
             commandStateTransaction = get(),
         )
     }
-    single { get<AppDatabase>().learningOutboxDao() }
     single { get<AppDatabase>().learningSourceAuthorityDao() }
-    single { get<AppDatabase>().rewardFeedbackAuthorityDao() }
     single {
         me.rerere.rikkahub.data.authority.source.RoomConversationSourceAuthorityStore(
             dao = get(),
@@ -687,14 +684,6 @@ val dataSourceModule = module {
     }
     single { me.rerere.rikkahub.data.execution.ExecutionConsistencyMetrics() }
     // Authorization remains default-deny and is exact-model scoped. No Chat/Memory/Dreaming
-    // setting can implicitly enable background generation.
-    single {
-        me.rerere.rikkahub.assistant.SecondUserLearningAuthorityRevocationSaga(
-            grants = get(),
-            derived = get(),
-        )
-    }
-    single<me.rerere.rikkahub.workflow.repository.AppDatabaseExactScopeLearnedWorkflowErasePort> {
         me.rerere.rikkahub.workflow.repository.AppDatabaseExactScopeLearnedWorkflowErasePort(
             database = get<AppDatabase>(),
         )

@@ -21,7 +21,6 @@ import me.rerere.rikkahub.ui.pages.extensions.skills.SkillsVM
 import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceDetailVM
 import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceVM
 import me.rerere.rikkahub.ui.pages.setting.SettingVM
-import me.rerere.rikkahub.ui.pages.setting.AgentRuntimeSettingsViewModel
 import me.rerere.rikkahub.ui.pages.setting.QuickCaptureSettingsViewModel
 import me.rerere.rikkahub.ui.pages.setting.browser.SettingBrowserViewModel
 import me.rerere.rikkahub.ui.pages.setting.termux.SettingTermuxViewModel
@@ -31,9 +30,6 @@ import me.rerere.rikkahub.ui.pages.translator.TranslatorVM
 import me.rerere.rikkahub.ui.pages.setting.doctor.DoctorViewModel
 import me.rerere.rikkahub.ui.pages.setting.scheduledjobs.ScheduledJobsViewModel
 import me.rerere.rikkahub.ui.pages.memory.MemoryCenterVM
-import me.rerere.rikkahub.ui.pages.learning.LearningCenterVM
-import me.rerere.rikkahub.ui.pages.learning.curator.CuratorReviewVM
-import me.rerere.rikkahub.ui.pages.learning.workflow.WorkflowReviewVM
 import me.rerere.rikkahub.workflow.ui.WorkflowsViewModel
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
@@ -50,14 +46,12 @@ val viewModelModule = module {
             updateChecker = get(),
             filesManager = get(),
             favoriteRepository = get(),
-            rewardFeedbackAuthorityRepository = get(),
         )
     }
     viewModelOf(::ChatDrawerVM)
     viewModelOf(::MomentsVM)
     viewModelOf(::AnonymousQuestionBoxVM)
     viewModelOf(::SettingVM)
-    viewModelOf(::AgentRuntimeSettingsViewModel)
     viewModelOf(::QuickCaptureSettingsViewModel)
     viewModelOf(::DebugVM)
     viewModelOf(::DeveloperVM)
@@ -91,16 +85,6 @@ val viewModelModule = module {
             dreamSynthesisCoordinator = get(),
         )
     }
-    viewModel<LearningCenterVM> { params ->
-        LearningCenterVM(
-            id = params.get(),
-            settingsStore = get(),
-            repository = get(),
-            workflowSubmission = get(),
-            positiveMutations = get(),
-        )
-    }
-    viewModel<WorkflowReviewVM> { params ->
         WorkflowReviewVM(
             assistantId = params.get(),
             repository = get(),
@@ -108,17 +92,6 @@ val viewModelModule = module {
             positiveMutations = get(),
         )
     }
-    viewModel<CuratorReviewVM> { params ->
-        CuratorReviewVM(
-            assistantId = params.get(),
-            review = get(),
-            apply = get(),
-            producer = get(),
-            positiveMutations = get(),
-        )
-    }
-    viewModelOf(::TranslatorVM)
-    viewModel<ShareHandlerVM> {
         ShareHandlerVM(
             text = it.get(),
             settingsStore = get(),

@@ -1196,8 +1196,6 @@ class ChatService(
         me.rerere.rikkahub.data.ai.tools.local.ReverseGeocodeProviderTestGateway,
     private val dreamReviewRepository:
         me.rerere.rikkahub.memory.dreaming.review.DreamReviewRepository,
-    private val learningForegroundRegistry:
-        me.rerere.rikkahub.learning.resources.LearningForegroundRegistry,
     private val commandAdmissionAuthority:
         me.rerere.rikkahub.data.authority.transaction.CommandAdmissionAuthorityCoordinator,
     private val commandAdmissionAuthorityAdapter:
@@ -1733,25 +1731,14 @@ class ChatService(
                     },
                     onRunJobChanged = { job -> session.attachRunJob(job) },
                     onRunStarted = { envelope ->
-                        val learningLease = learningForegroundRegistry.enter(
-                            me.rerere.rikkahub.learning.resources.LearningForegroundWorkKind
-                                .CONVERSATION_EXECUTION,
-                            kotlinx.coroutines.currentCoroutineContext()[Job],
-                        )
                         // 生成开始点位（batch 11a）：模型面命令在运行期间占用前台服务保活。
+                        // learning 前台注册表摘除后，此处不再返回附加租约。
                         if (envelope.command.keepsForegroundWhileRunning()) {
-                            acquireForegroundGenerationLease(learningLease)
-                        } else {
-                            learningLease
+                            acquireForegroundGenerationLease(null)
                         }
+                        null
                     },
-                    onPetRunStarted = {
-                        learningForegroundRegistry.enter(
-                            me.rerere.rikkahub.learning.resources.LearningForegroundWorkKind
-                                .PET_DIALOGUE,
-                            kotlinx.coroutines.currentCoroutineContext()[Job],
-                        )
-                    },
+                    onPetRunStarted = { },
                     onPersistSteering = { note ->
                         val current = session.state.value
                         val updated = current.withSteeringAuditMessage(note)
@@ -6607,10 +6594,6 @@ class ChatService(
         targetTokens: Int,
         keepRecentMessages: Int = 32
     ): Result<Unit> {
-        val foregroundLease = learningForegroundRegistry.enter(
-            me.rerere.rikkahub.learning.resources.LearningForegroundWorkKind.MANUAL_COMPRESSION,
-            kotlinx.coroutines.currentCoroutineContext()[Job],
-        )
         return try {
         require(targetTokens in 100..32_000) { "Compression target must be between 100 and 32,000 tokens." }
         require(keepRecentMessages >= 0) { "Messages to keep cannot be negative." }
