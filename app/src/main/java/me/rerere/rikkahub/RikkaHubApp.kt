@@ -18,6 +18,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
@@ -91,7 +92,7 @@ class RikkaHubApp : Application() {
             ColdRestoreStartupResult.Complete,
             -> Unit
             ColdRestoreStartupResult.RebuildRequired ->
-                Log.i(TAG, "Cold restore committed; Learning rebuild is required")
+                Log.i(TAG, "Cold restore committed; cleanup runs after startup")
             is ColdRestoreStartupResult.LiveDatabaseUnchanged ->
                 Log.w(TAG, "Cold restore preparation refused: ${coldRestore.reasonCode}")
             ColdRestoreStartupResult.Busy -> {
@@ -120,6 +121,7 @@ class RikkaHubApp : Application() {
             modules(appModule, viewModelModule, dataSourceModule, repositoryModule)
         }
         dependencyGraphStarted = true
+
         // Clear stale OkHttp connections when returning to foreground (ported from jude).
         // Screen-off / Doze can silently kill idle HTTP/2 connections; reusing them makes
         // requests hang until read timeout. Evict the pool on start so the next request
@@ -138,16 +140,18 @@ class RikkaHubApp : Application() {
             me.rerere.rikkahub.personal.heartbeat.HeartbeatNotifications.createChannel(this)
             me.rerere.rikkahub.personal.heartbeat.HeartbeatScheduler.sync(this)
         }.onFailure { Log.e(TAG, "heartbeat startup sync failed", it) }
-        }
         get<AppScope>().launch(Dispatchers.IO) {
             runCatching {
-                get<SettingsStore>().settingsFlow.first { value -> !value.init }
-                removeLegacyLearningState(
-                    deleteDatabase = coldRestore == ColdRestoreStartupResult.RebuildRequired ||
-                        coldRestore == ColdRestoreStartupResult.Complete,
-                )
+                var restoreSettled = coldRestore == ColdRestoreStartupResult.NoPendingRestore
+                if (coldRestore == ColdRestoreStartupResult.RebuildRequired || coldRestore == ColdRestoreStartupResult.Complete) {
+                    restoreSettled = ColdRestoreStartupCoordinator.finalizeDisabledDerivedState(this@RikkaHubApp)
+                    if (!restoreSettled) {
+                        Log.i(TAG, "Cold restore cleanup retained until the installed database validates")
+                    }
+                }
+                removeLegacyLearningState(deleteDatabase = restoreSettled)
             }.onFailure { error ->
-                Log.w(TAG, "Legacy learning cleanup failed", error)
+                Log.w(TAG, "Cold restore finalization unavailable", error)
             }
         }
         get<AppScope>().launch(Dispatchers.IO) {
@@ -774,7 +778,7 @@ class RikkaHubApp : Application() {
                     val intent = Intent(this@RikkaHubApp, WebServerService::class.java).apply {
                         action = WebServerService.ACTION_START
                         putExtra(WebServerService.EXTRA_PORT, settings.webServerPort)
-                        putExtra(WebServerService.EXTRA_LOCALHOST_ONLY, settings.webServerLocalhostOnly)
+                        putExtra(WebServerService.EXTRA_LOCALHOST_ONLY, true)
                     }
                     startForegroundService(intent)
                 }
