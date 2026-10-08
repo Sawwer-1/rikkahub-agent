@@ -27,11 +27,12 @@ class LearnedPolicyWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
-        val settingsStore = get<SettingsStore>()
+        val koin = org.koin.core.context.GlobalContext.get()
+        val settingsStore = koin.get<SettingsStore>()
         val settings = settingsStore.settingsFlow.first()
-        val policyDao = get<LearnedPolicyDao>()
-        val experienceDao = get<DreamExperienceDao>()
-        val providerManager = get<ProviderManager>()
+        val policyDao = koin.get<LearnedPolicyDao>()
+        val experienceDao = koin.get<DreamExperienceDao>()
+        val providerManager = koin.get<ProviderManager>()
 
         val assistants = settings.assistants
         var anyStored = false
@@ -54,8 +55,6 @@ class LearnedPolicyWorker(
         Log.i(TAG, "policy distill run finished, stored=$anyStored")
         return Result.success()
     }
-
-    private inline fun <reified T> get(): T = org.koin.core.context.GlobalContext.get().get()
 
     companion object {
         private const val TAG = "LearnedPolicy"
