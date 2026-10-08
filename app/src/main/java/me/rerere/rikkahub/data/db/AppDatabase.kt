@@ -188,6 +188,7 @@ import me.rerere.rikkahub.owner.db.HostOperationEventEntity
         AnonymousQuestionProfileEntity::class,
         AnonymousQuestionReplyEntity::class,
         FolderEntity::class,
+        LearnedPolicyEntity::class,
     ],
     // v49 makes workflow capability/provenance authority durable. Learned artifacts remain
     // disabled until an explicit cross-database promotion completes.
