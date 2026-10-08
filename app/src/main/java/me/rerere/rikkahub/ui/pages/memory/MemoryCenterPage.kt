@@ -45,6 +45,7 @@ fun MemoryCenterPage(id: String) {
     val filter by vm.libraryFilter.collectAsStateWithLifecycle()
     val stats by vm.stats.collectAsStateWithLifecycle()
     val latestFailure by vm.latestFailure.collectAsStateWithLifecycle()
+    val dreamModelId by vm.dreamModelId.collectAsStateWithLifecycle()
     val extractionModel by vm.extractionModel.collectAsStateWithLifecycle()
     val modelOptions by vm.modelOptions.collectAsStateWithLifecycle()
     val recallState by vm.recallTestState.collectAsStateWithLifecycle()
@@ -227,6 +228,8 @@ fun MemoryCenterPage(id: String) {
                         onRecallTest = vm::runRecallTest,
                         onDreamingScopePreferenceChange = vm::updateDreamingScopePreference,
                         onDreamingCostPolicyChange = vm::updateDreamingCostPolicy,
+                        dreamModelId = dreamModelId,
+                        onDreamModelChange = vm::setDreamModel,
                     )
 
                     MemoryCenterTab.OBSERVER -> MemoryObserverDiagnosticsTab(

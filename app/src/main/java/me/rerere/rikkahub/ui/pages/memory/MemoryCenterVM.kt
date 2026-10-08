@@ -374,6 +374,19 @@ class MemoryCenterVM(
         }
     }
 
+    /** 做梦模型（settings.dreamModelId）：null = 跟随记忆抽取模型回落链。 */
+    val dreamModelId = settingsStore.settingsFlow.map { it.dreamModelId }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        null,
+    )
+
+    fun setDreamModel(modelId: Uuid?) {
+        viewModelScope.launch {
+            settingsStore.update { it.copy(dreamModelId = modelId) }
+        }
+    }
+
     fun processNow(retryFailed: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             val scope = currentCommandScopeId()

@@ -133,6 +133,8 @@ fun MemorySettingsTab(
     onRecallTest: (String) -> Unit,
     onDreamingScopePreferenceChange: (DreamingScopePreferenceMutation) -> Unit,
     onDreamingCostPolicyChange: (DreamingCostPolicy) -> Unit,
+    dreamModelId: Uuid?,
+    onDreamModelChange: (Uuid?) -> Unit,
 ) {
     val narrativeSelfFallback = stringResource(R.string.memory_v2_narrative_self_fallback)
     val narrativeCompanionFallback = stringResource(R.string.memory_v2_narrative_companion_fallback)
@@ -165,6 +167,7 @@ fun MemorySettingsTab(
         contextTurnsValue in MemoryCenterVM.MIN_CONVERSATION_CONTEXT_TURNS..
             MemoryCenterVM.MAX_CONVERSATION_CONTEXT_TURNS
     var showModelPicker by remember { mutableStateOf(false) }
+    var showDreamModelPicker by remember { mutableStateOf(false) }
     var recallQuery by remember { mutableStateOf("") }
     var dreamNetworkPolicy by remember(dreamingCostPolicy.networkPolicy) {
         mutableStateOf(dreamingCostPolicy.networkPolicy)
@@ -347,6 +350,14 @@ fun MemorySettingsTab(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // 做梦模型：settings.dreamModelId 的唯一 UI 入口；留空回落记忆抽取模型
+                // （其自身再回落快速模型）。此前该字段全库无 setter，合成预算不足时
+                // 用户无法换用强输出模型。
+                val dreamModelName = modelOptions.firstOrNull { it.id == dreamModelId }?.name
+                Text("做梦模型：${dreamModelName ?: "跟随记忆抽取模型"}")
+                OutlinedButton(onClick = { showDreamModelPicker = true }) {
+                    Text("选择做梦模型")
+                }
                 Text(stringResource(R.string.memory_dream_network_title))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     DreamNetworkPolicy.entries.forEach { policy ->
@@ -711,6 +722,17 @@ fun MemorySettingsTab(
             onSelect = { modelId ->
                 onExtractionModelChange(modelId)
                 showModelPicker = false
+            },
+        )
+    }
+
+    if (showDreamModelPicker) {
+        ModelPickerDialog(
+            options = modelOptions,
+            onDismiss = { showDreamModelPicker = false },
+            onSelect = { modelId ->
+                onDreamModelChange(modelId)
+                showDreamModelPicker = false
             },
         )
     }
