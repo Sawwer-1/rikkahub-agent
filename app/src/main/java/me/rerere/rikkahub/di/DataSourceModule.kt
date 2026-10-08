@@ -593,7 +593,7 @@ val dataSourceModule = module {
                 // effort. 2k can therefore be exhausted by reasoning before a JSON answer is
                 // emitted. Keep the larger allowance scoped to Dream rather than changing normal
                 // chat or Memory extraction behavior.
-                maxOutputTokens = 4_096,
+                maxOutputTokens = 16_384,
                 leaseDurationMs = 15L * 60_000L,
                 heartbeatIntervalMs = 2L * 60_000L,
             ),

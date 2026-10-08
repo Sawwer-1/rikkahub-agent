@@ -82,20 +82,20 @@ class ProviderDreamSynthesizer(
             providerSetting = providerSetting,
             model = model,
         )
-        val response = when (val admitted = withDreamProviderAdmission(
+        fun callProvider(budget: Int) = when (val admitted = withDreamProviderAdmission(
             inputUtf8Bytes = inputUtf8Bytes,
             estimatedInputTokens = estimatedInputTokens,
-            requestedOutputTokens = effectiveOutputTokens,
+            requestedOutputTokens = budget,
             enforcedWindowTokens = enforcedWindow,
         ) {
-            withTimeout(synthesisTimeoutMs) {
+            withTimeout(dreamProviderTimeoutMs(providerSetting, model)) {
                 provider.generateText(
                     providerSetting = providerSetting,
                     messages = messages,
                     params = TextGenerationParams(
                         model = model,
                         temperature = 0.1f,
-                        maxTokens = effectiveOutputTokens,
+                        maxTokens = budget,
                         tools = emptyList(),
                         reasoningLevel = memoryExtractionReasoningLevel(model),
                         omitReasoningConfigurationWhenOff = true,
@@ -106,12 +106,31 @@ class ProviderDreamSynthesizer(
             }
         }) {
             is DreamProviderAdmissionResult.Admitted -> admitted.value
-            DreamProviderAdmissionResult.Rejected -> return DreamSynthesizeResult.Failure(
-                DreamSynthesizeFailure.OUTPUT_LIMIT,
-                retryable = false,
-            )
+            DreamProviderAdmissionResult.Rejected -> null
         }
-        when (response.resolvedTerminal()?.category) {
+
+        // 一次输出超限（LENGTH）不直接作废整批经验：预算加倍重试一次，仍超限才判
+        // MODEL_OUTPUT_LIMIT。探测数据显示 19 条经验的结构化提炼在 4k 预算下必然触顶。
+        var budget = effectiveOutputTokens
+        var response = callProvider(budget)
+        var rejected = response == null
+        var attempts = 0
+        while (!rejected &&
+            response != null &&
+            response.resolvedTerminal()?.category == FinishCategory.LENGTH &&
+            attempts < 1 &&
+            budget < MAX_DREAM_PROVIDER_OUTPUT_TOKENS
+        ) {
+            budget = (budget * 2).coerceAtMost(MAX_DREAM_PROVIDER_OUTPUT_TOKENS)
+            attempts++
+            response = callProvider(budget)
+            rejected = response == null
+        }
+        if (rejected) return DreamSynthesizeResult.Failure(
+            DreamSynthesizeFailure.OUTPUT_LIMIT,
+            retryable = false,
+        )
+        when (response?.resolvedTerminal()?.category) {
             FinishCategory.LENGTH -> DreamSynthesizeResult.Failure(
                 DreamSynthesizeFailure.OUTPUT_LIMIT,
                 retryable = false,
