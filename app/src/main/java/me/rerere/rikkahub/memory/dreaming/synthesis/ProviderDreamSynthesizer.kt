@@ -82,7 +82,7 @@ class ProviderDreamSynthesizer(
             providerSetting = providerSetting,
             model = model,
         )
-        fun callProvider(budget: Int) = when (val admitted = withDreamProviderAdmission(
+        suspend fun callProvider(budget: Int) = when (val admitted = withDreamProviderAdmission(
             inputUtf8Bytes = inputUtf8Bytes,
             estimatedInputTokens = estimatedInputTokens,
             requestedOutputTokens = budget,
