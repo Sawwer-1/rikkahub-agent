@@ -63,6 +63,7 @@ import me.rerere.rikkahub.data.db.entity.BrowserBookmarkEntity
 import me.rerere.rikkahub.data.db.entity.BrowserHistoryEntity
 import me.rerere.rikkahub.data.db.entity.FavoriteEntity
 import me.rerere.rikkahub.data.db.entity.FolderEntity
+import me.rerere.rikkahub.data.db.entity.LearnedPolicyEntity
 import me.rerere.rikkahub.data.db.entity.GenMediaEntity
 import me.rerere.rikkahub.data.db.entity.ManagedFileEntity
 import me.rerere.rikkahub.data.db.entity.MemoryEntity
@@ -187,6 +188,7 @@ import me.rerere.rikkahub.owner.db.HostOperationEventEntity
         AnonymousQuestionProfileEntity::class,
         AnonymousQuestionReplyEntity::class,
         FolderEntity::class,
+        LearnedPolicyEntity::class,
     ],
     // v49 makes workflow capability/provenance authority durable. Learned artifacts remain
     // disabled until an explicit cross-database promotion completes.
@@ -195,7 +197,9 @@ import me.rerere.rikkahub.owner.db.HostOperationEventEntity
     // and the anonymous question box (questions / replies / profile).
     // v53 adds conversation folders ported from ExTV: conversation_folder, hand-written as
     // Migration_52_53 (registered in DataSourceModule).
-    version = 53,
+    // v54 adds the lightweight learned_policy table (Part B rebuild, 2.4.0): hand-written as
+    // Migration_53_54 (registered in DataSourceModule).
+    version = 54,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
