@@ -2952,7 +2952,7 @@ class GenerationHandler(
                 assistantPrompt = breakdownAssistantPrompt,
                 userIdentityPrompt = breakdownUserIdentityPrompt,
                 memoryPrompt = recallPrompt,
-                policyPrompt = policyPromptBlock,
+                policyPrompt = policyPromptBlock.orEmpty(),
                 recentChatsPrompt = breakdownRecentChatsPrompt,
                 toolPrompts = breakdownToolPrompts,
                 systemAddendum = providerSystemAddendum,

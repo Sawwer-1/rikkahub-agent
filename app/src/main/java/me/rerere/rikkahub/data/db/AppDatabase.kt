@@ -244,6 +244,8 @@ abstract class AppDatabase : RoomDatabase() {
 
     abstract fun dreamExperienceDao(): DreamExperienceDao
 
+    abstract fun learnedPolicyDao(): LearnedPolicyDao
+
     abstract fun dreamSynthesisDao(): DreamSynthesisDao
 
     abstract fun genMediaDao(): GenMediaDAO

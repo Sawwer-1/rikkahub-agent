@@ -11,6 +11,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.provider.TextGenerationParams
+import me.rerere.rikkahub.data.datastore.findModelById
+import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.db.dao.LearnedPolicyDao
 import me.rerere.rikkahub.data.db.entity.LearnedPolicyEntity
 import me.rerere.rikkahub.data.db.entity.DreamExperienceEntity
@@ -25,7 +27,7 @@ import java.util.UUID
  */
 class LearnedPolicyDistiller(
     private val policyDao: LearnedPolicyDao,
-    private val providerManager: me.rerere.rikkahub.data.ai.provider.ProviderManager,
+    private val providerManager: me.rerere.ai.provider.ProviderManager,
 ) {
     suspend fun distill(
         settings: Settings,

@@ -863,6 +863,7 @@ val dataSourceModule = module {
             conversationRepo = get(),
             aiLoggingManager = get(),
             systemPromptBuilder = get(),
+            learnedPolicyInjector = get(),
             toolExecutionGate = get(),
             toolRuntime = get(),
             toolStartableResolver = get(),
