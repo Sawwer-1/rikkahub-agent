@@ -1732,8 +1732,9 @@ class ChatService(
                         // learning 前台注册表摘除后，此处不再返回附加租约。
                         if (envelope.command.keepsForegroundWhileRunning()) {
                             acquireForegroundGenerationLease()
+                        } else {
+                            null
                         }
-                        null
                     },
                     onPetRunStarted = { },
                     onPersistSteering = { note ->

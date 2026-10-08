@@ -3000,8 +3000,6 @@ class GenerationHandler(
             },
         )
         val recallDreamItems = dreamContext.toRecallDreamItems(dreamScopeId)
-        val finalProviderIdentity = generationProviderIdentity(provider)
-        val finalModelIdentity = generationModelIdentity(model)
         val finalToolSchemas = ToolCatalogSnapshot.fromDefinitions(tools).entries
             .mapTo(linkedSetOf()) { it.schemaFingerprint }
         val recallBudget = RecallPromptBudget(
@@ -3293,7 +3291,6 @@ class GenerationHandler(
                         selectedRecall.manifest.actualDreamItems.isNotEmpty()
                 }
                 ?.compilerRevision,
-            policyProjectionDigest = selectedRecall.policyProjectionDigestOrNull(),
             policyCompilerRevision = selectedRecall.manifest.actualPolicyItems
                 .takeIf { it.isNotEmpty() }
                 ?.let { selectedRecall.compilerRevision },

@@ -1,15 +1,6 @@
 package me.rerere.rikkahub.di
 
 import androidx.room.Room
-import java.net.Authenticator
-import java.util.concurrent.atomic.AtomicReference
-import me.rerere.rikkahub.data.db.migrations.MIGRATION_50_51
-import me.rerere.rikkahub.data.db.migrations.MIGRATION_51_52
-import me.rerere.rikkahub.data.db.migrations.MIGRATION_52_53
-import me.rerere.rikkahub.data.network.SettingsProxyAuthenticator
-import me.rerere.rikkahub.data.network.SettingsProxySelector
-import me.rerere.rikkahub.data.network.SettingsSocks5Authenticator
-import okhttp3.ConnectionPool
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import android.content.Context
@@ -40,6 +31,9 @@ import me.rerere.rikkahub.data.codex.CodexCredentialStore
 import me.rerere.rikkahub.data.codex.CodexOAuthManager
 import me.rerere.rikkahub.data.codex.CodexProvider
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.data.network.SettingsProxyAuthenticator
+import me.rerere.rikkahub.data.network.SettingsProxySelector
+import me.rerere.rikkahub.data.network.SettingsSocks5Authenticator
 import me.rerere.rikkahub.data.db.AppDatabase
 import me.rerere.rikkahub.data.db.createAppSQLiteOpenHelperFactory
 import me.rerere.rikkahub.data.db.fts.MessageFtsManager
@@ -76,6 +70,9 @@ import me.rerere.rikkahub.data.db.migrations.MIGRATION_46_47
 import me.rerere.rikkahub.data.db.migrations.MIGRATION_47_48
 import me.rerere.rikkahub.data.db.migrations.MIGRATION_48_49
 import me.rerere.rikkahub.data.db.migrations.MIGRATION_49_50
+import me.rerere.rikkahub.data.db.migrations.MIGRATION_50_51
+import me.rerere.rikkahub.data.db.migrations.MIGRATION_51_52
+import me.rerere.rikkahub.data.db.migrations.MIGRATION_52_53
 import me.rerere.rikkahub.data.repository.MemorySearchIndex
 import me.rerere.rikkahub.data.repository.MemoryRetriever
 import me.rerere.rikkahub.memory.AndroidMemoryWorkScheduler
@@ -162,6 +159,7 @@ import me.rerere.rikkahub.data.agentrun.AgentRunRepository
 import me.rerere.rikkahub.data.sync.webdav.WebDavSync
 import me.rerere.search.SearchService
 import me.rerere.rikkahub.data.sync.S3Sync
+import okhttp3.ConnectionPool
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -171,7 +169,9 @@ import me.rerere.rikkahub.data.alarm.AlarmRepository
 import me.rerere.rikkahub.data.alarm.AlarmScheduler
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import java.net.Authenticator
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.TimeUnit
 import java.util.UUID
 
@@ -215,6 +215,9 @@ val dataSourceModule = module {
                 MIGRATION_47_48,
                 MIGRATION_48_49,
                 MIGRATION_49_50,
+                MIGRATION_50_51,
+                MIGRATION_51_52,
+                MIGRATION_52_53,
             )
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
@@ -250,7 +253,8 @@ val dataSourceModule = module {
             .build()
     }
 
-    // Command authority state commits atomically in the primary Room database.
+    // Command authority state and its content-free learning handoff commit atomically in the
+    // primary Room database. Runtime adoption of the opaque claim API is staged separately.
     single<CommandTransactionRunner> { RoomCommandTransactionRunner(database = get()) }
     single<CommandAuthorityEventPort> { NoOpCommandAuthorityEventPort }
     single {
@@ -266,10 +270,8 @@ val dataSourceModule = module {
             commandStateTransaction = get(),
         )
     }
+    single { get<AppDatabase>().learningOutboxDao() }
     single { get<AppDatabase>().learningSourceAuthorityDao() }
-    single<me.rerere.rikkahub.data.authority.source.MessageSourceTransitionInvalidationPort> {
-        me.rerere.rikkahub.data.authority.source.NoOpMessageSourceTransitionInvalidationPort
-    }
     single {
         me.rerere.rikkahub.data.authority.source.RoomConversationSourceAuthorityStore(
             dao = get(),
@@ -503,7 +505,7 @@ val dataSourceModule = module {
                 // effort. 2k can therefore be exhausted by reasoning before a JSON answer is
                 // emitted. Keep the larger allowance scoped to Dream rather than changing normal
                 // chat or Memory extraction behavior.
-                maxOutputTokens = 4_096,
+                maxOutputTokens = 16_384,
                 leaseDurationMs = 15L * 60_000L,
                 heartbeatIntervalMs = 2L * 60_000L,
             ),
@@ -576,6 +578,10 @@ val dataSourceModule = module {
 
     single {
         get<AppDatabase>().favoriteDao()
+    }
+
+    single {
+        get<AppDatabase>().folderDao()
     }
 
     single {
@@ -678,15 +684,8 @@ val dataSourceModule = module {
             runtimeDiagnosticsStore = get(),
         )
     }
-    single { me.rerere.rikkahub.data.execution.ExecutionConsistencyMetrics() }
-    single {
-        me.rerere.rikkahub.data.execution.ExecutionStateTransaction(
-            database = get(),
-            recordDao = get(),
-            eventDao = get(),
-            metrics = get(),
-        )
-    }
+    // Authorization remains default-deny and is exact-model scoped. No Chat/Memory/Dreaming
+    // setting can implicitly enable background generation.
     single {
         me.rerere.rikkahub.data.execution.ExecutionRetentionManager(
             recordDao = get(),
@@ -824,6 +823,20 @@ val dataSourceModule = module {
     single { AlarmRepository(get()) }
     single { AlarmScheduler(context = get(), repository = get()) }
 
+    // Social surfaces (ported from jude, batch 3): moments + anonymous question box.
+    // Both repositories key everything on the assistant id, so per-assistant isolation is
+    // preserved end to end.
+    single { get<AppDatabase>().momentDao() }
+    single { get<AppDatabase>().anonymousQuestionDao() }
+    single { me.rerere.rikkahub.data.repository.MomentRepository(get()) }
+    single { me.rerere.rikkahub.data.repository.AnonymousQuestionRepository(get()) }
+    // Auto-reply engines: shared by the overlay VMs and the background InteractionReplyWorker.
+    single { me.rerere.rikkahub.data.ai.interaction.MomentsAutoReplyEngine(get(), get(), get(), get(), get()) }
+    single { me.rerere.rikkahub.data.ai.interaction.QuestionBoxAutoReplyEngine(get(), get(), get(), get(), get()) }
+    single { me.rerere.rikkahub.service.InteractionReplyScheduler(context = get()) }
+    // Group chat (multi-member) pipeline: planner + per-member generation over a projected history.
+    single { me.rerere.rikkahub.data.ai.group.GroupChatEngine(get(), get(), get()) }
+
     single {
         McpManager(
             context = get(),
@@ -862,28 +875,70 @@ val dataSourceModule = module {
             dreamSnapshotProjectionReader = get(),
             dreamRuntimeUsageRecorder = get(),
             dreamRuntimeDiagnosticsSink = get(),
+            learnedPolicySource = get(),
+            policyShadowRuntime = get(),
+            policyExposureAnchorSource = get(),
+            policyExposureStore = get(),
+            observedUtilityAssignments = get(),
+            policyApplicabilityIdentityFactory = get(),
         )
     }
 
     single { me.rerere.rikkahub.data.ai.SystemPromptBuilder() }
 
+    // Shared connection pool (ported from jude): one pool instance reused by every
+    // OkHttpClient so idle sockets are shared across clients and can be evicted
+    // together when the app returns to the foreground (see RikkaHubApp).
+    single {
+        ConnectionPool(maxIdleConnections = 5, keepAliveDuration = 5, TimeUnit.MINUTES)
+    }
+
     single<OkHttpClient> {
+        val settingsStore: SettingsStore = get()
         val acceptLang = AcceptLanguageBuilder.fromAndroid(get())
             .build()
-        OkHttpClient.Builder()
+        // SOCKS5 需要用户名/密码时由 JVM 全局 Authenticator 处理; HTTP 代理走 proxyAuthenticator。
+        Authenticator.setDefault(SettingsSocks5Authenticator(settingsStore))
+        val initialNetworkSetting = settingsStore.settingsFlow.value.networkSetting
+        val appliedProxySetting = AtomicReference(
+            Triple(
+                initialNetworkSetting.proxyUrl,
+                initialNetworkSetting.proxyUsername,
+                initialNetworkSetting.proxyPassword,
+            )
+        )
+        lateinit var client: OkHttpClient
+        client = OkHttpClient.Builder()
+            .proxySelector(SettingsProxySelector(settingsStore))
+            .proxyAuthenticator(SettingsProxyAuthenticator(settingsStore))
+            .connectionPool(get())
             .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.MINUTES)
+            .readTimeout(120, TimeUnit.SECONDS)
             .writeTimeout(120, TimeUnit.SECONDS)
             .followSslRedirects(true)
             .followRedirects(true)
             .retryOnConnectionFailure(true)
             .addInterceptor { chain ->
+                // 代理配置变更时清空连接池, 让既有连接按新代理重建。
+                val networkSetting = settingsStore.settingsFlow.value.networkSetting
+                val currentProxySetting = Triple(
+                    networkSetting.proxyUrl,
+                    networkSetting.proxyUsername,
+                    networkSetting.proxyPassword,
+                )
+                if (appliedProxySetting.getAndSet(currentProxySetting) != currentProxySetting) {
+                    client.connectionPool.evictAll()
+                }
+
                 val originalRequest = chain.request()
                 val requestBuilder = originalRequest.newBuilder()
                     .addHeader(HttpHeaders.AcceptLanguage, acceptLang)
 
                 if (originalRequest.header(HttpHeaders.UserAgent) == null) {
-                    requestBuilder.addHeader(HttpHeaders.UserAgent, "RikkaHub-Android/${BuildConfig.VERSION_NAME}")
+                    val userAgent = networkSetting.userAgent
+                        .trim()
+                        .ifEmpty { "RikkaHub-Android/${BuildConfig.VERSION_NAME}" }
+                    requestBuilder.addHeader(HttpHeaders.UserAgent, userAgent)
                 }
 
                 chain.proceed(requestBuilder.build())
@@ -917,12 +972,14 @@ val dataSourceModule = module {
                 }
             }
             .build().also { SearchService.init(it, get()) }
+        client
     }
 
     single<OkHttpClient>(named("codex")) {
         OkHttpClient.Builder()
+            .connectionPool(get())
             .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.MINUTES)
+            .readTimeout(120, TimeUnit.SECONDS)
             .writeTimeout(120, TimeUnit.SECONDS)
             .followSslRedirects(true)
             .followRedirects(true)
@@ -1025,222 +1082,5 @@ val dataSourceModule = module {
 
     single<RikkaHubAPI> {
         get<Retrofit>().create(RikkaHubAPI::class.java)
-    }
-
-    // ---- fork additions (jude/ExTV/本线自研) ----
-    single {
-        val context: Context = get()
-        Room.databaseBuilder(context, AppDatabase::class.java, "rikka_hub")
-            .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-            .addMigrations(
-                Migration_6_7,
-                Migration_11_12,
-                Migration_13_14,
-                Migration_14_15,
-                Migration_15_16,
-                Migration_23_24,
-                MIGRATION_26_27,
-                MIGRATION_27_28,
-                MIGRATION_28_29,
-                MIGRATION_29_30,
-                MIGRATION_30_31,
-                MIGRATION_31_32,
-                MIGRATION_32_33,
-                MIGRATION_33_34,
-                MIGRATION_34_35,
-                MIGRATION_35_36,
-                MIGRATION_36_37,
-                MIGRATION_37_38,
-                MIGRATION_38_39,
-                MIGRATION_39_40,
-                MIGRATION_40_41,
-                MIGRATION_41_42,
-                MIGRATION_42_43,
-                MIGRATION_43_44,
-                MIGRATION_44_45,
-                MIGRATION_45_46,
-                MIGRATION_46_47,
-                MIGRATION_47_48,
-                MIGRATION_48_49,
-                MIGRATION_49_50,
-                MIGRATION_50_51,
-                MIGRATION_51_52,
-                MIGRATION_52_53,
-            )
-            .addCallback(object : RoomDatabase.Callback() {
-                override fun onCreate(db: SupportSQLiteDatabase) {
-                    me.rerere.rikkahub.data.db.migrations.ensureLearningOutboxStreamSentinel(
-                        db = db,
-                        streamId = UUID.randomUUID().toString(),
-                        createdAtMs = System.currentTimeMillis(),
-                    )
-                    me.rerere.rikkahub.data.db.migrations.requireHealthyLearningOutboxV47(db)
-                }
-
-                override fun onOpen(db: SupportSQLiteDatabase) {
-                    me.rerere.rikkahub.data.db.migrations.recoverOrphanedDreamSynthesisRuns(db)
-                    val dictDir = SimpleDictManager.extractDict(context)
-                    val cursor = db.query("SELECT jieba_dict(?)", arrayOf(dictDir.absolutePath))
-                    cursor.use {
-                        if (it.moveToFirst()) {
-                            val result = it.getString(0)
-                            val success = result?.trimEnd('/') == dictDir.absolutePath.trimEnd('/')
-                            if (!success) {
-                                android.util.Log.e(
-                                    "DataSourceModule",
-                                    "jieba_dict failed: $result, path=${dictDir.absolutePath}"
-                                )
-                            }
-                        }
-                    }
-                    db.execSQL(me.rerere.rikkahub.data.db.fts.MESSAGE_FTS_CREATE_SQL.trimIndent())
-                    ensureMemoryFtsSchema(db)
-                }
-            })
-    single<CommandTransactionRunner> { RoomCommandTransactionRunner(database = get()) }
-    single<CommandAuthorityEventPort> {
-        LearningCommandAuthorityEventPort(
-            appender = get(),
-            featureFlags = get(),
-            scopeConsent = get(),
-        )
-    }
-    single { get<AppDatabase>().learningOutboxDao() }
-    single { get<AppDatabase>().learningSourceAuthorityDao() }
-    single {
-        DreamSynthesisOrchestrator(
-            store = get(),
-            inputBuilder = get(),
-            synthesizer = get(),
-            validator = get(),
-            clock = get(),
-            config = DreamSynthesisOrchestratorConfig(
-                compilerRevision = "dream-snapshot-compiler-v2",
-                // Dream output is strict JSON, but reasoning-capable OpenCode/DeepSeek V4 models
-                // cannot actually disable reasoning: LOW/OFF normalize to the provider's `high`
-                // effort. 2k can therefore be exhausted by reasoning before a JSON answer is
-                // emitted. Keep the larger allowance scoped to Dream rather than changing normal
-                // chat or Memory extraction behavior.
-                maxOutputTokens = 16_384,
-                leaseDurationMs = 15L * 60_000L,
-                heartbeatIntervalMs = 2L * 60_000L,
-            ),
-            budgetGate = get(),
-        )
-    }
-    single {
-        get<AppDatabase>().folderDao()
-    }
-    single { get<AppDatabase>().momentDao() }
-    single { get<AppDatabase>().anonymousQuestionDao() }
-    single { me.rerere.rikkahub.data.repository.MomentRepository(get()) }
-    single { me.rerere.rikkahub.data.repository.AnonymousQuestionRepository(get()) }
-    single { me.rerere.rikkahub.data.ai.interaction.MomentsAutoReplyEngine(get(), get(), get(), get(), get()) }
-    single { me.rerere.rikkahub.data.ai.interaction.QuestionBoxAutoReplyEngine(get(), get(), get(), get(), get()) }
-    single { me.rerere.rikkahub.service.InteractionReplyScheduler(context = get()) }
-    // Group chat (multi-member) pipeline: planner + per-member generation over a projected history.
-    single { me.rerere.rikkahub.data.ai.group.GroupChatEngine(get(), get(), get()) }
-    single<DreamRuntimeUsageRecorder> { get<BoundedDreamRuntimeTelemetryStore>() }
-
-    single {
-        GenerationHandler(
-            context = get(),
-            providerManager = get(),
-            json = get(),
-            memoryRepo = get(),
-            conversationRepo = get(),
-            aiLoggingManager = get(),
-            systemPromptBuilder = get(),
-            toolExecutionGate = get(),
-            toolRuntime = get(),
-            toolStartableResolver = get(),
-            toolExecutionBatchCoordinator = get(),
-            contextBroker = get(),
-            contextDiagnosticsStore = get(),
-            secondUserSecretVault = get(),
-            secretPlaintextSessions = get(),
-            ephemeralToolResults = get(),
-            runtimeSecretRedactor = get(),
-            toolExperienceRecorder = get(),
-            dreamingFeatureFlags = get(),
-            dreamSnapshotProjectionReader = get(),
-            dreamRuntimeUsageRecorder = get(),
-            dreamRuntimeDiagnosticsSink = get(),
-            learnedPolicySource = get(),
-            policyShadowRuntime = get(),
-            policyExposureAnchorSource = get(),
-            policyExposureStore = get(),
-            observedUtilityAssignments = get(),
-            policyApplicabilityIdentityFactory = get(),
-        )
-    }
-    single { me.rerere.rikkahub.data.ai.SystemPromptBuilder() }
-
-    // Shared connection pool (ported from jude): one pool instance reused by every
-    // OkHttpClient so idle sockets are shared across clients and can be evicted
-    // together when the app returns to the foreground (see RikkaHubApp).
-    single {
-        ConnectionPool(maxIdleConnections = 5, keepAliveDuration = 5, TimeUnit.MINUTES)
-    }
-    single<OkHttpClient> {
-        val settingsStore: SettingsStore = get()
-        val acceptLang = AcceptLanguageBuilder.fromAndroid(get())
-            .build()
-        // SOCKS5 需要用户名/密码时由 JVM 全局 Authenticator 处理; HTTP 代理走 proxyAuthenticator。
-        Authenticator.setDefault(SettingsSocks5Authenticator(settingsStore))
-        val initialNetworkSetting = settingsStore.settingsFlow.value.networkSetting
-        val appliedProxySetting = AtomicReference(
-            Triple(
-                initialNetworkSetting.proxyUrl,
-                initialNetworkSetting.proxyUsername,
-                initialNetworkSetting.proxyPassword,
-            )
-        )
-        lateinit var client: OkHttpClient
-        client = OkHttpClient.Builder()
-            .proxySelector(SettingsProxySelector(settingsStore))
-            .proxyAuthenticator(SettingsProxyAuthenticator(settingsStore))
-            .connectionPool(get())
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(120, TimeUnit.SECONDS)
-            .writeTimeout(120, TimeUnit.SECONDS)
-            .followSslRedirects(true)
-            .followRedirects(true)
-            .retryOnConnectionFailure(true)
-            .addInterceptor { chain ->
-                // 代理配置变更时清空连接池, 让既有连接按新代理重建。
-                val networkSetting = settingsStore.settingsFlow.value.networkSetting
-                val currentProxySetting = Triple(
-                    networkSetting.proxyUrl,
-                    networkSetting.proxyUsername,
-                    networkSetting.proxyPassword,
-                )
-                if (appliedProxySetting.getAndSet(currentProxySetting) != currentProxySetting) {
-                    client.connectionPool.evictAll()
-                }
-
-                val originalRequest = chain.request()
-                val requestBuilder = originalRequest.newBuilder()
-                    .addHeader(HttpHeaders.AcceptLanguage, acceptLang)
-
-                if (originalRequest.header(HttpHeaders.UserAgent) == null) {
-                    val userAgent = networkSetting.userAgent
-                        .trim()
-                        .ifEmpty { "RikkaHub-Android/${BuildConfig.VERSION_NAME}" }
-                    requestBuilder.addHeader(HttpHeaders.UserAgent, userAgent)
-                }
-
-                chain.proceed(requestBuilder.build())
-            }
-    single<OkHttpClient>(named("codex")) {
-        OkHttpClient.Builder()
-            .connectionPool(get())
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(120, TimeUnit.SECONDS)
-            .writeTimeout(120, TimeUnit.SECONDS)
-            .followSslRedirects(true)
-            .followRedirects(true)
-            .retryOnConnectionFailure(true)
-            .build()
     }
 }
