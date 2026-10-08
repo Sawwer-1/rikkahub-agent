@@ -3004,8 +3004,6 @@ class GenerationHandler(
             .mapTo(linkedSetOf()) { it.schemaFingerprint }
         val recallBudget = RecallPromptBudget(
             maxTokens = recallPromptBudget,
-            maxPolicyTokens = minOf(DEFAULT_POLICY_RECALL_MAX_TOKENS, recallPromptBudget),
-            maxPolicyItems = DEFAULT_POLICY_RECALL_MAX_ITEMS,
         )
         val baselineRecall = agentTiming.timedAgentStage(
             AgentTimingEventKind.MEMORY_PROMPT_STARTED,
@@ -3015,7 +3013,6 @@ class GenerationHandler(
             compileRecallPrompt(
                 memory = if (assistant.enableMemory) memories else emptyList(),
                 dreams = recallDreamItems,
-                policies = emptyList(),
                 budget = recallBudget,
                 requestPurpose = if (requestPurpose == GenerationRequestPurpose.NORMAL) {
                     RecallRequestPurpose.NORMAL
@@ -3261,7 +3258,6 @@ class GenerationHandler(
                 "dreamBudgetTokens=$recallPromptBudget, " +
                 "dreamStatus=${dreamContext.status}, " +
                 "dreamInjected=${selectedRecall.manifest.actualDreamItems.size}, " +
-                "policyInjected=${selectedRecall.manifest.actualPolicyItems.size}, " +
                 "advertisedModelWindowTokens=${contextPreparation.advertisedContextWindowTokens ?: "none"}",
         )
 
@@ -3291,9 +3287,6 @@ class GenerationHandler(
                         selectedRecall.manifest.actualDreamItems.isNotEmpty()
                 }
                 ?.compilerRevision,
-            policyCompilerRevision = selectedRecall.manifest.actualPolicyItems
-                .takeIf { it.isNotEmpty() }
-                ?.let { selectedRecall.compilerRevision },
         )
         val params = agentTiming.timedAgentStage(
             AgentTimingEventKind.REQUEST_BUILD_STARTED,

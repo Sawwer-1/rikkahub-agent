@@ -875,12 +875,6 @@ val dataSourceModule = module {
             dreamSnapshotProjectionReader = get(),
             dreamRuntimeUsageRecorder = get(),
             dreamRuntimeDiagnosticsSink = get(),
-            learnedPolicySource = get(),
-            policyShadowRuntime = get(),
-            policyExposureAnchorSource = get(),
-            policyExposureStore = get(),
-            observedUtilityAssignments = get(),
-            policyApplicabilityIdentityFactory = get(),
         )
     }
 

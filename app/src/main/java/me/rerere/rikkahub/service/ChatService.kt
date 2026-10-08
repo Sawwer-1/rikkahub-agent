@@ -1736,7 +1736,7 @@ class ChatService(
                             null
                         }
                     },
-                    onPetRunStarted = { },
+                    onPetRunStarted = { null },
                     onPersistSteering = { note ->
                         val current = session.state.value
                         val updated = current.withSteeringAuditMessage(note)
