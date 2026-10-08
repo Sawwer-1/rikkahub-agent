@@ -87,13 +87,7 @@ val viewModelModule = module {
             dreamSynthesisCoordinator = get(),
         )
     }
-        WorkflowReviewVM(
-            assistantId = params.get(),
-            repository = get(),
-            settingsStore = get(),
-            positiveMutations = get(),
-        )
-    }
+    viewModel<ShareHandlerVM> {
         ShareHandlerVM(
             text = it.get(),
             settingsStore = get(),

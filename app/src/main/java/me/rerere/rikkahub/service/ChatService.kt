@@ -1501,9 +1501,7 @@ class ChatService(
      * ConversationRuntime 在 run 结束（含取消/异常）时统一关闭——即停止点位，与 learning
      * 租约同生共死。
      */
-    private suspend fun acquireForegroundGenerationLease(
-        learningLease: me.rerere.rikkahub.learning.resources.LearningForegroundLease,
-    ): AutoCloseable {
+    private suspend fun acquireForegroundGenerationLease(): AutoCloseable {
         val releaseForegroundWork = foregroundWorkTracker.acquire()
         ChatGenerationForegroundService.start(context)
         if (!ChatGenerationForegroundService.awaitReady()) {
@@ -1512,7 +1510,6 @@ class ChatService(
         }
         return AutoCloseable {
             releaseForegroundWork()
-            learningLease.close()
         }
     }
 
@@ -1734,7 +1731,7 @@ class ChatService(
                         // 生成开始点位（batch 11a）：模型面命令在运行期间占用前台服务保活。
                         // learning 前台注册表摘除后，此处不再返回附加租约。
                         if (envelope.command.keepsForegroundWhileRunning()) {
-                            acquireForegroundGenerationLease(null)
+                            acquireForegroundGenerationLease()
                         }
                         null
                     },
@@ -4637,29 +4634,6 @@ class ChatService(
                 generationMessages
             }
             // Stage D needs the exact command authority even when the independently reviewed
-            // Stage-E injection opt-in is off. Merely attaching this content-free identity has no
-            // provider effect; GenerationHandler applies the separate Stage-D and Stage-E gates.
-            if (runControl != null && authoritativeCommandId != null) {
-                durableCommandQueue.findAuthorityRow(authoritativeCommandId)
-                    ?.let(me.rerere.rikkahub.service.chat.CommandLineageContext::fromAuthorityRowOrNull)
-                    ?.let lineage@ { lineage ->
-                        val branchAnchorRevision = lineage.branchAnchorMessageRevision
-                            ?: return@lineage
-                        val scope = privilegeContext.authoritySubjectId?.let { subjectId ->
-                            me.rerere.rikkahub.learning.model.LearningScope.AuthoritySubject(subjectId)
-                        } ?: me.rerere.rikkahub.learning.model.LearningScope.Assistant(assistant.id)
-                        runControl.attachPolicyLearningContext(
-                            me.rerere.rikkahub.learning.exposure.PolicyLearningCommandContext(
-                                scope = scope,
-                                consumingAssistantId = assistant.id,
-                                lineageId = lineage.lineageId,
-                                branchAnchorMessageId = lineage.branchAnchorMessageId,
-                                branchAnchorMessageRevision = branchAnchorRevision,
-                                logicalRunId = runControl.runId,
-                            ),
-                        )
-                    }
-            }
             var memoryRetrievalTraceId: String? = null
             val generationMemories = if (!assistant.enableMemory) {
                 emptyList()
@@ -6674,8 +6648,6 @@ class ChatService(
             throw cancelled
         } catch (error: Throwable) {
             Result.failure(error)
-        } finally {
-            runCatching { foregroundLease.close() }
         }
     }
 
