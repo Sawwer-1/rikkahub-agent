@@ -20,6 +20,7 @@ import me.rerere.rikkahub.data.db.dao.AlarmDao
 import me.rerere.rikkahub.data.db.dao.ConversationDAO
 import me.rerere.rikkahub.data.db.dao.DreamDao
 import me.rerere.rikkahub.data.db.dao.DreamExperienceDao
+import me.rerere.rikkahub.data.db.dao.LearnedPolicyDao
 import me.rerere.rikkahub.data.db.dao.DreamSynthesisDao
 import me.rerere.rikkahub.data.db.dao.BrowserLibraryDao
 import me.rerere.rikkahub.data.db.dao.FavoriteDAO
@@ -195,7 +196,9 @@ import me.rerere.rikkahub.owner.db.HostOperationEventEntity
     // and the anonymous question box (questions / replies / profile).
     // v53 adds conversation folders ported from ExTV: conversation_folder, hand-written as
     // Migration_52_53 (registered in DataSourceModule).
-    version = 53,
+    // v54 adds the lightweight learned_policy table (Part B rebuild, 2.4.0): hand-written as
+    // Migration_53_54 (registered in DataSourceModule).
+    version = 54,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -239,6 +242,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun dreamDao(): DreamDao
 
     abstract fun dreamExperienceDao(): DreamExperienceDao
+
+    abstract fun learnedPolicyDao(): LearnedPolicyDao
 
     abstract fun dreamSynthesisDao(): DreamSynthesisDao
 

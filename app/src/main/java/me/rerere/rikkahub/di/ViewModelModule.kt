@@ -85,6 +85,7 @@ val viewModelModule = module {
             dreamObserverDiagnostics = get(),
             dreamReviewRepository = get(),
             dreamSynthesisCoordinator = get(),
+            learnedPolicyDao = get(),
         )
     }
     viewModel<ShareHandlerVM> {

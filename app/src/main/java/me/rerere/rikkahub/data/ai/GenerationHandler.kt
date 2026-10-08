@@ -576,6 +576,7 @@ class GenerationHandler(
     private val conversationRepo: ConversationRepository,
     private val aiLoggingManager: AILoggingManager,
     private val systemPromptBuilder: SystemPromptBuilder,
+    private val learnedPolicyInjector: me.rerere.rikkahub.memory.policy.LearnedPolicyInjector,
     private val toolExecutionGate: ToolExecutionGate,
     private val toolRuntime: ToolRuntime,
     private val toolStartableResolver: ToolStartableResolver,
@@ -2932,6 +2933,10 @@ class GenerationHandler(
         val breakdownUserIdentityPrompt = buildUserIdentityPrompt(
             settings.displaySetting.userNickname,
         )
+        // 轻量学习（Part B）：CONFIRMED 策略以独立段注入易变系统提示，一跑一取。
+        val policyPromptBlock = learnedPolicyInjector.buildPromptBlock(
+            assistant.id.toString(),
+        )
 
         fun createSystemPromptLayout(
             recallPrompt: String,
@@ -2947,6 +2952,7 @@ class GenerationHandler(
                 assistantPrompt = breakdownAssistantPrompt,
                 userIdentityPrompt = breakdownUserIdentityPrompt,
                 memoryPrompt = recallPrompt,
+                policyPrompt = policyPromptBlock,
                 recentChatsPrompt = breakdownRecentChatsPrompt,
                 toolPrompts = breakdownToolPrompts,
                 systemAddendum = providerSystemAddendum,

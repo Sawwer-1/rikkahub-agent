@@ -139,6 +139,9 @@ class RikkaHubApp : Application() {
             me.rerere.rikkahub.personal.heartbeat.HeartbeatNotifications.createChannel(this)
             me.rerere.rikkahub.personal.heartbeat.HeartbeatScheduler.sync(this)
         }.onFailure { Log.e(TAG, "heartbeat startup sync failed", it) }
+        // 轻量学习（Part B）：每日一次的策略提炼任务。
+        runCatching { me.rerere.rikkahub.memory.policy.LearnedPolicyWorker.armDaily(this) }
+            .onFailure { Log.w(TAG, "learned policy daily scheduling failed", it) }
         get<AppScope>().launch(Dispatchers.IO) {
             runCatching {
                 var restoreSettled = coldRestore == ColdRestoreStartupResult.NoPendingRestore

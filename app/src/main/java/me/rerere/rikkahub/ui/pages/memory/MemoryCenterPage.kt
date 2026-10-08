@@ -56,6 +56,7 @@ fun MemoryCenterPage(id: String) {
     val dreamDetailState by vm.dreamDetailState.collectAsStateWithLifecycle()
     val dreamingScopePreferences by vm.dreamingScopePreferences.collectAsStateWithLifecycle()
     val dreamingCostPolicy by vm.dreamingCostPolicy.collectAsStateWithLifecycle()
+    val pendingPolicies by vm.pendingPolicies.collectAsStateWithLifecycle()
     val memories = vm.library.collectAsLazyPagingItems()
     val candidates = vm.candidates.collectAsLazyPagingItems()
     val relationCandidates by vm.relationCandidates.collectAsStateWithLifecycle()
@@ -144,6 +145,10 @@ fun MemoryCenterPage(id: String) {
                 viewGlobal = viewGlobal,
                 stats = stats,
                 onViewGlobalChange = vm::setViewGlobal,
+            )
+            MemoryPolicyReviewSection(
+                pendingPolicies = pendingPolicies,
+                onReview = vm::reviewPolicy,
             )
             SecondaryTabRow(selectedTabIndex = pagerState.currentPage) {
                 tabs.forEachIndexed { index, tab ->

@@ -73,6 +73,7 @@ import me.rerere.rikkahub.data.db.migrations.MIGRATION_49_50
 import me.rerere.rikkahub.data.db.migrations.MIGRATION_50_51
 import me.rerere.rikkahub.data.db.migrations.MIGRATION_51_52
 import me.rerere.rikkahub.data.db.migrations.MIGRATION_52_53
+import me.rerere.rikkahub.data.db.migrations.MIGRATION_53_54
 import me.rerere.rikkahub.data.repository.MemorySearchIndex
 import me.rerere.rikkahub.data.repository.MemoryRetriever
 import me.rerere.rikkahub.memory.AndroidMemoryWorkScheduler
@@ -218,6 +219,7 @@ val dataSourceModule = module {
                 MIGRATION_50_51,
                 MIGRATION_51_52,
                 MIGRATION_52_53,
+                MIGRATION_53_54,
             )
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
@@ -272,6 +274,7 @@ val dataSourceModule = module {
     }
     single { get<AppDatabase>().learningOutboxDao() }
     single { get<AppDatabase>().learningSourceAuthorityDao() }
+    single { get<AppDatabase>().learnedPolicyDao() }
     single {
         me.rerere.rikkahub.data.authority.source.RoomConversationSourceAuthorityStore(
             dao = get(),
@@ -879,6 +882,8 @@ val dataSourceModule = module {
     }
 
     single { me.rerere.rikkahub.data.ai.SystemPromptBuilder() }
+    single { me.rerere.rikkahub.memory.policy.LearnedPolicyInjector(get()) }
+    single { me.rerere.rikkahub.memory.policy.LearnedPolicyDistiller(get(), get()) }
 
     // Shared connection pool (ported from jude): one pool instance reused by every
     // OkHttpClient so idle sockets are shared across clients and can be evicted
