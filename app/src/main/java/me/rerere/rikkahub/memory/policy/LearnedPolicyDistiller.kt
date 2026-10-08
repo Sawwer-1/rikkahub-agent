@@ -14,7 +14,6 @@ import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.rikkahub.data.db.dao.LearnedPolicyDao
 import me.rerere.rikkahub.data.db.entity.LearnedPolicyEntity
 import me.rerere.rikkahub.data.db.entity.DreamExperienceEntity
-import me.rerere.rikkahub.data.model.Settings
 import java.util.UUID
 
 /**
@@ -80,7 +79,10 @@ class LearnedPolicyDistiller(
             Log.w(TAG, "policy distill provider call failed", e)
             return LearnedPolicyDistillResult.Failure
         }
-        val text = response.firstOrNull()?.text?.trim().orEmpty()
+        if (response.resolvedTerminal()?.category != me.rerere.ai.core.FinishCategory.STOP) {
+            return LearnedPolicyDistillResult.Failure
+        }
+        val text = response.choices.firstOrNull()?.message?.toText().orEmpty().trim()
         if (text.isEmpty()) return LearnedPolicyDistillResult.Failure
 
         return parseAndStore(text, assistantId, scopeId, experiences)
@@ -137,7 +139,7 @@ class LearnedPolicyDistiller(
                 reviewedAt = null,
             )
         }
-        if (rows.isEmpty()) return LearnedPolicyDistillResult.Skipped.NoCandidates
+        if (rows.isEmpty()) return LearnedPolicyDistillResult.NoCandidates
         policyDao.insertAll(rows)
         Log.i(TAG, "policy distill stored ${rows.size} candidates for assistant $assistantId")
         return LearnedPolicyDistillResult.Stored(rows.size)
