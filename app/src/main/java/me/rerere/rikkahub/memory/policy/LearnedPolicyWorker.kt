@@ -11,7 +11,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.flow.first
 import me.rerere.rikkahub.data.db.dao.DreamExperienceDao
-import me.rerere.rikkahub.data.db.dao.LearnedPolicyDao
+import me.rerere.rikkahub.data.db.dao.PolicyNoteDao
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.rikkahub.memory.dreaming.model.DreamPairScopeId
@@ -30,7 +30,7 @@ class LearnedPolicyWorker(
         val koin = org.koin.core.context.GlobalContext.get()
         val settingsStore = koin.get<SettingsStore>()
         val settings = settingsStore.settingsFlow.first()
-        val policyDao = koin.get<LearnedPolicyDao>()
+        val policyDao = koin.get<PolicyNoteDao>()
         val experienceDao = koin.get<DreamExperienceDao>()
         val providerManager = koin.get<ProviderManager>()
 

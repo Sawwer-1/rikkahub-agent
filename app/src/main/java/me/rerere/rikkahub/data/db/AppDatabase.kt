@@ -63,7 +63,7 @@ import me.rerere.rikkahub.data.db.entity.BrowserBookmarkEntity
 import me.rerere.rikkahub.data.db.entity.BrowserHistoryEntity
 import me.rerere.rikkahub.data.db.entity.FavoriteEntity
 import me.rerere.rikkahub.data.db.entity.FolderEntity
-import me.rerere.rikkahub.data.db.entity.LearnedPolicyEntity
+import me.rerere.rikkahub.data.db.entity.PolicyNoteEntity
 import me.rerere.rikkahub.data.db.entity.GenMediaEntity
 import me.rerere.rikkahub.data.db.entity.ManagedFileEntity
 import me.rerere.rikkahub.data.db.entity.MemoryEntity
@@ -188,7 +188,7 @@ import me.rerere.rikkahub.owner.db.HostOperationEventEntity
         AnonymousQuestionProfileEntity::class,
         AnonymousQuestionReplyEntity::class,
         FolderEntity::class,
-        LearnedPolicyEntity::class,
+        PolicyNoteEntity::class,
     ],
     // v49 makes workflow capability/provenance authority durable. Learned artifacts remain
     // disabled until an explicit cross-database promotion completes.
@@ -244,7 +244,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     abstract fun dreamExperienceDao(): DreamExperienceDao
 
-    abstract fun learnedPolicyDao(): LearnedPolicyDao
+    abstract fun policyNoteDao(): PolicyNoteDao
 
     abstract fun dreamSynthesisDao(): DreamSynthesisDao
 

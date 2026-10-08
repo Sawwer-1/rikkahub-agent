@@ -15,7 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import me.rerere.rikkahub.data.db.entity.LearnedPolicyEntity
+import me.rerere.rikkahub.data.db.entity.PolicyNoteEntity
 
 /**
  * 轻量学习（Part B）的策略审查段：列出提炼产生的 PENDING 策略，人工确认或拒绝。
@@ -23,7 +23,7 @@ import me.rerere.rikkahub.data.db.entity.LearnedPolicyEntity
  */
 @Composable
 fun MemoryPolicyReviewSection(
-    pendingPolicies: List<LearnedPolicyEntity>,
+    pendingPolicies: List<PolicyNoteEntity>,
     onReview: (String, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {

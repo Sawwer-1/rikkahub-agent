@@ -1,7 +1,7 @@
 package me.rerere.rikkahub.memory.policy
 
-import me.rerere.rikkahub.data.db.dao.LearnedPolicyDao
-import me.rerere.rikkahub.data.db.entity.LearnedPolicyEntity
+import me.rerere.rikkahub.data.db.dao.PolicyNoteDao
+import me.rerere.rikkahub.data.db.entity.PolicyNoteEntity
 
 /**
  * Builds the `[From role: 策略]` prompt block from CONFIRMED policies. Called by the
@@ -9,7 +9,7 @@ import me.rerere.rikkahub.data.db.entity.LearnedPolicyEntity
  * out the core memory budget.
  */
 class LearnedPolicyInjector(
-    private val policyDao: LearnedPolicyDao,
+    private val policyDao: PolicyNoteDao,
 ) {
     suspend fun buildPromptBlock(scopeId: String): String? {
         val confirmed = policyDao.listConfirmed(scopeId, MAX_INJECTED)

@@ -13,9 +13,9 @@ import androidx.room.PrimaryKey
  * ever read by the prompt builder.
  */
 @Entity(
-    tableName = "learned_policy",
+    tableName = "policy_note",
 )
-data class LearnedPolicyEntity(
+data class PolicyNoteEntity(
     @PrimaryKey
     @ColumnInfo(name = "id")
     val id: String,

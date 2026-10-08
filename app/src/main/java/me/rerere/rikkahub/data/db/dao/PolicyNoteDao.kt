@@ -5,10 +5,10 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
-import me.rerere.rikkahub.data.db.entity.LearnedPolicyEntity
+import me.rerere.rikkahub.data.db.entity.PolicyNoteEntity
 
 @Dao
-interface LearnedPolicyDao {
+interface PolicyNoteDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(policies: List<LearnedPolicyEntity>)
 

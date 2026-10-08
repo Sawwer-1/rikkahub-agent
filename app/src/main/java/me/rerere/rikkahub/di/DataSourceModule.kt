@@ -274,7 +274,7 @@ val dataSourceModule = module {
     }
     single { get<AppDatabase>().learningOutboxDao() }
     single { get<AppDatabase>().learningSourceAuthorityDao() }
-    single { get<AppDatabase>().learnedPolicyDao() }
+    single { get<AppDatabase>().policyNoteDao() }
     single {
         me.rerere.rikkahub.data.authority.source.RoomConversationSourceAuthorityStore(
             dao = get(),

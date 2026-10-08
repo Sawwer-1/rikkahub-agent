@@ -15,11 +15,11 @@ val MIGRATION_53_54 = object : Migration(53, 54) {
  */
 internal fun applyMigration53To54Sql(executeSql: (String) -> Unit) {
     executeSql(
-        "CREATE TABLE IF NOT EXISTS `learned_policy` (`id` TEXT NOT NULL, " +
+        "CREATE TABLE IF NOT EXISTS `policy_note` (`id` TEXT NOT NULL, " +
             "`scope_id` TEXT NOT NULL, `content` TEXT NOT NULL, `status` TEXT NOT NULL, " +
             "`support_experience_ids` TEXT NOT NULL, `support_count` INTEGER NOT NULL, " +
             "`created_at` INTEGER NOT NULL, `reviewed_at` INTEGER, " +
             "PRIMARY KEY(`id`))"
     )
-    executeSql("CREATE INDEX IF NOT EXISTS `index_learned_policy_scope_id_status` ON `learned_policy` (`scope_id`, `status`)")
+    executeSql("CREATE INDEX IF NOT EXISTS `index_policy_note_scope_id_status` ON `policy_note` (`scope_id`, `status`)")
 }

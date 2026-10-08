@@ -25,8 +25,8 @@ import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.db.dao.MemoryDAO
 import me.rerere.rikkahub.data.db.dao.MemoryCaptureStatusCounts
 import me.rerere.rikkahub.data.db.dao.MemoryV2Dao
-import me.rerere.rikkahub.data.db.dao.LearnedPolicyDao
-import me.rerere.rikkahub.data.db.entity.LearnedPolicyEntity
+import me.rerere.rikkahub.data.db.dao.PolicyNoteDao
+import me.rerere.rikkahub.data.db.entity.PolicyNoteEntity
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.repository.DEFAULT_MEMORY_PROMPT_MAX_CHARS
 import me.rerere.rikkahub.data.repository.MemoryRepository
@@ -87,7 +87,7 @@ class MemoryCenterVM(
     private val dreamObserverDiagnostics: DreamObserverDiagnostics,
     private val dreamReviewRepository: DreamReviewRepository,
     private val dreamSynthesisCoordinator: DreamSynthesisCoordinator,
-    private val learnedPolicyDao: LearnedPolicyDao,
+    private val learnedPolicyDao: PolicyNoteDao,
 ) : ViewModel() {
     private val candidatePolicy = MemoryCandidatePolicy()
     private val assistantId = Uuid.parse(id)
@@ -268,7 +268,7 @@ class MemoryCenterVM(
 
     // 轻量学习（Part B）：待审查策略
     val pendingPolicies = learnedPolicyDao
-        .observeByScopeAndStatus(assistantId.toString(), LearnedPolicyEntity.STATUS_PENDING)
+        .observeByScopeAndStatus(assistantId.toString(), PolicyNoteEntity.STATUS_PENDING)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun reviewPolicy(policyId: String, confirmed: Boolean) {
@@ -276,9 +276,9 @@ class MemoryCenterVM(
             learnedPolicyDao.review(
                 policyId = policyId,
                 status = if (confirmed) {
-                    LearnedPolicyEntity.STATUS_CONFIRMED
+                    PolicyNoteEntity.STATUS_CONFIRMED
                 } else {
-                    LearnedPolicyEntity.STATUS_REJECTED
+                    PolicyNoteEntity.STATUS_REJECTED
                 },
                 reviewedAt = System.currentTimeMillis(),
             )

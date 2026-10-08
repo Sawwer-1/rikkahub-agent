@@ -13,8 +13,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
-import me.rerere.rikkahub.data.db.dao.LearnedPolicyDao
-import me.rerere.rikkahub.data.db.entity.LearnedPolicyEntity
+import me.rerere.rikkahub.data.db.dao.PolicyNoteDao
+import me.rerere.rikkahub.data.db.entity.PolicyNoteEntity
 import me.rerere.rikkahub.data.db.entity.DreamExperienceEntity
 import java.util.UUID
 
@@ -26,7 +26,7 @@ import java.util.UUID
  * and identical content in the same scope is silently skipped.
  */
 class LearnedPolicyDistiller(
-    private val policyDao: LearnedPolicyDao,
+    private val policyDao: PolicyNoteDao,
     private val providerManager: me.rerere.ai.provider.ProviderManager,
 ) {
     suspend fun distill(
@@ -119,7 +119,7 @@ class LearnedPolicyDistiller(
 
         val now = System.currentTimeMillis()
         val experienceById = experiences.associateBy { it.experienceId.take(8) }
-        val rows = mutableListOf<LearnedPolicyEntity>()
+        val rows = mutableListOf<PolicyNoteEntity>()
         for ((content, supportPrefixes) in candidates) {
             if (rows.size >= MAX_CANDIDATES_PER_RUN) break
             val normalized = content.trim()
@@ -130,11 +130,11 @@ class LearnedPolicyDistiller(
                 experienceById[prefix.take(8)]?.experienceId
             }.distinct()
             if (supportIds.size < MIN_SUPPORT) continue
-            rows += LearnedPolicyEntity(
+            rows += PolicyNoteEntity(
                 id = UUID.randomUUID().toString(),
                 scopeId = scopeId,
                 content = normalized,
-                status = LearnedPolicyEntity.STATUS_PENDING,
+                status = PolicyNoteEntity.STATUS_PENDING,
                 supportExperienceIds = Json.encodeToString(ListSerializer(String.serializer()), supportIds),
                 supportCount = supportIds.size,
                 createdAt = now,
