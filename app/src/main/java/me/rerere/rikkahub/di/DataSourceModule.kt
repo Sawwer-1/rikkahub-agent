@@ -1,6 +1,15 @@
 package me.rerere.rikkahub.di
 
 import androidx.room.Room
+import java.net.Authenticator
+import java.util.concurrent.atomic.AtomicReference
+import me.rerere.rikkahub.data.db.migrations.MIGRATION_50_51
+import me.rerere.rikkahub.data.db.migrations.MIGRATION_51_52
+import me.rerere.rikkahub.data.db.migrations.MIGRATION_52_53
+import me.rerere.rikkahub.data.network.SettingsProxyAuthenticator
+import me.rerere.rikkahub.data.network.SettingsProxySelector
+import me.rerere.rikkahub.data.network.SettingsSocks5Authenticator
+import okhttp3.ConnectionPool
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import android.content.Context
@@ -268,7 +277,7 @@ val dataSourceModule = module {
         )
     }
     single<me.rerere.rikkahub.data.authority.source.ConversationSourceInitialCaptureGate> {
-        me.rerere.rikkahub.data.authority.source.DenyConversationSourceInitialCapture
+        me.rerere.rikkahub.data.authority.source.AllowConversationSourceInitialCapture
     }
     single<me.rerere.rikkahub.data.authority.source.SourceInvalidationAuthorityEventPort> {
         me.rerere.rikkahub.data.authority.source.NoOpSourceInvalidationAuthorityEventPort
@@ -1017,7 +1026,6 @@ val dataSourceModule = module {
     single<RikkaHubAPI> {
         get<Retrofit>().create(RikkaHubAPI::class.java)
     }
-}
 
     // ---- fork additions (jude/ExTV/本线自研) ----
     single {
@@ -1235,3 +1243,4 @@ val dataSourceModule = module {
             .retryOnConnectionFailure(true)
             .build()
     }
+}
