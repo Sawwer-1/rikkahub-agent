@@ -357,7 +357,7 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.room.paging)
-    ksp(libs.androidx.room.compiler)
+    // ksp(libs.androidx.room.compiler) // TEMP: bypass KSP to expose all hidden compile errors
 
     // Paging3
     implementation(libs.androidx.paging.runtime)
