@@ -5,11 +5,11 @@ import android.database.sqlite.SQLiteDatabase
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
-import androidx.core.content.pm.PackageInfoCompat
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import me.rerere.rikkahub.BuildConfig
 
 /**
  * DIAGNOSTIC build only (2.4.2-diag1 / 202). Shipped to extract a crash report from a
@@ -144,11 +144,8 @@ object CrashDiag {
         }
     }
 
-    private fun versionLabel(context: Context): String = runCatching {
-        val pm = context.packageManager
-        val info = pm.getPackageInfo(context.packageName, 0)
-        "${info.versionName} (${PackageInfoCompat.longVersionCode(info)})"
-    }.getOrDefault("unknown")
+    private fun versionLabel(context: Context): String =
+        "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
 
     private fun nowStamp(): String =
         SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
