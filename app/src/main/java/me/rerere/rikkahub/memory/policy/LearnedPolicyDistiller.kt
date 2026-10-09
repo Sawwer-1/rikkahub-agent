@@ -81,7 +81,7 @@ class LearnedPolicyDistiller(
             Log.w(TAG, "policy distill provider call failed", e)
             return LearnedPolicyDistillResult.Failure
         }
-        if (response.resolvedTerminal()?.category != me.rerere.ai.core.FinishCategory.STOP) {
+        if (response.resolvedTerminal()?.category != me.rerere.ai.ui.FinishCategory.STOP) {
             return LearnedPolicyDistillResult.Failure
         }
         val text = response.choices.firstOrNull()?.message?.toText().orEmpty().trim()
