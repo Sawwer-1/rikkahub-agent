@@ -697,6 +697,23 @@ val dataSourceModule = module {
             scope = get<AppScope>(),
         )
     }
+    // Restored in 2.4.3: dropped in the 2.3.0 learning-strip while ExecutionConsistencyDoctor
+    // still consumes it via a hard `metrics = get()` — the same NoDefinitionFound family that
+    // killed 2.3.0..2.4.2 on launch. Parameterless class; mirrors the 2.2.0 binding verbatim.
+    single { me.rerere.rikkahub.data.execution.ExecutionConsistencyMetrics() }
+    // Restored in 2.4.3: the 2.3.0 learning-strip removed this binding along with its
+    // learning-era parameters, but ExecutionRepository still consumes it — the missing
+    // definition crashed EVERY launch with NoDefinitionFoundException deep inside
+    // OwnerLocalServiceSupervisor's eager resolution (2.3.0/2.4.0/2.4.1/2.4.2 all died
+    // on launch). The class itself was slimmed in the same strip: only the three core
+    // parameters remain; metrics stays optional (no DI binding, defaults to null).
+    single {
+        me.rerere.rikkahub.data.execution.ExecutionStateTransaction(
+            database = get(),
+            recordDao = get(),
+            eventDao = get(),
+        )
+    }
     single {
         me.rerere.rikkahub.data.execution.ExecutionRepository(
             dao = get(),

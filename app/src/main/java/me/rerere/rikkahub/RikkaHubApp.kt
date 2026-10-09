@@ -82,10 +82,6 @@ class RikkaHubApp : Application() {
             Log.i(TAG, "Skipping full app initialization in a lightweight runtime process")
             return
         }
-        // DIAG build: export the historical crash stack recorded by CrashHandler plus a
-        // read-only DB snapshot BEFORE anything else runs, so a crash-looping install can
-        // deliver its evidence through the file manager. No-op-ish in a healthy install.
-        me.rerere.rikkahub.utils.CrashDiag.install(this)
         // A database restore is prepared and swapped only here, before Room/Koin/WorkManager can
         // obtain either database. Ambiguous or post-boundary failure deliberately leaves the app
         // in a closed DEGRADED process instead of reopening an old Learning timeline.
