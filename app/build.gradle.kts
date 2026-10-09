@@ -20,8 +20,8 @@ android {
         applicationId = "me.rerere.rikkahub"
         minSdk = 26
         targetSdk = 37
-        versionCode = 198
-        versionName = "2.3.0"
+        versionCode = 199
+        versionName = "2.4.0"
 
         // Fork provenance, kept out of versionName so the upstream baseline stays greppable.
         // See docs/audits for the meaning of the 2.3.1-agent-up244.x naming.
@@ -357,7 +357,7 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.room.paging)
-    // ksp(libs.androidx.room.compiler) // TEMP: bypass KSP to expose all hidden compile errors
+    ksp(libs.androidx.room.compiler)
 
     // Paging3
     implementation(libs.androidx.paging.runtime)
