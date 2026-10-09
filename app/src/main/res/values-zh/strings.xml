@@ -3157,4 +3157,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_waifu_max_delay_desc">单句延迟的上限，避免长句卡住不动。</string>
   <string name="setting_waifu_extra_prompt_title">提示词追加</string>
   <string name="setting_waifu_extra_prompt_label">追加到助手系统提示词末尾</string>
+  <string name="assistant_page_waifu_override">Waifu 打字机（本助手）</string>
+  <string name="assistant_page_waifu_override_desc">默认跟随全局设置（设置 → 界面偏好设置 → Waifu 打字机）。开启后为本助手单独配置并完全覆盖全局值，也可在全局开启时单独关闭本助手。</string>
 </resources>

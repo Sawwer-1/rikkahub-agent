@@ -4268,7 +4268,10 @@ class ChatService(
         // remote surfaces (Telegram/WebServer) read the last assistant message as the
         // whole reply, which splitting would truncate. Voice-call paths are mutually
         // exclusive with splitting as well (WAIFU_TASK).
-        val waifuSetting = settings.waifuSetting
+        // Per-assistant override wins entirely (Assistant.waifuSetting, configured in
+        // AssistantBasicPage); null falls back to the global preference
+        // (SettingPreferencesUIPage). No field merging — the override replaces wholesale.
+        val waifuSetting = assistant.waifuSetting ?: settings.waifuSetting
         val waifuActive = waifuSetting.enabled &&
             requestMode == ChatRequestMode.Normal &&
             !incrementalVoiceCallTagging &&

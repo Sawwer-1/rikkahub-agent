@@ -9,6 +9,7 @@ import me.rerere.ai.provider.CustomHeader
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.rikkahub.data.ai.tools.LocalToolOption
+import me.rerere.rikkahub.data.datastore.WaifuSetting
 import me.rerere.rikkahub.memory.MemoryAutoSaveMode
 import me.rerere.rikkahub.memory.MemoryApprovalSource
 import me.rerere.rikkahub.memory.MemoryCaptureOrigin
@@ -148,6 +149,14 @@ data class Assistant(
     val petAnimationFps: Int = 6,
     /** Optional local idle variety; global selection remains disabled by default. */
     val petIdlePoolEnabled: Boolean = false,
+    /**
+     * Per-assistant Waifu typewriter override. Null follows the global preference
+     * ([me.rerere.rikkahub.data.datastore.Settings.waifuSetting]); non-null replaces it
+     * entirely for this assistant's local chat turns (ChatService merges nothing — the
+     * override wins field-by-field). Default null keeps existing assistants, exports,
+     * and downgrades unchanged.
+     */
+    val waifuSetting: WaifuSetting? = null,
 )
 
 @Serializable

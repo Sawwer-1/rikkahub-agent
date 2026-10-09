@@ -3157,4 +3157,6 @@
   <string name="setting_waifu_max_delay_desc">Cap for a single sentence\'s delay so long sentences are not stalled.</string>
   <string name="setting_waifu_extra_prompt_title">Extra prompt</string>
   <string name="setting_waifu_extra_prompt_label">Appended to the assistant system prompt</string>
+  <string name="assistant_page_waifu_override">Waifu Typewriter (This Assistant)</string>
+  <string name="assistant_page_waifu_override_desc">Follows the global setting by default (Settings → Preferences UI → Waifu Typewriter). Enable to override it entirely for this assistant, including turning it off when the global switch is on.</string>
 </resources>

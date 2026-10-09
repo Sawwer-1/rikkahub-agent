@@ -43,6 +43,7 @@ import me.rerere.rikkahub.data.ai.MAX_CONFIGURABLE_GENERATION_TURN_BUDGET_MINUTE
 import me.rerere.rikkahub.data.ai.ORDINARY_GENERATION_MAX_STEPS
 import me.rerere.rikkahub.data.ai.SECOND_USER_GENERATION_MAX_STEPS
 import me.rerere.rikkahub.data.ai.SECOND_USER_GENERATION_TURN_BUDGET_MINUTES
+import me.rerere.rikkahub.data.datastore.WaifuSetting
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.ui.components.ai.ModelSelector
@@ -760,6 +761,130 @@ internal fun AssistantBasicContent(
                         )
                     },
                 )
+            }
+        }
+
+        // Waifu typewriter per-assistant override. Null = follow the global preference
+        // (设置 → 界面偏好设置 → Waifu 打字机); non-null = replace it wholesale for this
+        // assistant's local chat turns (ChatService does not merge fields).
+        val waifuOverride = assistant.waifuSetting
+        Card(
+            colors = CustomColors.cardColorsOnSurfaceContainer
+        ) {
+            FormItem(
+                modifier = Modifier.padding(8.dp),
+                label = {
+                    Text(stringResource(R.string.assistant_page_waifu_override))
+                },
+                description = {
+                    Text(stringResource(R.string.assistant_page_waifu_override_desc))
+                },
+                tail = {
+                    Switch(
+                        checked = waifuOverride != null,
+                        onCheckedChange = { enabled ->
+                            onUpdate(
+                                assistant.copy(
+                                    waifuSetting = if (enabled) WaifuSetting() else null
+                                )
+                            )
+                        }
+                    )
+                }
+            )
+            if (waifuOverride != null) {
+                HorizontalDivider()
+                FormItem(
+                    modifier = Modifier.padding(8.dp),
+                    label = { Text(stringResource(R.string.setting_waifu_enable_title)) },
+                    tail = {
+                        Switch(
+                            checked = waifuOverride.enabled,
+                            onCheckedChange = { enabled ->
+                                onUpdate(
+                                    assistant.copy(
+                                        waifuSetting = waifuOverride.copy(enabled = enabled)
+                                    )
+                                )
+                            }
+                        )
+                    }
+                )
+                HorizontalDivider()
+                FormItem(
+                    modifier = Modifier.padding(8.dp),
+                    label = { Text(stringResource(R.string.setting_waifu_char_delay_title)) },
+                ) {
+                    var charDelayInput by remember(waifuOverride) {
+                        mutableStateOf(waifuOverride.charDelayMs.toString())
+                    }
+                    OutlinedTextField(
+                        value = charDelayInput,
+                        onValueChange = { text ->
+                            charDelayInput = text
+                            text.toIntOrNull()?.let { delay ->
+                                onUpdate(
+                                    assistant.copy(
+                                        waifuSetting = waifuOverride.copy(
+                                            charDelayMs = delay.coerceAtLeast(0)
+                                        )
+                                    )
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(stringResource(R.string.setting_waifu_char_delay_label)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                    )
+                }
+                HorizontalDivider()
+                FormItem(
+                    modifier = Modifier.padding(8.dp),
+                    label = { Text(stringResource(R.string.setting_waifu_max_delay_title)) },
+                ) {
+                    var maxDelayInput by remember(waifuOverride) {
+                        mutableStateOf(waifuOverride.maxDelayMs.toString())
+                    }
+                    OutlinedTextField(
+                        value = maxDelayInput,
+                        onValueChange = { text ->
+                            maxDelayInput = text
+                            text.toIntOrNull()?.let { delay ->
+                                onUpdate(
+                                    assistant.copy(
+                                        waifuSetting = waifuOverride.copy(
+                                            maxDelayMs = delay.coerceAtLeast(0)
+                                        )
+                                    )
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(stringResource(R.string.setting_waifu_max_delay_label)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                    )
+                }
+                HorizontalDivider()
+                FormItem(
+                    modifier = Modifier.padding(8.dp),
+                    label = { Text(stringResource(R.string.setting_waifu_extra_prompt_title)) },
+                ) {
+                    OutlinedTextField(
+                        value = waifuOverride.extraPrompt,
+                        onValueChange = { prompt ->
+                            onUpdate(
+                                assistant.copy(
+                                    waifuSetting = waifuOverride.copy(extraPrompt = prompt)
+                                )
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(stringResource(R.string.setting_waifu_extra_prompt_label)) },
+                        minLines = 3,
+                    )
+                }
             }
         }
 
