@@ -2,6 +2,7 @@ package me.rerere.rikkahub.data.db.entity
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
@@ -14,6 +15,10 @@ import androidx.room.PrimaryKey
  */
 @Entity(
     tableName = "policy_note",
+    // MUST match Migration_53_54: Room validates the post-migration schema (including
+    // indices) against the entity definition — an extra index created by the migration
+    // but absent here fails validation and crashes on first database open.
+    indices = [Index(value = ["scope_id", "status"], name = "index_policy_note_scope_id_status")],
 )
 data class PolicyNoteEntity(
     @PrimaryKey
