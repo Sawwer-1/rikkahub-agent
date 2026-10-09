@@ -226,7 +226,7 @@ import me.rerere.rikkahub.owner.db.HostOperationEventEntity
         AutoMigration(from = 25, to = 26),
     ]
 )
-@TypeConverters(TokenUsageConverter::class)
+// @TypeConverters(TokenUsageConverter::class) // bisect D7: removed
 abstract class AppDatabase : RoomDatabase() {
     abstract fun alarmDao(): AlarmDao
 
