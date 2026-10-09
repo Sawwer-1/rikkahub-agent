@@ -11,6 +11,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.provider.TextGenerationParams
+import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.db.dao.PolicyNoteDao
@@ -41,6 +42,7 @@ class LearnedPolicyDistiller(
         val model = settings.dreamModelId?.let(settings.providers::findModelById)
             ?: return LearnedPolicyDistillResult.Skipped.NoModel
         val providerSetting = model.findProvider(settings.providers)
+            ?: return LearnedPolicyDistillResult.Skipped.NoModel
         if (!providerSetting.enabled) {
             return LearnedPolicyDistillResult.Skipped.NoModel
         }

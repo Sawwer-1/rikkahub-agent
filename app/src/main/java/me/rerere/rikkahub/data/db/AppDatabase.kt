@@ -17,6 +17,7 @@ import me.rerere.rikkahub.data.execution.PendingToolApprovalRecord
 import me.rerere.rikkahub.data.capability.CapabilityGrantDao
 import me.rerere.rikkahub.data.capability.CapabilityGrantEntity
 import me.rerere.rikkahub.data.db.dao.AlarmDao
+import me.rerere.rikkahub.data.db.dao.PolicyNoteDao
 import me.rerere.rikkahub.data.db.dao.ConversationDAO
 import me.rerere.rikkahub.data.db.dao.DreamDao
 import me.rerere.rikkahub.data.db.dao.DreamExperienceDao
