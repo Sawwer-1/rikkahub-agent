@@ -954,6 +954,42 @@ class ConversationRuntime(
         }
     }
 
+    /**
+     * Deferred approval-barrier reconciliation (2026-10-11 前端自检报告 §14).
+     *
+     * The barrier flag is set when a waiting approval barrier is cancelled (USER_STOPPED /
+     * USER_INTERRUPTED / terminal-commit ambiguity): the cancel transaction terminalizes the
+     * durable rows but cannot invalidate the approval projection in the same transaction, so
+     * the FIFO stays paused "pending reconciliation". Nothing ever cleared it — the in-memory
+     * flag survived until process death, ResumeQueueCommand bounced off it with a Conflict
+     * (the dead 恢复队列 button), and handleApproval/handleApprovalResume refused to dispatch.
+     *
+     * The reconciliation itself is exactly the hydration restore path: re-scan the durable
+     * queue (source of truth), drop barrier rows that were already terminalized, rebuild the
+     * waiting set, and re-adopt authority rows. After a successful restore the ambiguity the
+     * flag guarded against is resolved by construction, so the flag clears and the queue
+     * resumes. Remaining legitimate WAITING rows fall back to the normal approval flow.
+     * Returns true when the runtime is reconciled and may resume.
+     */
+    private suspend fun reconcileApprovalBarrierFromDurable(): Boolean {
+        if (!approvalBarrierReconciliationRequired) return true
+        if (activeRun != null) return false
+        runCatching { restoreDurableCommands() }
+            .onFailure {
+                // Durable re-scan failed (transient IO): keep the pause; the user can retry
+                // resume, or the next run-finish/startup path retries reconciliation.
+                return false
+            }
+        // Only the FLAG is auto-cleared. queuePaused is a user state (a stop with
+        // pauseQueue=true must survive reconciliation); the explicit resume command clears it
+        // in its own branch, and reconcileStopPause handles the empty-queue fallback.
+        approvalBarrierReconciliationRequired = false
+        reconcileStopPause()
+        _runtimeState.value = restingRuntimeState()
+        refreshQueueStatus()
+        return true
+    }
+
     private suspend fun restoreDurableCommands() {
         val queue = durableQueue ?: return
         queue.recoverExpiredFenced()
@@ -1491,11 +1527,21 @@ class ConversationRuntime(
         when (val command = envelope.command) {
             is ResumeQueueCommand -> {
                 if (approvalBarrierReconciliationRequired) {
-                    queuePaused = true
-                    complete(
-                        envelope,
-                        CommandOutcome.Conflict("Approval authority requires reconciliation"),
-                    )
+                    // 2026-10-11：对账不是死路。用 durable 重扫完成延迟对账后恢复队列；
+                    // 仅当 run 仍占着运行槽（此刻不能重扫）才回 Conflict，用户可稍后再按。
+                    if (reconcileApprovalBarrierFromDurable()) {
+                        queuePaused = false
+                        queuePausedReason = null
+                        complete(envelope, CommandOutcome.Completed)
+                        startPendingIfReady()
+                    } else {
+                        complete(
+                            envelope,
+                            CommandOutcome.Conflict(
+                                "Approval authority reconciliation deferred: a run is active",
+                            ),
+                        )
+                    }
                 } else {
                     queuePaused = false
                     queuePausedReason = null
@@ -2212,6 +2258,10 @@ class ConversationRuntime(
         if (persistenceFailure == null && repairFailure == null && !startPendingIfReady() && !hasRetainedWork) {
             onBecameIdle(conversationId)
         }
+        // Run slot is now free: if an approval-barrier pause is pending reconciliation and the
+        // earlier resume attempt bounced (busy), reconcile opportunistically so a queued
+        // resume isn't waiting on a second manual click.
+        reconcileApprovalBarrierFromDurable()
         refreshQueueStatus()
     }
 

@@ -201,8 +201,15 @@ object CapabilityCatalog {
         ),
         LocalToolOption.PhoneActions to setOf("call_phone"),
         LocalToolOption.PackageManagement to setOf("install_apk"),
-        LocalToolOption.Moments to setOf("post_moment", "delete_moment"),
-        LocalToolOption.QuestionBox to setOf("post_anonymous_question", "delete_anonymous_question"),
+        // 2026-10-11 前端自检报告 §4：list/read/comment/answer 四工具此前漏注册，
+        // 运行时报 tool_security_descriptor_missing（post/delete 系有描述符、读取回复系没有）。
+        LocalToolOption.Moments to setOf(
+            "post_moment", "delete_moment", "list_moments", "comment_moment",
+        ),
+        LocalToolOption.QuestionBox to setOf(
+            "post_anonymous_question", "delete_anonymous_question",
+            "read_question_box", "answer_question",
+        ),
         LocalToolOption.VoiceCall to setOf("request_voice_call"),
     )
 
@@ -413,8 +420,12 @@ object CapabilityCatalog {
         "scrape_web",
         "post_moment",
         "delete_moment",
+        "list_moments",
+        "comment_moment",
         "post_anonymous_question",
         "delete_anonymous_question",
+        "read_question_box",
+        "answer_question",
         "request_voice_call",
         "get_time_info",
         "calendar_query",
@@ -1537,7 +1548,9 @@ object CapabilityCatalog {
         reg(CapabilityDescriptor(
             id = CapabilityId.Moments,
             localToolOption = LocalToolOption.Moments,
-            toolNames = setOf("post_moment", "delete_moment"),
+            toolNames = setOf(
+                "post_moment", "delete_moment", "list_moments", "comment_moment",
+            ),
             requirements = emptyList(),
             implementationState = ImplementationState.Implemented,
             riskLevel = RiskLevel.Low,
@@ -1548,7 +1561,10 @@ object CapabilityCatalog {
         reg(CapabilityDescriptor(
             id = CapabilityId.QuestionBox,
             localToolOption = LocalToolOption.QuestionBox,
-            toolNames = setOf("post_anonymous_question", "delete_anonymous_question"),
+            toolNames = setOf(
+                "post_anonymous_question", "delete_anonymous_question",
+                "read_question_box", "answer_question",
+            ),
             requirements = emptyList(),
             implementationState = ImplementationState.Implemented,
             riskLevel = RiskLevel.Low,
