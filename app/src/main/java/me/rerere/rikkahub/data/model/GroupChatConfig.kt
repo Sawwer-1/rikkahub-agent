@@ -21,6 +21,12 @@ data class GroupChatConfig(
     val plannerEnabled: Boolean = true,
     /** Overrides the planner's model; null falls back to the host assistant's chat model. */
     val plannerModelId: Uuid? = null,
-    /** Max member replies per user turn, safety cap on token amplification. */
+    /** Max member replies per planning round, safety cap on token amplification. */
     val maxSpeakersPerTurn: Int = 3,
+    /**
+     * Max planning rounds per user turn. 1 = single round (legacy behaviour); >=2 lets the
+     * planner schedule later rounds where members respond to each other's replies.
+     * Hard-capped at 4 by the engine; exposed in the group-chat config dialog.
+     */
+    val maxRoundsPerTurn: Int = 2,
 )

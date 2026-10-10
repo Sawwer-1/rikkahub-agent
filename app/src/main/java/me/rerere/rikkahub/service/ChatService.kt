@@ -1926,7 +1926,17 @@ class ChatService(
             ?: when (preparedCommand) {
                 is SendMessageCommand -> Uuid.random()
                 is RegenerateCommand -> {
-                    val selected = persistedAdmissionConversation.currentMessages
+                    // Graph source follows the 2026-10-10 authority rule: prefer the hydrated
+                    // session's in-memory graph. Under the runtime authority architecture a
+                    // generation's messages (including group-member replies) live only in the
+                    // session memory until the terminal commit — reading the DB baseline here
+                    // misses those ids and rejects with "Regeneration target is unavailable".
+                    val admissionView = if (sessions[conversationId]?.isHydrated == true) {
+                        getConversationFlow(conversationId).value
+                    } else {
+                        persistedAdmissionConversation
+                    }
+                    val selected = admissionView.currentMessages
                     val targetIndex = selected.indexOfFirst { it.id == preparedCommand.targetMessageId }
                     if (targetIndex < 0) {
                         return rejectedTrackedCommand("Regeneration target is unavailable")
@@ -3000,7 +3010,13 @@ class ChatService(
         hostAssistant: Assistant,
         responseCorrelationAnnotation: UIMessageAnnotation?,
         agentTiming: AgentTimingHandle?,
+        // Regeneration paths own their done-notify emit in executeRegenerateInline; emitting
+        // here too would double-notify downstream surfaces (Telegram/WebServer).
+        emitDoneNotification: Boolean = true,
     ): RunOutcome {
+        // Error-context tag: every failure below surfaces which stage of the group pipeline
+        // crashed (planning vs which member's reply) so vague provider errors stay diagnosable.
+        var groupFailureStage = "群聊规划"
         try {
             val settings = settingsStore.settingsFlow.first()
             val members = config.memberAssistantIds.mapNotNull { settings.getAssistantById(it) }
@@ -3010,65 +3026,88 @@ class ChatService(
             }
             val conversation = getConversationFlow(conversationId).value
             val maxSpeakers = config.maxSpeakersPerTurn.coerceIn(1, 5)
-            val plans = if (config.plannerEnabled) {
-                groupChatEngine.planSpeakers(
+            val maxRounds = config.maxRoundsPerTurn.coerceIn(1, 4)
+            val plannedRounds: List<List<Pair<Assistant, String?>>> = if (config.plannerEnabled) {
+                groupChatEngine.planRounds(
                     config = config,
                     conversation = conversation,
                     members = members,
                     hostAssistant = hostAssistant,
                     maxSpeakers = maxSpeakers,
-                )
+                    maxRounds = maxRounds,
+                ).map { round ->
+                    round.mapNotNull { plan ->
+                        members.find { it.id == plan.memberAssistantId }?.let { it to plan.hint }
+                    }.filter { it.isNotEmpty() }
+                }
             } else {
                 emptyList()
             }
-            val speakers: List<Pair<Assistant, String?>> = if (plans.isEmpty()) {
+            // Multi-round execution (Operit-style plannedRounds mapped onto the inline
+            // sequential pipeline): round 0 answers the user message; later rounds generate
+            // AFTER the previous members' replies are already in the session graph, so each
+            // member's projected history shows them as "[From X]" user turns — members
+            // naturally respond to each other. Sequential generation is synchronous, so no
+            // Operit-style awaitTurnComplete counter is needed; StopCommand still cancels
+            // via plain coroutine cancellation between member calls.
+            val speakerRounds: List<List<Pair<Assistant, String?>>> = if (plannedRounds.isEmpty()) {
                 // Planner failure/empty fallback: the first roster member answers so the
                 // group never goes silent (planner errors must not break the chat).
-                listOf(members.first() to null)
+                listOf(listOf(members.first() to null))
             } else {
-                plans.mapNotNull { plan ->
-                    members.find { it.id == plan.memberAssistantId }?.let { it to plan.hint }
-                }
+                plannedRounds
             }
             val memberNames = members.associate { it.id to it.name }
             var lastMemberMessage: UIMessage? = null
-            for ((speaker, hint) in speakers) {
-                val text = groupChatEngine.generateMemberReply(
-                    conversation = getConversationFlow(conversationId).value,
-                    member = speaker,
-                    memberNames = memberNames,
-                    hostAssistantName = hostAssistant.name,
-                    hint = hint,
-                )
-                if (text.isBlank()) continue
-                val memberMessage = UIMessage(
-                    role = MessageRole.ASSISTANT,
-                    parts = listOf(UIMessagePart.Text(text)),
-                    annotations = buildList {
-                        add(me.rerere.ai.ui.UIMessageAnnotation.GroupMember(
-                            memberAssistantId = speaker.id,
-                            displayName = speaker.name,
-                        ))
-                        if (responseCorrelationAnnotation != null) add(responseCorrelationAnnotation)
-                    },
-                )
-                val current = getConversationFlow(conversationId).value
-                val updated = current.copy(
-                    messageNodes = current.messageNodes + memberMessage.toMessageNode(),
-                )
-                if (control.runtimeCommandAuthority() == null) {
-                    saveConversation(conversationId, updated)
-                } else {
-                    updateConversation(conversationId, updated)
+            for ((roundIndex, round) in speakerRounds.withIndex()) {
+                for ((speaker, hint) in round) {
+                    groupFailureStage = "群聊第${roundIndex + 1}轮 · ${speaker.name.ifBlank { "成员" }} 回复"
+                    val text = groupChatEngine.generateMemberReply(
+                        conversation = getConversationFlow(conversationId).value,
+                        member = speaker,
+                        memberNames = memberNames,
+                        hostAssistantName = hostAssistant.name,
+                        hint = hint,
+                    )
+                    if (text.isBlank()) continue
+                    val memberMessage = UIMessage(
+                        role = MessageRole.ASSISTANT,
+                        parts = listOf(UIMessagePart.Text(text)),
+                        annotations = buildList {
+                            add(me.rerere.ai.ui.UIMessageAnnotation.GroupMember(
+                                memberAssistantId = speaker.id,
+                                displayName = speaker.name,
+                            ))
+                            if (responseCorrelationAnnotation != null) add(responseCorrelationAnnotation)
+                        },
+                    )
+                    val current = getConversationFlow(conversationId).value
+                    val updated = current.copy(
+                        messageNodes = current.messageNodes + memberMessage.toMessageNode(),
+                    )
+                    if (control.runtimeCommandAuthority() == null) {
+                        saveConversation(conversationId, updated)
+                    } else {
+                        updateConversation(conversationId, updated)
+                    }
+                    lastMemberMessage = memberMessage
                 }
-                lastMemberMessage = memberMessage
             }
             val authority = control.runtimeCommandAuthority()
             if (lastMemberMessage != null && authority != null) {
                 // A generation happened: terminalize like the normal path, anchored on the
                 // last member message so a post-kill replay cannot double-run this turn.
-                val graph = conversationRepo.getConversationById(conversationId)
-                    ?: error("control_conversation_missing")
+                // Graph source follows the 2026-10-10 authority rule (same as
+                // MutateMessageCommand): prefer the hydrated session's in-memory graph —
+                // group turns launched from regeneration carry a truncated graph that only
+                // exists in memory; reading the DB baseline here would resurrect messages
+                // the regeneration just removed.
+                val graph = if (sessions[conversationId]?.isHydrated == true) {
+                    getConversationFlow(conversationId).value
+                } else {
+                    conversationRepo.getConversationById(conversationId)
+                        ?: error("control_conversation_missing")
+                }
                 try {
                     authority.finish(
                         conversation = graph,
@@ -3087,17 +3126,25 @@ class ChatService(
             } else {
                 finishControlAuthority(conversationId, control)
             }
-            agentTiming?.mark(AgentTimingEventKind.GENERATION_DONE_NOTIFY_STARTED)
-            try {
-                _generationDoneFlow.emit(conversationId)
-            } finally {
-                agentTiming?.mark(AgentTimingEventKind.GENERATION_DONE_NOTIFY_FINISHED)
+            if (emitDoneNotification) {
+                agentTiming?.mark(AgentTimingEventKind.GENERATION_DONE_NOTIFY_STARTED)
+                try {
+                    _generationDoneFlow.emit(conversationId)
+                } finally {
+                    agentTiming?.mark(AgentTimingEventKind.GENERATION_DONE_NOTIFY_FINISHED)
+                }
             }
             return RunOutcome.Completed()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            addError(e, conversationId, title = context.getString(R.string.error_title_send_message))
+            // Surface which stage of the group pipeline failed (planner / which member's
+            // reply) — provider errors alone are too vague to diagnose group turns.
+            addError(
+                IllegalStateException("群聊编排失败（$groupFailureStage）：${e.message}", e),
+                conversationId,
+                title = context.getString(R.string.error_title_send_message),
+            )
             return RunOutcome.Failed(e)
         }
     }
@@ -3422,7 +3469,14 @@ class ChatService(
             },
         ) {
             try {
-                if (message.role == MessageRole.USER) {
+        // 群聊会话的重生成（2026-10-10）：群聊会话的编辑/重生成必须走群聊管线，而不是
+        // 主持人直接生成（此前编辑第一条消息会把会话"退出群聊"、由当前助手回复）。
+        // 编辑用户消息的截断已在上方显式落图；重新生成成员回复的截断原本由
+        // handleMessageComplete(messageRange) 内部完成 —— 群聊路径不走 handleMessageComplete，
+        // 因此在群聊分支里自行做同样的截断后再交给群聊轮次编排。
+        val regenerateGroupConfig = settingsStore.settingsFlow.first().groupChats
+            .firstOrNull { it.conversationId == conversationId }
+        if (message.role == MessageRole.USER) {
                     val transientConversation = conversation.copy(
                         messageNodes = conversation.messageNodes.subList(0, indexAt + 1),
                     )
@@ -3439,34 +3493,89 @@ class ChatService(
                         // source and command together. Streaming state remains process-local.
                         updateConversation(conversationId, transientConversation)
                     }
-                    handleMessageComplete(
-                        conversationId,
-                        origin = origin,
-                        runControl = control,
-                        activeCommandId = commandId,
-                        propagateFailure = true,
-                        persistenceSourceInvalidationMode =
-                            ConversationSourceInvalidationMode.SKIP_TRANSIENT_WRITE,
-                        persistenceSourceInvalidationNowMs = transientWriteNowMs,
-                        deferPostCommitActions = true,
-                        onDeferredPostCommit = { deferredPostCommit = it },
-                        agentTiming = agentTiming,
-                    )
+                    if (regenerateGroupConfig != null) {
+                        // Group conversation: hand the truncated graph to the group pipeline;
+                        // the planner re-plans the whole round from the edited message.
+                        // Mutually exclusive with handleMessageComplete — the host generation
+                        // must NOT also run after the group turn. Falls through to the
+                        // finalization below so the search projection is refreshed; the outer
+                        // code owns the done-notify emit.
+                        val settingsNow = settingsStore.settingsFlow.first()
+                        val hostAssistant = settingsNow.getAssistantById(conversation.assistantId)
+                            ?: settingsNow.getCurrentAssistant()
+                        executeGroupTurnScoped(
+                            config = regenerateGroupConfig,
+                            conversationId = conversationId,
+                            commandId = commandId,
+                            control = control,
+                            hostAssistant = hostAssistant,
+                            responseCorrelationAnnotation = null,
+                            agentTiming = agentTiming,
+                            emitDoneNotification = false,
+                        )
+                    } else {
+                        handleMessageComplete(
+                            conversationId,
+                            origin = origin,
+                            runControl = control,
+                            activeCommandId = commandId,
+                            propagateFailure = true,
+                            persistenceSourceInvalidationMode =
+                                ConversationSourceInvalidationMode.SKIP_TRANSIENT_WRITE,
+                            persistenceSourceInvalidationNowMs = transientWriteNowMs,
+                            deferPostCommitActions = true,
+                            onDeferredPostCommit = { deferredPostCommit = it },
+                            agentTiming = agentTiming,
+                        )
+                    }
                 } else if (command.policy != me.rerere.rikkahub.service.chat.RegeneratePolicy.REJECT_IF_BUSY) {
-                    handleMessageComplete(
-                        conversationId,
-                        origin = origin,
-                        messageRange = 0..<indexAt,
-                        runControl = control,
-                        activeCommandId = commandId,
-                        propagateFailure = true,
-                        persistenceSourceInvalidationMode =
-                            ConversationSourceInvalidationMode.SKIP_TRANSIENT_WRITE,
-                        persistenceSourceInvalidationNowMs = transientWriteNowMs,
-                        deferPostCommitActions = true,
-                        onDeferredPostCommit = { deferredPostCommit = it },
-                        agentTiming = agentTiming,
-                    )
+                    if (regenerateGroupConfig != null) {
+                        // Group conversation: apply the same messageRange truncation that the
+                        // host path would have done inside handleMessageComplete, then run a
+                        // fresh group turn over the trimmed history.
+                        val truncatedConversation = conversation.copy(
+                            messageNodes = conversation.messageNodes.subList(0, indexAt),
+                        )
+                        if (control.runtimeCommandAuthority() == null) {
+                            saveConversation(
+                                conversationId,
+                                truncatedConversation,
+                                sourceInvalidationMode =
+                                    ConversationSourceInvalidationMode.SKIP_TRANSIENT_WRITE,
+                                sourceInvalidationNowMs = transientWriteNowMs,
+                            )
+                        } else {
+                            updateConversation(conversationId, truncatedConversation)
+                        }
+                        val settingsNow = settingsStore.settingsFlow.first()
+                        val hostAssistant = settingsNow.getAssistantById(conversation.assistantId)
+                            ?: settingsNow.getCurrentAssistant()
+                        executeGroupTurnScoped(
+                            config = regenerateGroupConfig,
+                            conversationId = conversationId,
+                            commandId = commandId,
+                            control = control,
+                            hostAssistant = hostAssistant,
+                            responseCorrelationAnnotation = null,
+                            agentTiming = agentTiming,
+                            emitDoneNotification = false,
+                        )
+                    } else {
+                        handleMessageComplete(
+                            conversationId,
+                            origin = origin,
+                            messageRange = 0..<indexAt,
+                            runControl = control,
+                            activeCommandId = commandId,
+                            propagateFailure = true,
+                            persistenceSourceInvalidationMode =
+                                ConversationSourceInvalidationMode.SKIP_TRANSIENT_WRITE,
+                            persistenceSourceInvalidationNowMs = transientWriteNowMs,
+                            deferPostCommitActions = true,
+                            onDeferredPostCommit = { deferredPostCommit = it },
+                            agentTiming = agentTiming,
+                        )
+                    }
                 }
                 val finalConversation = getConversationFlow(conversationId).value
                 val runtimeAuthority = control.runtimeCommandAuthority()

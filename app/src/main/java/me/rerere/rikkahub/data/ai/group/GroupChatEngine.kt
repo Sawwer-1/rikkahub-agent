@@ -38,17 +38,20 @@ class GroupChatEngine(
     )
 
     /**
-     * Planner round: given the group roster and the recent transcript, return an ordered
-     * list of members who should reply to the latest user message. Never throws: any
-     * planner failure returns an empty plan, and the caller falls back to the first member.
+     * Planner round: given the group roster and the recent transcript, return the planned
+     * speaking rounds — round 0 answers the latest user message, later rounds let members
+     * respond to each other's replies (multi-round cross-talk, Operit-style plannedRounds).
+     * Never throws: any planner failure returns an empty list, and the caller falls back to
+     * the first member answering alone.
      */
-    suspend fun planSpeakers(
+    suspend fun planRounds(
         config: GroupChatConfig,
         conversation: Conversation,
         members: List<Assistant>,
         hostAssistant: Assistant,
         maxSpeakers: Int,
-    ): List<MemberSpeechPlan> {
+        maxRounds: Int,
+    ): List<List<MemberSpeechPlan>> {
         val settings = settingsStore.settingsFlow.value
         val plannerModelId = config.plannerModelId ?: hostAssistant.chatModelId
         val model = settings.findModelById(plannerModelId, settings.chatModelId) ?: return emptyList()
@@ -74,9 +77,12 @@ class GroupChatEngine(
         }
         val prompt = """
             你是群聊编排器。以下是群成员名单和最近的群聊记录，用户刚刚发来了新消息。
-            决定哪些成员应该回复这条消息（按回复顺序）。通常 1 到 $maxSpeakers 人；只有当消息明确
-            指向某人时才多选。不要选择与消息无关的成员。
-            只输出 JSON：{"speaks":[{"assistant_id":"成员id","hint":"给该成员的一句话提示（可空）"}]}。
+            请规划成员的发言轮次（最多 $maxRounds 轮）：第一轮安排成员直接回应用户的消息；
+            如需成员之间互相交流，可再规划后续轮次，让成员对前面成员的发言进一步回应、
+            补充或讨论。通常 1 到 $maxRounds 轮即可，不要为了凑轮数而安排空洞的发言。
+            每轮最多 $maxSpeakers 人；与消息无关或没什么可说的成员不要安排。
+            只输出 JSON（rounds 是数组的数组，每轮是一个发言成员列表）：
+            {"rounds":[[{"assistant_id":"成员id","hint":"给该成员的一句话提示（可空）"}]]}
 
             成员名单：
             $roster
@@ -97,7 +103,51 @@ class GroupChatEngine(
             conversationContextSummary = conversation.compressedSummary,
         )
         if (text.isBlank()) return emptyList()
-        return parseSpeechPlan(text, members).take(maxSpeakers)
+        return parseSpeechRounds(text, members)
+            .take(maxRounds.coerceIn(1, HARD_MAX_ROUNDS))
+            .map { round -> round.take(maxSpeakers) }
+            .filter { it.isNotEmpty() }
+    }
+
+    private fun parseSpeechRounds(
+        text: String,
+        members: List<Assistant>,
+    ): List<List<MemberSpeechPlan>> {
+        val jsonText = text.extractJsonObject() ?: return emptyList()
+        return runCatching {
+            val obj = JsonInstant.parseToJsonElement(jsonText).jsonObject
+            // New multi-round format: {"rounds":[[{...},{...}],[...]]}
+            val rounds = obj["rounds"]?.jsonArray
+            if (rounds != null) {
+                rounds.mapNotNull { roundElement ->
+                    roundElement.jsonArray.mapNotNull { entry ->
+                        parseMemberEntry(entry, members)
+                    }.distinctBy { it.memberAssistantId }
+                        .takeIf { it.isNotEmpty() }
+                }
+            } else {
+                // Legacy single-round format: {"speaks":[...]}
+                val speaks = obj["speaks"]?.jsonArray ?: return emptyList()
+                listOfNotNull(
+                    speaks.mapNotNull { entry -> parseMemberEntry(entry, members) }
+                        .distinctBy { it.memberAssistantId }
+                        .takeIf { it.isNotEmpty() },
+                )
+            }
+        }.getOrElse { emptyList() }
+    }
+
+    private fun parseMemberEntry(entry: kotlinx.serialization.json.JsonElement, members: List<Assistant>): MemberSpeechPlan? {
+        val entryObj = runCatching { entry.jsonObject }.getOrNull() ?: return null
+        val idText = entryObj["assistant_id"]?.jsonPrimitive?.contentOrNull
+            ?: entryObj["member_id"]?.jsonPrimitive?.contentOrNull
+            ?: return null
+        val id = runCatching { Uuid.parse(idText.trim()) }.getOrNull() ?: return null
+        if (members.none { it.id == id }) return null
+        return MemberSpeechPlan(
+            memberAssistantId = id,
+            hint = entryObj["hint"]?.jsonPrimitive?.contentOrNull?.take(200),
+        )
     }
 
     /**
@@ -123,7 +173,7 @@ class GroupChatEngine(
         val directive = buildString {
             append("\n\n（群聊指令：你是 ${member.name.ifBlank { "成员" }}，正在和其他成员一起群聊")
             if (others.isNotBlank()) append("，其他成员：$others")
-            append("。请以自己的身份、性格和口吻自然回复最新这条用户消息，不要复述他人，不要署名。")
+            append("。请以自己的身份、性格和口吻自然回复群里最新这条消息（可能来自用户，也可能是其他成员的发言），不要复述他人，不要署名。")
             if (!hint.isNullOrBlank()) append("本轮提示：$hint")
             append("）")
         }
@@ -149,26 +199,6 @@ class GroupChatEngine(
             conversationSystemPrompt = null,
             conversationContextSummary = conversation.compressedSummary,
         ).trim()
-    }
-
-    private fun parseSpeechPlan(text: String, members: List<Assistant>): List<MemberSpeechPlan> {
-        val jsonText = text.extractJsonObject() ?: return emptyList()
-        return runCatching {
-            val obj = JsonInstant.parseToJsonElement(jsonText).jsonObject
-            val speaks = obj["speaks"]?.jsonArray ?: return emptyList()
-            speaks.mapNotNull { element ->
-                val entry = element.jsonObject
-                val idText = entry["assistant_id"]?.jsonPrimitive?.contentOrNull
-                    ?: entry["member_id"]?.jsonPrimitive?.contentOrNull
-                    ?: return@mapNotNull null
-                val id = runCatching { Uuid.parse(idText.trim()) }.getOrNull() ?: return@mapNotNull null
-                if (members.none { it.id == id }) return@mapNotNull null
-                MemberSpeechPlan(
-                    memberAssistantId = id,
-                    hint = entry["hint"]?.jsonPrimitive?.contentOrNull?.take(200),
-                )
-            }.distinctBy { it.memberAssistantId }
-        }.getOrElse { emptyList() }
     }
 
     private suspend fun generateText(
@@ -215,5 +245,8 @@ class GroupChatEngine(
 
     private companion object {
         const val TRANSCRIPT_WINDOW = 20
+
+        /** Hard safety cap on planner rounds regardless of user configuration. */
+        const val HARD_MAX_ROUNDS = 4
     }
 }

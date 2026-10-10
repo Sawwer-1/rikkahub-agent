@@ -11,6 +11,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -67,6 +68,18 @@ fun GroupChatConfigButton(
         }
         var enabled by remember(config) { mutableStateOf(config != null) }
         var pendingSelection by remember(config) { mutableStateOf(selected) }
+        // 编排参数（2026-10-10 多轮互答改造）：规划器开关 / 每轮发言人数上限 / 每轮次上限。
+        // 均为会话级配置，随 GroupChatConfig 一起保存；此前这些字段不暴露 UI，保存时还会
+        // 被重置为默认值 —— 现在保留既有值并在对话框中可调。
+        var pendingPlannerEnabled by remember(config) {
+            mutableStateOf(config?.plannerEnabled ?: true)
+        }
+        var pendingMaxSpeakers by remember(config) {
+            mutableStateOf((config?.maxSpeakersPerTurn ?: 3).coerceIn(1, 5).toFloat())
+        }
+        var pendingMaxRounds by remember(config) {
+            mutableStateOf((config?.maxRoundsPerTurn ?: 2).coerceIn(1, 4).toFloat())
+        }
         AlertDialog(
             onDismissRequest = { showEditor = false },
             title = { Text("群聊模式") },
@@ -92,6 +105,52 @@ fun GroupChatConfigButton(
                         )
                     }
                     if (enabled) {
+                        // 编排参数区：规划器 / 每轮发言人数 / 对话轮数
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text("启用规划器")
+                            Switch(
+                                checked = pendingPlannerEnabled,
+                                onCheckedChange = { pendingPlannerEnabled = it },
+                            )
+                        }
+                        Text(
+                            text = "关闭后不再由模型规划发言人，固定由第一位成员回复。" +
+                                "关闭时下方两项不生效。",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        val speakerStep = pendingMaxSpeakers.toInt()
+                        Text(
+                            text = "每轮最多发言人数：$speakerStep 人",
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        Slider(
+                            value = pendingMaxSpeakers,
+                            onValueChange = { pendingMaxSpeakers = it },
+                            valueRange = 1f..5f,
+                            steps = 3,
+                        )
+                        val roundStep = pendingMaxRounds.toInt()
+                        Text(
+                            text = "每次消息最多对话轮数：$roundStep 轮",
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        Text(
+                            text = "1 轮 = 成员只回复你的消息；2 轮及以上时，后续轮次的成员会" +
+                                "对前面成员的发言相互回应（成员互聊）。轮数越多消耗的 token 越多。",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Slider(
+                            value = pendingMaxRounds,
+                            onValueChange = { pendingMaxRounds = it },
+                            valueRange = 1f..4f,
+                            steps = 2,
+                        )
                         if (candidates.isEmpty()) {
                             Text(
                                 "没有其他助手可邀请，先在助手页创建成员。",
@@ -140,6 +199,12 @@ fun GroupChatConfigButton(
                                     memberAssistantIds = candidates
                                         .map { it.id }
                                         .filter { it in pendingSelection },
+                                    plannerEnabled = pendingPlannerEnabled,
+                                    // Preserve the planner-model override: the dialog does not
+                                    // edit it, so dropping it would silently reset the setting.
+                                    plannerModelId = config?.plannerModelId,
+                                    maxSpeakersPerTurn = pendingMaxSpeakers.toInt(),
+                                    maxRoundsPerTurn = pendingMaxRounds.toInt(),
                                 )
                             } else {
                                 null
