@@ -3038,8 +3038,8 @@ class ChatService(
                 ).map { round ->
                     round.mapNotNull { plan ->
                         members.find { it.id == plan.memberAssistantId }?.let { it to plan.hint }
-                    }.filter { it.isNotEmpty() }
-                }
+                    }
+                }.filter { it.isNotEmpty() }
             } else {
                 emptyList()
             }
