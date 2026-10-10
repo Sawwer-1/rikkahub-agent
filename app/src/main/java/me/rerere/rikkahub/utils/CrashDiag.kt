@@ -42,11 +42,11 @@ object CrashDiag {
 
     fun install(context: Context) {
         val appContext = context.applicationContext
-        // 1) Export whatever the stock CrashHandler already recorded from previous crashes.
+        // 1) Export the historical crash stack recorded by CrashHandler (if any) together
+        //    with a DB snapshot. Silent no-op on a healthy install: nothing is written
+        //    unless a crash was actually recorded, so this build can ship to users.
         exportHistoricalCrash(appContext)
-        // 2) Export the current DB health snapshot.
-        exportReport(appContext, buildDbReport(appContext), tag = "db_snapshot")
-        // 3) Chain a pre-handler so a fresh crash is exported before the process dies.
+        // 2) Chain a pre-handler so a fresh crash is exported before the process dies.
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             runCatching {

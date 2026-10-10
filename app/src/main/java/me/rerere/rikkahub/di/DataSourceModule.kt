@@ -287,6 +287,19 @@ val dataSourceModule = module {
     single<me.rerere.rikkahub.data.authority.source.SourceInvalidationAuthorityEventPort> {
         me.rerere.rikkahub.data.authority.source.NoOpSourceInvalidationAuthorityEventPort
     }
+    // Restored in 2.4.4: the 2.3.0 strip deleted the MessageSourceTransitionInvalidationPort
+    // binding (2.2.0 L318 forwarded it to the since-removed learning RewardFeedbackAuthorityRepository).
+    // The port's only remaining implementation is the NoOp object, and resolving it crashed
+    // every launch inside WebServerService -> ChatService -> ConversationRepository ->
+    // ConversationSourceAuthorityWriter (R8 disguised the missing type as the NoOp object
+    // itself in the Koin report). Both the interface key and the object key are bound so any
+    // request shape resolves; the NoOp semantics are correct for 2.4.x.
+    single<me.rerere.rikkahub.data.authority.source.MessageSourceTransitionInvalidationPort> {
+        me.rerere.rikkahub.data.authority.source.NoOpMessageSourceTransitionInvalidationPort
+    }
+    single<me.rerere.rikkahub.data.authority.source.NoOpMessageSourceTransitionInvalidationPort> {
+        me.rerere.rikkahub.data.authority.source.NoOpMessageSourceTransitionInvalidationPort
+    }
     single {
         me.rerere.rikkahub.data.authority.source.ConversationSourceAuthorityWriter(
             store = get<me.rerere.rikkahub.data.authority.source.RoomConversationSourceAuthorityStore>(),
