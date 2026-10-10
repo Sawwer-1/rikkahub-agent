@@ -764,8 +764,12 @@ internal fun MessagePartsBlock(
         }
     }
 
+    // STARTED 横幅只在消息仍在流式生成时显示。恢复进行中按 ✕ / 进程被杀会留下
+    // "僵尸 STARTED" 注解（没有终局改写），消息已结束后若继续渲染会让旧消息
+    // 永远挂着「正在生成最终答案」横幅——按陈旧残标隐藏，只保留 FAILED 提示。
     val recovery = annotations.filterIsInstance<UIMessageAnnotation.FinalAnswerRecovery>()
         .lastOrNull()
+        ?.takeIf { it.status != FinalAnswerRecoveryStatus.STARTED || messageState == UIMessageState.STREAMING }
     val referenceAnnotations = annotations.filterNot {
         it is UIMessageAnnotation.FinalAnswerRecovery ||
             it is UIMessageAnnotation.QuickCapture ||
@@ -793,7 +797,9 @@ internal fun MessagePartsBlock(
                     stringResource(
                         R.string.final_answer_recovery_in_progress,
                         recovery.attempt,
-                        10,
+                        // 与 GenerationHandler.FINAL_ANSWER_MAX_ATTEMPTS 对齐（ui 模块
+                        // 引用不到 app 层私有常量，此处同步维护；改上限时两处一起改）。
+                        3,
                     )
                 } else {
                     stringResource(

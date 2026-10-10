@@ -2613,8 +2613,15 @@ class ChatService(
             }
 
             is me.rerere.rikkahub.service.chat.MutateMessageCommand -> {
-                val current = conversationRepo.getConversationById(envelope.conversationId)
-                    ?: return RunOutcome.Conflict("Conversation missing")
+                // 会话图必须优先取自活跃 session 的内存态：中断/暂停期间未终局的节点
+                // （被停止的流式回复、其后的排队内容）只存在于内存，DB 还是命令
+                // admission 时的旧基线。若从 DB 读基线再整图回写，编辑/分支选择
+                // 会用旧基线把内存中未落库的中断内容整段抹掉（2026-10-10 真机战报）。
+                val current = if (sessions[envelope.conversationId]?.isHydrated == true) {
+                    getConversationFlow(envelope.conversationId).value
+                } else {
+                    conversationRepo.getConversationById(envelope.conversationId)
+                } ?: return RunOutcome.Conflict("Conversation missing")
                 val updated = me.rerere.rikkahub.data.repository.applyMessageMutation(current, command)
                     ?: return RunOutcome.Conflict("Message target missing")
                 val authority = control.runtimeCommandAuthority()
