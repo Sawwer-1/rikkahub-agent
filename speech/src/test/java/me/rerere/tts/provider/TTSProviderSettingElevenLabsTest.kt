@@ -7,7 +7,8 @@ import org.junit.Test
 import kotlin.uuid.Uuid
 
 class TTSProviderSettingElevenLabsTest {
-    private val json = Json { ignoreUnknownKeys = true }
+    // encodeDefaults 必须开：fork 的 model 默认值恰为 eleven_v3，省略默认值会让 contains 断言落空
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     @Test
     fun testElevenLabsSerialization() {
