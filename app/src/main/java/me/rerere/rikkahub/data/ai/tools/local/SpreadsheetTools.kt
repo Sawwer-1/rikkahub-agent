@@ -143,8 +143,16 @@ internal fun parseCsv(csv: String, delimiter: Char = ','): List<List<String>> {
                     i++
                 }
             } else {
-                currentField.append(c)
-                i++
+                if (c == '' && i + 1 < csv.length && csv[i + 1] == '
+') {
+                    // CRLF inside a quoted field folds to LF (universal newline).
+                    currentField.append('
+')
+                    i += 2
+                } else {
+                    currentField.append(c)
+                    i++
+                }
             }
             continue
         }
@@ -173,8 +181,10 @@ internal fun parseCsv(csv: String, delimiter: Char = ','): List<List<String>> {
             }
         }
     }
-    endField()
-    endRow()
+    if (sawAnyField || currentField.isNotEmpty()) {
+        endField()
+        endRow()
+    }
     return rows
 }
 
@@ -683,7 +693,7 @@ fun csvWriteTool(context: Context): Tool = Tool(
                 put("path", buildJsonObject { put("type", "string") })
                 put("rows", buildJsonObject {
                     put("type", "array")
-                    put("items", buildJsonObject { put("type", "array") })
+                    put("items", buildJsonObject { put("type", "array"); put("items", buildJsonObject { put("type", "string") }) })
                 })
                 put("delimiter", buildJsonObject { put("type", "string") })
                 put("overwrite", buildJsonObject { put("type", "boolean") })
