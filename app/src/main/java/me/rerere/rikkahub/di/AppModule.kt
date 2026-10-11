@@ -21,6 +21,8 @@ import me.rerere.rikkahub.data.notifications.NotificationListenerPreferences
 import me.rerere.rikkahub.data.telegram.TelegramBotClient
 import me.rerere.rikkahub.data.telegram.TelegramBotPreferences
 import me.rerere.rikkahub.data.telegram.TelegramCredentialResolver
+import me.rerere.rikkahub.data.weixin.WeixinBotClient
+import me.rerere.rikkahub.data.weixin.WeixinBotPreferences
 import me.rerere.rikkahub.service.ChatService
 import me.rerere.rikkahub.service.CronJobScheduler
 import me.rerere.rikkahub.utils.EmojiData
@@ -78,6 +80,10 @@ val appModule = module {
     single { SshHostRepository(get<me.rerere.rikkahub.data.db.AppDatabase>().sshHostDao()) }
     single { TelegramChatRepository(get<me.rerere.rikkahub.data.db.AppDatabase>().telegramChatDao()) }
     single { TelegramBotPreferences(get()) }
+    single { WeixinBotPreferences(get()) }
+    // WeixinBotClient builds its short/poll sub-clients from the shared OkHttpClient so idle
+    // sockets and the connection pool are shared (same rationale as the TelegramBotClient).
+    single { WeixinBotClient(get<okhttp3.OkHttpClient>()) }
     single { me.rerere.rikkahub.browser.BrowserPreferences(get()) }
     single { me.rerere.rikkahub.data.preferences.TermuxPreferences(get()) }
     single<me.rerere.rikkahub.data.ai.tools.local.TermuxSessionEmergencyController> {

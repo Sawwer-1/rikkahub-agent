@@ -144,6 +144,7 @@ import me.rerere.rikkahub.ui.pages.setting.SecondUserAuthorityRecoveryPage
 import me.rerere.rikkahub.ui.pages.setting.SecondUserSecretVaultPage
 import me.rerere.rikkahub.ui.pages.setting.SecondUserToolLibraryPage
 import me.rerere.rikkahub.ui.pages.setting.SettingTelegramPage
+import me.rerere.rikkahub.ui.pages.setting.SettingWeixinBotPage
 import me.rerere.rikkahub.ui.pages.setting.SettingWebPage
 import me.rerere.rikkahub.ui.pages.share.handler.ShareHandlerPage
 import me.rerere.rikkahub.ui.pages.stats.StatsPage
@@ -634,6 +635,10 @@ class RouteActivity : ComponentActivity() {
                                 SettingTelegramPage()
                             }
 
+                            entry<Screen.SettingWeixinBot> {
+                                SettingWeixinBotPage()
+                            }
+
                             entry<Screen.SettingWorkflows> {
                                 me.rerere.rikkahub.workflow.ui.WorkflowsScreen()
                             }
@@ -962,6 +967,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingTelegram : Screen
+
+    @Serializable
+    data object SettingWeixinBot : Screen
 
     @Serializable
     data object SettingWorkflows : Screen

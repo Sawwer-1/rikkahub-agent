@@ -66,6 +66,7 @@ import me.rerere.hugeicons.stroke.Connect
 import me.rerere.hugeicons.stroke.ServerStack01
 import me.rerere.hugeicons.stroke.Shield01
 import me.rerere.hugeicons.stroke.Telegram
+import me.rerere.hugeicons.stroke.Message02
 import me.rerere.hugeicons.stroke.WebDesign01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Share04
@@ -308,6 +309,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { Icon(HugeIcons.Telegram, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_telegram_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_telegram)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.SettingWeixinBot) },
+                        leadingContent = { Icon(HugeIcons.Message02, null) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_weixin_desc)) },
+                        headlineContent = { Text(stringResource(R.string.setting_page_weixin)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.MiniApps) },

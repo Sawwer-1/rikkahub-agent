@@ -102,6 +102,12 @@ fun settingsSearchIndex(developerMode: Boolean): List<SettingsSearchEntry> {
             route = Screen.SettingTelegram,
         ),
         SettingsSearchEntry(
+            titleRes = R.string.setting_page_weixin,
+            descriptionRes = R.string.setting_page_weixin_desc,
+            groupRes = R.string.setting_page_model_and_services,
+            route = Screen.SettingWeixinBot,
+        ),
+        SettingsSearchEntry(
             titleRes = R.string.setting_page_workflows,
             descriptionRes = R.string.setting_page_workflows_desc,
             groupRes = R.string.setting_page_model_and_services,

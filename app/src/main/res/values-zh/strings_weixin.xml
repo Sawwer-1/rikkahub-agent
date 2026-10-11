@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- 微信 iLink Bot 桥（设置页 + 服务） -->
+  <string name="setting_page_weixin">微信 Bot</string>
+  <string name="setting_page_weixin_desc">通过 iLink bot 协议把已有助手桥接到微信。</string>
+  <string name="setting_page_weixin_what_title">微信 Bot 是什么</string>
+  <string name="setting_page_weixin_what_desc">把你的微信号变成 AI 入口：给它发消息，由关联的助手回复。相当于给助手多开一条微信消息通道——AI、记忆、工具全部复用该助手。</string>
+  <string name="setting_page_weixin_login_status">登录状态</string>
+  <string name="setting_page_weixin_logged_in">已登录（Bot: %1$s）</string>
+  <string name="setting_page_weixin_not_logged_in">未登录</string>
+  <string name="setting_page_weixin_scan_login">扫码登录</string>
+  <string name="setting_page_weixin_re_login">重新登录</string>
+  <string name="setting_page_weixin_logging_in">登录中…</string>
+  <string name="setting_page_weixin_fetching_qr">正在获取二维码…</string>
+  <string name="setting_page_weixin_scan_hint">请用微信扫码</string>
+  <string name="setting_page_weixin_scan_wait">等待扫码…</string>
+  <string name="setting_page_weixin_scaned">已扫码，请在微信里确认…</string>
+  <string name="setting_page_weixin_qr_expired_refresh">二维码已过期，正在刷新…</string>
+  <string name="setting_page_weixin_qr_expired_giveup">二维码多次过期，请重试</string>
+  <string name="setting_page_weixin_login_success">登录成功！</string>
+  <string name="setting_page_weixin_login_timeout">登录超时</string>
+  <string name="setting_page_weixin_login_failed">登录失败：%1$s</string>
+  <string name="setting_page_weixin_status">状态</string>
+  <string name="setting_page_weixin_logout">退出登录</string>
+  <string name="setting_page_weixin_logged_out">已退出</string>
+  <string name="setting_page_weixin_qr_fallback_hint">如果二维码不显示，用浏览器打开下面的链接：</string>
+  <string name="setting_page_weixin_qr_browser_open">用浏览器打开二维码链接</string>
+  <string name="setting_page_weixin_enable">启用微信 Bot</string>
+  <string name="setting_page_weixin_enable_desc">开启后启动前台长轮询服务，需先扫码登录。启用状态下应用进程重启时也会自动恢复。</string>
+  <string name="setting_page_weixin_service_status">服务状态</string>
+  <string name="setting_page_weixin_status_running">运行中</string>
+  <string name="setting_page_weixin_status_starting">正在启动…</string>
+  <string name="setting_page_weixin_status_stopped">已停止</string>
+  <string name="setting_page_weixin_need_login_desc">服务需要登录后才能收发消息，请先扫码登录。</string>
+  <string name="setting_page_weixin_assistant">关联助手</string>
+  <string name="setting_page_weixin_assistant_desc">微信收到的消息交给该助手处理——AI、记忆、工具都复用它。留空则跟随当前助手。</string>
+  <string name="setting_page_weixin_assistant_follow_current">跟随当前助手</string>
+  <string name="setting_page_weixin_assistant_missing">助手不存在（将跟随当前助手）</string>
+  <string name="setting_page_weixin_poll_interval">轮询间隔</string>
+  <string name="setting_page_weixin_poll_interval_desc">两次长轮询之间的额外间隔（秒）。长轮询本身最多挂住 35 秒等新消息。</string>
+  <string name="setting_page_weixin_no_token_toast">请先扫码登录</string>
+
+  <!-- WeixinBotService 通知与内联回复 -->
+  <string name="weixin_bot_channel_name">微信 Bot</string>
+  <string name="weixin_bot_error_channel_name">微信 Bot 错误</string>
+  <string name="weixin_bot_notification_title">微信 Bot</string>
+  <string name="weixin_bot_running">正在监听微信消息</string>
+  <string name="weixin_bot_disconnected_title">微信 Bot 已断开</string>
+  <string name="weixin_bot_disconnected_body">登录已过期，请到设置页重新扫码。</string>
+  <string name="weixin_bot_queue_full">队列已满（上限 %1$d），请稍后再试。</string>
+  <string name="weixin_bot_rejected">消息未被接受：%1$s</string>
+  <string name="weixin_bot_runtime_unavailable">会话暂不可用：%1$s</string>
+  <string name="weixin_bot_timeout">（还在思考，请稍后再发一条试试。）</string>
+  <string name="weixin_bot_empty_reply">（没有产生回复。）</string>
+  <string name="weixin_bot_no_context_hint">（我需要先收到至少一条消息才能回复。）</string>
+</resources>

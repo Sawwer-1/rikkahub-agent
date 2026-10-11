@@ -245,6 +245,9 @@ class RikkaHubApp : Application() {
         // auto-revive it after a process kill; we need to bring it back ourselves.
         startTelegramBotIfEnabled()
 
+        // Same for the WeChat bot bridge (WeixinBotService is also START_NOT_STICKY).
+        startWeixinBotIfEnabled()
+
         // Initialise the agent's `~` workspace at /data/data/<pkg>/files/workspace/.
         // Tools resolve `~` and `~/foo` paths to this dir, giving the LLM a stable
         // sandbox for `.learnings/`, scratch files, and skill state without scoped-
@@ -592,6 +595,22 @@ class RikkaHubApp : Application() {
                 }
             }.onFailure {
                 Log.e(TAG, "startTelegramBotIfEnabled failed", it)
+            }
+        }
+    }
+
+    // WeChat bot bridge: no dedicated health worker for v1 — the foreground service +
+    // START_NOT_STICKY restart-on-process-create path covers the common kill scenarios.
+    private fun startWeixinBotIfEnabled() {
+        get<AppScope>().launch(Dispatchers.IO) {
+            runCatching {
+                val cfg = get<me.rerere.rikkahub.data.weixin.WeixinBotPreferences>().current()
+                if (cfg.isUsable) {
+                    Log.i(TAG, "startWeixinBotIfEnabled: re-starting bot service")
+                    me.rerere.rikkahub.service.WeixinBotService.start(this@RikkaHubApp)
+                }
+            }.onFailure {
+                Log.e(TAG, "startWeixinBotIfEnabled failed", it)
             }
         }
     }

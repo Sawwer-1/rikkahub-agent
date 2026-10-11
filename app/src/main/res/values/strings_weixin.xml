@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- WeChat iLink Bot bridge (settings page + service) -->
+  <string name="setting_page_weixin">WeChat Bot</string>
+  <string name="setting_page_weixin_desc">Bridge an existing assistant to WeChat via the iLink bot protocol.</string>
+  <string name="setting_page_weixin_what_title">What is WeChat Bot</string>
+  <string name="setting_page_weixin_what_desc">Turns a WeChat account into an AI entry point: messages sent to it are answered by the linked assistant. It is just an extra messaging channel for that assistant — AI, memory and tools are all reused from it.</string>
+  <string name="setting_page_weixin_login_status">Login status</string>
+  <string name="setting_page_weixin_logged_in">Logged in (Bot: %1$s)</string>
+  <string name="setting_page_weixin_not_logged_in">Not logged in</string>
+  <string name="setting_page_weixin_scan_login">Scan to log in</string>
+  <string name="setting_page_weixin_re_login">Log in again</string>
+  <string name="setting_page_weixin_logging_in">Logging in…</string>
+  <string name="setting_page_weixin_fetching_qr">Fetching QR code…</string>
+  <string name="setting_page_weixin_scan_hint">Scan with WeChat</string>
+  <string name="setting_page_weixin_scan_wait">Waiting for scan…</string>
+  <string name="setting_page_weixin_scaned">Scanned, confirm in WeChat…</string>
+  <string name="setting_page_weixin_qr_expired_refresh">QR code expired, refreshing…</string>
+  <string name="setting_page_weixin_qr_expired_giveup">QR code expired too many times, please retry</string>
+  <string name="setting_page_weixin_login_success">Logged in!</string>
+  <string name="setting_page_weixin_login_timeout">Login timed out</string>
+  <string name="setting_page_weixin_login_failed">Login failed: %1$s</string>
+  <string name="setting_page_weixin_status">Status</string>
+  <string name="setting_page_weixin_logout">Log out</string>
+  <string name="setting_page_weixin_logged_out">Logged out</string>
+  <string name="setting_page_weixin_qr_fallback_hint">If the QR code does not show, open the link below in a browser:</string>
+  <string name="setting_page_weixin_qr_browser_open">Open QR link in browser</string>
+  <string name="setting_page_weixin_enable">Enable WeChat Bot</string>
+  <string name="setting_page_weixin_enable_desc">Starts a foreground long-polling service. Login first. When enabled, the bot also restarts with the app process.</string>
+  <string name="setting_page_weixin_service_status">Service status</string>
+  <string name="setting_page_weixin_status_running">Running</string>
+  <string name="setting_page_weixin_status_starting">Starting…</string>
+  <string name="setting_page_weixin_status_stopped">Stopped</string>
+  <string name="setting_page_weixin_need_login_desc">The service needs a login before it can exchange messages. Scan first.</string>
+  <string name="setting_page_weixin_assistant">Linked assistant</string>
+  <string name="setting_page_weixin_assistant_desc">Inbound WeChat messages are handled by this assistant — AI, memory and tools are reused from it. Leave empty to follow the current assistant.</string>
+  <string name="setting_page_weixin_assistant_follow_current">Follow current assistant</string>
+  <string name="setting_page_weixin_assistant_missing">Missing assistant (follows current)</string>
+  <string name="setting_page_weixin_poll_interval">Poll interval</string>
+  <string name="setting_page_weixin_poll_interval_desc">Extra delay between long polls in seconds. A poll itself holds up to 35s while waiting for new messages.</string>
+  <string name="setting_page_weixin_no_token_toast">Please scan to log in first</string>
+
+  <!-- WeixinBotService notifications and inline replies -->
+  <string name="weixin_bot_channel_name">WeChat Bot</string>
+  <string name="weixin_bot_error_channel_name">WeChat Bot errors</string>
+  <string name="weixin_bot_notification_title">WeChat Bot</string>
+  <string name="weixin_bot_running">Listening for WeChat messages</string>
+  <string name="weixin_bot_disconnected_title">WeChat Bot disconnected</string>
+  <string name="weixin_bot_disconnected_body">Login expired. Open settings to scan again.</string>
+  <string name="weixin_bot_queue_full">Queue is full (limit %1$d), please try again later.</string>
+  <string name="weixin_bot_rejected">Message rejected: %1$s</string>
+  <string name="weixin_bot_runtime_unavailable">Conversation unavailable: %1$s</string>
+  <string name="weixin_bot_timeout">(Still thinking — please try again shortly.)</string>
+  <string name="weixin_bot_empty_reply">(No reply.)</string>
+  <string name="weixin_bot_no_context_hint">(I need at least one inbound message before I can reply.)</string>
+</resources>
