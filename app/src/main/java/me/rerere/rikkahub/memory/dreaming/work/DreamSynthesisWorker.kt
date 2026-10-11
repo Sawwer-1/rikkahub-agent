@@ -30,6 +30,9 @@ class DreamSynthesisWorker(
         val scopeId = DreamScopeId.parseOrNull(inputData.getString(KEY_SCOPE_ID))
             ?: return Result.failure()
         val runId = inputData.getString(KEY_RUN_ID) ?: return Result.failure()
+        // Manual "dream now" runs skip the idle gate (the user explicitly asked); every other
+        // gate (cost policy environment, budget) still applies.
+        val bypassIdle = inputData.getBoolean(KEY_BYPASS_IDLE, false)
         try {
             requireCanonicalDreamRunId(runId)
         } catch (_: Exception) {
@@ -43,6 +46,7 @@ class DreamSynthesisWorker(
                     runId = runId,
                     workAttempt = runAttemptCount,
                     environment = readDreamWorkerEnvironment(applicationContext),
+                    bypassIdle = bypassIdle,
                 )
             ) {
                 DreamSynthesisWorkerDirective.Complete -> Result.success()
@@ -100,6 +104,7 @@ class DreamSynthesisWorker(
     companion object {
         const val KEY_SCOPE_ID = "dream_synthesis_scope_id"
         const val KEY_RUN_ID = "dream_synthesis_run_id"
+        const val KEY_BYPASS_IDLE = "dream_synthesis_bypass_idle"
         private const val TAG = "DreamSynthesisWorker"
     }
 }

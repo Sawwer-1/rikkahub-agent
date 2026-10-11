@@ -66,7 +66,17 @@ import me.rerere.rikkahub.memory.dreaming.review.DreamReviewProjection
 import me.rerere.rikkahub.memory.dreaming.review.DreamReviewReadResult
 import me.rerere.rikkahub.memory.dreaming.review.DreamReviewRepository
 import me.rerere.rikkahub.memory.dreaming.review.DreamReviewFence
+import android.content.Context
+import me.rerere.rikkahub.data.db.dao.DreamDao
+import me.rerere.rikkahub.memory.dreaming.runtime.DreamAppIdleDecision
+import me.rerere.rikkahub.memory.dreaming.runtime.DreamAppIdleTracker
+import me.rerere.rikkahub.memory.dreaming.runtime.DreamDailyUsageQuery
+import me.rerere.rikkahub.memory.dreaming.runtime.DreamNetworkPolicy
+import me.rerere.rikkahub.memory.dreaming.runtime.dreamUtcDayWindowOrNull
 import me.rerere.rikkahub.memory.dreaming.runtime.DreamSynthesisCoordinator
+import me.rerere.rikkahub.memory.dreaming.runtime.DreamSynthesisScanReason
+import me.rerere.rikkahub.memory.dreaming.runtime.DreamSynthesisScheduleDeferral
+import me.rerere.rikkahub.memory.dreaming.work.readDreamWorkerEnvironment
 import me.rerere.rikkahub.memory.dreaming.runtime.DreamingCostPolicy
 import me.rerere.rikkahub.memory.dreaming.runtime.DreamingScopePreferenceMutation
 import me.rerere.rikkahub.memory.dreaming.runtime.DreamingScopePreferences
@@ -88,6 +98,10 @@ class MemoryCenterVM(
     private val dreamReviewRepository: DreamReviewRepository,
     private val dreamSynthesisCoordinator: DreamSynthesisCoordinator,
     private val learnedPolicyDao: PolicyNoteDao,
+    private val dreamDao: DreamDao,
+    private val dreamUsageStore: me.rerere.rikkahub.memory.dreaming.runtime.DreamDailyUsageStore,
+    private val dreamIdleTracker: DreamAppIdleTracker,
+    private val appContext: Context,
 ) : ViewModel() {
     private val candidatePolicy = MemoryCandidatePolicy()
     private val assistantId = Uuid.parse(id)
@@ -411,6 +425,163 @@ class MemoryCenterVM(
         viewModelScope.launch {
             settingsStore.update { it.copy(dreamModelId = modelId) }
         }
+    }
+
+    // ---- Dream 运行状态与手动触发（2026-10-11 A 系列：主公裁定暴露既有能力） ----
+
+    /** 设置页「运行状态」卡的数据：今日用量 / 上次做梦 / 当前被挡原因。 */
+    data class DreamRuntimeStatus(
+        val usageSummary: String,
+        val lastRunSummary: String,
+        val blockers: List<String>,
+    )
+
+    val dreamNowRunning = MutableStateFlow(false)
+    val dreamNowMessage = MutableStateFlow<String?>(null)
+    val dreamRuntimeStatus = MutableStateFlow<DreamRuntimeStatus?>(null)
+
+    init {
+        refreshDreamRuntimeStatus()
+    }
+
+    /** 手动「立即做梦」：跳过空闲等待（用户在界面点了就说明此刻要做），其余成本/条件门照常。 */
+    fun dreamNow() {
+        if (dreamNowRunning.value) return
+        viewModelScope.launch(Dispatchers.IO) {
+            dreamNowRunning.value = true
+            try {
+                val result = dreamSynthesisCoordinator.scanDirtyScopes(
+                    reason = DreamSynthesisScanReason.MANUAL,
+                    bypassIdle = true,
+                )
+                dreamNowMessage.value = when {
+                    result.scheduledScopes.isNotEmpty() ->
+                        "已触发 ${result.scheduledScopes.size} 个范围的做梦，稍候查看结果"
+                    result.deferredScopes.values.any {
+                        it == DreamSynthesisScheduleDeferral.DAILY_BUDGET_EXHAUSTED
+                    } -> "今日额度已用尽（UTC 00:00 重置）"
+                    result.deferredScopes.values.any {
+                        it == DreamSynthesisScheduleDeferral.FEATURE_DISABLED
+                    } -> "「生成 Dream 概览」未开启"
+                    else -> "当前没有待整理的记忆积压"
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                dreamNowMessage.value = "触发失败，请稍后重试"
+            } finally {
+                refreshDreamRuntimeStatus()
+                dreamNowRunning.value = false
+            }
+        }
+    }
+
+    fun refreshDreamRuntimeStatus() {
+        viewModelScope.launch(Dispatchers.IO) {
+            dreamRuntimeStatus.value = runCatching { buildDreamRuntimeStatus() }.getOrNull()
+        }
+    }
+
+    private suspend fun buildDreamRuntimeStatus(): DreamRuntimeStatus {
+        val scope = currentDreamScopeId()
+        val prefs = settingsStore.settingsFlow.first().dreamingPreferences.failClosed()
+        val policy = prefs.costPolicy.validatedOrNull() ?: prefs.costPolicy
+        val flags = prefs.forScope(scope).toFeatureFlags(schemaReady = true)
+
+        // 今日用量（UTC 日窗口，与 DreamBudgetGate 同一口径）
+        var usageSummary = "今日尚未做梦"
+        runCatching {
+            val window = dreamUtcDayWindowOrNull(System.currentTimeMillis())
+            if (window != null) {
+                val usage = dreamUsageStore.readGlobalUtcUsage(
+                    DreamDailyUsageQuery(window = window, excludingRunId = null),
+                )
+                usageSummary = buildString {
+                    append("今日已做梦 ")
+                    append(usage.startedRunCount)
+                    append('/')
+                    append(policy.dailyRunLimit)
+                    append(" 次")
+                    if (policy.dailyInputTokenLimit != null || policy.dailyOutputTokenLimit != null) {
+                        append(" · token ")
+                        if (policy.dailyInputTokenLimit != null) {
+                            append("入 ${usage.knownInputTokens}/${policy.dailyInputTokenLimit}")
+                        }
+                        if (policy.dailyInputTokenLimit != null && policy.dailyOutputTokenLimit != null) {
+                            append(" / ")
+                        }
+                        if (policy.dailyOutputTokenLimit != null) {
+                            append("出 ${usage.knownOutputTokens}/${policy.dailyOutputTokenLimit}")
+                        }
+                    }
+                }
+            }
+        }
+
+        // 上次做梦
+        val lastRun = dreamDao.listRecentRuns(scope.value, 10).firstOrNull()
+        var lastRunSummary = "从未做过梦（积压会在条件满足时自动整理）"
+        if (lastRun != null) {
+            val atMs = lastRun.finishedAtMs ?: lastRun.startedAtMs ?: lastRun.createdAtMs
+            val ago = java.time.Duration.between(
+                java.time.Instant.ofEpochMilli(atMs),
+                java.time.Instant.now(),
+            )
+            val agoText = when {
+                ago.toMinutes() < 1 -> "刚刚"
+                ago.toHours() < 1 -> "${ago.toMinutes()} 分钟前"
+                ago.toDays() < 1 -> "${ago.toHours()} 小时前"
+                else -> "${ago.toDays()} 天前"
+            }
+            val outcome = when (lastRun.status) {
+                "SUCCEEDED" -> "成功"
+                "RUNNING", "PENDING" -> "进行中"
+                else -> lastRun.failureCode?.let { "失败：$it" } ?: "失败"
+            }
+            lastRunSummary = "上次做梦：$agoText（$outcome）"
+        }
+
+        // 被挡原因（generate 关是第一位；其余为成本/设备条件）
+        val blockers = mutableListOf<String>()
+        if (!flags.generate) {
+            blockers += "「生成 Dream 概览」未开启——打开后才会整理积压"
+        }
+        val env = readDreamWorkerEnvironment(appContext)
+        if (policy.requireCharging && !env.charging) {
+            blockers += "要求充电中才做梦，当前未充电"
+        }
+        if (policy.requireBatteryNotLow && !env.batteryNotLow) {
+            blockers += "要求电量充足，当前电量偏低"
+        }
+        if (policy.networkPolicy == DreamNetworkPolicy.UNMETERED && env.networkMetered) {
+            blockers += "要求非计量网络（如 WiFi），当前为计量网络"
+        } else if (!env.networkConnected) {
+            blockers += "当前无可用网络"
+        }
+        if (flags.generate) {
+            when (val idle = dreamIdleTracker.decisionAt(
+                System.currentTimeMillis(),
+                policy.idleThresholdMinutes,
+            )) {
+                is DreamAppIdleDecision.Deferred -> when (idle.reason) {
+                    me.rerere.rikkahub.memory.dreaming.runtime.DreamAppIdleDeferralReason.APP_FOREGROUND ->
+                        blockers += "应用正在前台使用，退出后需再空闲 ${policy.idleThresholdMinutes} 分钟"
+                    me.rerere.rikkahub.memory.dreaming.runtime.DreamAppIdleDeferralReason.THRESHOLD_NOT_REACHED ->
+                        blockers += "空闲时间未满 ${policy.idleThresholdMinutes} 分钟"
+                    else -> Unit
+                }
+                is DreamAppIdleDecision.Eligible -> Unit
+            }
+        }
+        if (blockers.isEmpty()) {
+            blockers += "条件已满足，有积压时会自动做梦；也可点「立即做梦」"
+        }
+
+        return DreamRuntimeStatus(
+            usageSummary = usageSummary,
+            lastRunSummary = lastRunSummary,
+            blockers = blockers,
+        )
     }
 
     fun processNow(retryFailed: Boolean = false) {
@@ -821,6 +992,7 @@ class MemoryCenterVM(
                     change.previous,
                     change.current,
                 )
+                refreshDreamRuntimeStatus()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -834,6 +1006,7 @@ class MemoryCenterVM(
             try {
                 val change = settingsStore.updateDreamingCostPolicy(policy)
                 dreamSynthesisCoordinator.onCostPolicyChanged(change.previous, change.current)
+                refreshDreamRuntimeStatus()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {

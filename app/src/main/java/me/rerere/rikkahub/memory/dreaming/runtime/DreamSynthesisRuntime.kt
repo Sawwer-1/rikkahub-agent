@@ -83,6 +83,10 @@ class DreamSynthesisRuntime(
         runId: String,
         workAttempt: Int,
         environment: DreamWorkerEnvironment,
+        // Manual "dream now" runs (user-invoked from the memory settings page) skip the idle
+        // gate — the user explicitly asked while the app is necessarily in the foreground.
+        // Cost-safety gates (network/battery/charging environment, budget) still apply.
+        bypassIdle: Boolean = false,
     ): DreamSynthesisWorkerDirective {
         require(workAttempt >= 0)
         requireCanonicalDreamRunId(runId)
@@ -107,12 +111,14 @@ class DreamSynthesisRuntime(
                 null,
             )
         }
-        when (val idle = idleTracker.decisionAt(now, policy.idleThresholdMinutes)) {
-            is DreamAppIdleDecision.Eligible -> Unit
-            is DreamAppIdleDecision.Deferred -> return DreamSynthesisWorkerDirective.Deferred(
-                DreamWorkerDeferralReason.APP_IDLE_REQUIRED,
-                idle.nextEligibleAtEpochMs,
-            )
+        if (!bypassIdle) {
+            when (val idle = idleTracker.decisionAt(now, policy.idleThresholdMinutes)) {
+                is DreamAppIdleDecision.Eligible -> Unit
+                is DreamAppIdleDecision.Deferred -> return DreamSynthesisWorkerDirective.Deferred(
+                    DreamWorkerDeferralReason.APP_IDLE_REQUIRED,
+                    idle.nextEligibleAtEpochMs,
+                )
+            }
         }
         return synthesizeWithFlags(
             scopeId = scopeId,

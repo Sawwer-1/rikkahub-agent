@@ -135,6 +135,10 @@ fun MemorySettingsTab(
     onDreamingCostPolicyChange: (DreamingCostPolicy) -> Unit,
     dreamModelId: Uuid?,
     onDreamModelChange: (Uuid?) -> Unit,
+    dreamRuntimeStatus: MemoryCenterVM.DreamRuntimeStatus?,
+    dreamNowRunning: Boolean,
+    dreamNowMessage: String?,
+    onDreamNow: () -> Unit,
 ) {
     val narrativeSelfFallback = stringResource(R.string.memory_v2_narrative_self_fallback)
     val narrativeCompanionFallback = stringResource(R.string.memory_v2_narrative_companion_fallback)
@@ -297,6 +301,58 @@ fun MemorySettingsTab(
         }
 
         item {
+            SettingsCard(title = "运行状态") {
+                dreamRuntimeStatus?.let { status ->
+                    Text(status.usageSummary, style = MaterialTheme.typography.bodyMedium)
+                    Text(status.lastRunSummary, style = MaterialTheme.typography.bodyMedium)
+                    if (status.blockers.isNotEmpty()) {
+                        Text(
+                            text = "当前状态：",
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        status.blockers.forEach { blocker ->
+                            Text(
+                                text = "· $blocker",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                } ?: Text(
+                    "读取中…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Button(
+                    onClick = onDreamNow,
+                    enabled = !dreamNowRunning,
+                ) {
+                    Text(if (dreamNowRunning) "做梦进行中…" else "立即做梦")
+                }
+                if (dreamNowRunning) {
+                    Text(
+                        "已跳过空闲等待，仍受充电/网络/额度条件约束",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                dreamNowMessage?.let { message ->
+                    Text(
+                        message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Text(
+                    text = "「立即做梦」手动触发一次整理，不需要等待空闲；" +
+                        "充电、网络与每日额度条件仍然生效。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        item {
             SettingsCard(title = stringResource(R.string.memory_dream_settings_title)) {
                 Text(
                     text = stringResource(R.string.memory_dream_settings_scope_desc),
@@ -332,13 +388,6 @@ fun MemorySettingsTab(
                             DreamingScopePreferenceMutation.SetUse(enabled),
                         )
                     },
-                )
-                SettingSwitchRow(
-                    title = stringResource(R.string.memory_dream_deep),
-                    description = stringResource(R.string.memory_dream_not_available),
-                    checked = false,
-                    enabled = false,
-                    onCheckedChange = {},
                 )
             }
         }

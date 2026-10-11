@@ -27,6 +27,8 @@ enum class DreamSynthesisScanReason {
     UTC_BUDGET_ROLLOVER,
     APP_IDLE_RECHECK,
     FOLLOW_UP,
+    /** User-invoked "dream now" from the memory settings page; bypasses the idle gate. */
+    MANUAL,
 }
 
 /** Best-effort scheduling; durable dirty epochs and pending run rows remain the authority. */
@@ -36,6 +38,7 @@ interface DreamSynthesisWorkScheduler {
         runId: String,
         policy: DreamingCostPolicy,
         replaceExisting: Boolean = false,
+        bypassIdle: Boolean = false,
     )
 
     /**
@@ -73,12 +76,14 @@ class AndroidDreamSynthesisWorkScheduler(
         runId: String,
         policy: DreamingCostPolicy,
         replaceExisting: Boolean,
+        bypassIdle: Boolean,
     ) = enqueueScopeInternal(
         scopeId = scopeId,
         runId = runId,
         policy = policy,
         replaceExisting = replaceExisting,
         initialDelayMsOverride = null,
+        bypassIdle = bypassIdle,
     )
 
     override fun enqueueScopeAfterIdleRecheck(
@@ -100,6 +105,7 @@ class AndroidDreamSynthesisWorkScheduler(
         policy: DreamingCostPolicy,
         replaceExisting: Boolean,
         initialDelayMsOverride: Long?,
+        bypassIdle: Boolean = false,
     ) {
         val validatedPolicy = requireNotNull(policy.validatedOrNull()) {
             "Invalid Dreaming cost policy"
@@ -127,6 +133,7 @@ class AndroidDreamSynthesisWorkScheduler(
                     // Identity only. Policy, scope state, model, and Memory stay out of WorkManager.
                     .putString(DreamSynthesisWorker.KEY_SCOPE_ID, plan.scopeId.value)
                     .putString(DreamSynthesisWorker.KEY_RUN_ID, plan.runId)
+                    .putBoolean(DreamSynthesisWorker.KEY_BYPASS_IDLE, bypassIdle)
                     .build(),
             )
             .build()

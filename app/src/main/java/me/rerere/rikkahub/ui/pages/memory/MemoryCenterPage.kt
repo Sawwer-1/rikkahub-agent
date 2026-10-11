@@ -56,6 +56,9 @@ fun MemoryCenterPage(id: String) {
     val dreamDetailState by vm.dreamDetailState.collectAsStateWithLifecycle()
     val dreamingScopePreferences by vm.dreamingScopePreferences.collectAsStateWithLifecycle()
     val dreamingCostPolicy by vm.dreamingCostPolicy.collectAsStateWithLifecycle()
+    val dreamRuntimeStatus by vm.dreamRuntimeStatus.collectAsStateWithLifecycle()
+    val dreamNowRunning by vm.dreamNowRunning.collectAsStateWithLifecycle()
+    val dreamNowMessage by vm.dreamNowMessage.collectAsStateWithLifecycle()
     val pendingPolicies by vm.pendingPolicies.collectAsStateWithLifecycle()
     val memories = vm.library.collectAsLazyPagingItems()
     val candidates = vm.candidates.collectAsLazyPagingItems()
@@ -221,6 +224,10 @@ fun MemoryCenterPage(id: String) {
                         recallState = recallState,
                         dreamingScopePreferences = dreamingScopePreferences,
                         dreamingCostPolicy = dreamingCostPolicy,
+                        dreamRuntimeStatus = dreamRuntimeStatus,
+                        dreamNowRunning = dreamNowRunning,
+                        dreamNowMessage = dreamNowMessage,
+                        onDreamNow = vm::dreamNow,
                         narrativeNamesForOrigin = narrativeNamesForOrigin,
                         onUpdateAssistant = vm::updateAssistant,
                         onAutoSaveModeChange = vm::setAutoSaveMode,

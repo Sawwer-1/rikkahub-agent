@@ -165,13 +165,15 @@ class DreamSynthesisCoordinator(
     suspend fun scanDirtyScopes(
         reason: DreamSynthesisScanReason,
         limit: Int = DEFAULT_DREAM_SYNTHESIS_SCAN_LIMIT,
+        bypassIdle: Boolean = false,
     ): DreamSynthesisScanResult = schedulingMutex.withLock {
-        scanDirtyScopesLocked(reason, limit)
+        scanDirtyScopesLocked(reason, limit, bypassIdle)
     }
 
     private suspend fun scanDirtyScopesLocked(
         reason: DreamSynthesisScanReason,
         limit: Int,
+        bypassIdle: Boolean = false,
     ): DreamSynthesisScanResult {
         require(limit in 1..MAX_DREAM_SYNTHESIS_SCAN_LIMIT)
         val now = clock.nowEpochMs()
@@ -230,6 +232,7 @@ class DreamSynthesisCoordinator(
                         reason == DreamSynthesisScanReason.APP_IDLE_RECHECK,
                     idleDeadlineAlreadyObserved =
                         reason == DreamSynthesisScanReason.APP_IDLE_RECHECK,
+                    bypassIdle = bypassIdle,
                 )) {
                     is ScheduleOneResult.Scheduled -> {
                         scheduled += scope.scopeId
@@ -388,6 +391,7 @@ class DreamSynthesisCoordinator(
         allowCreate: Boolean,
         replaceExisting: Boolean,
         idleDeadlineAlreadyObserved: Boolean,
+        bypassIdle: Boolean = false,
     ): ScheduleOneResult {
         val mode = if (scope.lastAppliedMemoryEpoch == 0L) DreamRunMode.FULL
         else DreamRunMode.INCREMENTAL
@@ -425,6 +429,7 @@ class DreamSynthesisCoordinator(
                         // RUNNING provider call would reset Work attempt identity and make unknown
                         // spend look like a first attempt.
                         replaceExisting = effectiveReplace,
+                        bypassIdle = bypassIdle,
                     )
                 }
                 ScheduleOneResult.Scheduled(created = ensured.created)
