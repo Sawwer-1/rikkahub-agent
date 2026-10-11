@@ -330,10 +330,18 @@ class ConversationRuntimeTest {
             sequence = 3L,
         )
         assertEquals(SubmitResult.Accepted(resumeQueue.id), runtime.enqueueEnvelope(resumeQueue))
+        // §14（ea53e2a）：对账不是死路——barrier 待对账时 ResumeQueueCommand 走 durable 重扫
+        // 完成延迟对账后放行，不再回弹 Conflict；队列与等待集皆空时 reconcileStopPause
+        // 把停机暂停回落为 Idle。
+        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { resumeQueue.result.await() })
         withTimeout(5_000) {
-            assertTrue(resumeQueue.result.await() is CommandOutcome.Conflict)
+            while (runtime.runtimeState.value != RuntimeState.Idle) {
+                kotlinx.coroutines.delay(10)
+            }
         }
-        assertEquals(RuntimeState.Paused, runtime.runtimeState.value)
+        assertFalse(runtime.queueStatus.value.paused)
+        // 对账重扫以 durable 行为准，不得复活已终态化的等待行。
+        assertEquals(DurableCommandState.CANCELLED.name, dao.row(rootId)?.state)
 
         runtime.close()
         scope.cancel()
