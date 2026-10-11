@@ -30,9 +30,11 @@ class DreamSynthesisWorker(
         val scopeId = DreamScopeId.parseOrNull(inputData.getString(KEY_SCOPE_ID))
             ?: return Result.failure()
         val runId = inputData.getString(KEY_RUN_ID) ?: return Result.failure()
-        // Manual "dream now" runs skip the idle gate (the user explicitly asked); every other
-        // gate (cost policy environment, budget) still applies.
+        // Manual "dream now" runs skip the idle gate AND the charging/battery/metered
+        // environment gates (the user explicitly asked); the network gate and the budget
+        // gate still apply — no connection or exhausted daily budget can never synthesize.
         val bypassIdle = inputData.getBoolean(KEY_BYPASS_IDLE, false)
+        val bypassEnvironment = inputData.getBoolean(KEY_BYPASS_ENVIRONMENT, false)
         try {
             requireCanonicalDreamRunId(runId)
         } catch (_: Exception) {
@@ -47,6 +49,7 @@ class DreamSynthesisWorker(
                     workAttempt = runAttemptCount,
                     environment = readDreamWorkerEnvironment(applicationContext),
                     bypassIdle = bypassIdle,
+                    bypassEnvironment = bypassEnvironment,
                 )
             ) {
                 DreamSynthesisWorkerDirective.Complete -> Result.success()
@@ -105,6 +108,7 @@ class DreamSynthesisWorker(
         const val KEY_SCOPE_ID = "dream_synthesis_scope_id"
         const val KEY_RUN_ID = "dream_synthesis_run_id"
         const val KEY_BYPASS_IDLE = "dream_synthesis_bypass_idle"
+        const val KEY_BYPASS_ENVIRONMENT = "dream_synthesis_bypass_environment"
         private const val TAG = "DreamSynthesisWorker"
     }
 }

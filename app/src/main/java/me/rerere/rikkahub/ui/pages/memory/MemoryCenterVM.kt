@@ -8,6 +8,8 @@ import androidx.paging.cachedIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
@@ -429,16 +431,29 @@ class MemoryCenterVM(
 
     // ---- Dream 运行状态与手动触发（2026-10-11 A 系列：主公裁定暴露既有能力） ----
 
-    /** 设置页「运行状态」卡的数据：今日用量 / 上次做梦 / 当前被挡原因。 */
+    /** 「最近运行」列表的一行：时间 · 结果 · token。 */
+    data class DreamRunRow(
+        val timeText: String,
+        val outcome: String,
+        val tokensText: String?,
+    )
+
+    /** 设置页「运行状态」卡的数据：今日用量 / 上次做梦 / 当前被挡原因 / 活动 run / 最近运行。 */
     data class DreamRuntimeStatus(
         val usageSummary: String,
         val lastRunSummary: String,
         val blockers: List<String>,
+        /** 当前 PENDING/RUNNING run 的进度摘要；无活动 run 时为 null。 */
+        val activeRunSummary: String? = null,
+        /** 最近若干条 run 历史（含失败原因），最新的在前。 */
+        val recentRuns: List<DreamRunRow> = emptyList(),
     )
 
     val dreamNowRunning = MutableStateFlow(false)
     val dreamNowMessage = MutableStateFlow<String?>(null)
     val dreamRuntimeStatus = MutableStateFlow<DreamRuntimeStatus?>(null)
+
+    private var dreamStatusPollingJob: Job? = null
 
     init {
         refreshDreamRuntimeStatus()
@@ -456,7 +471,7 @@ class MemoryCenterVM(
                 )
                 dreamNowMessage.value = when {
                     result.scheduledScopes.isNotEmpty() ->
-                        "已触发 ${result.scheduledScopes.size} 个范围的做梦，稍候查看结果"
+                        "已开始做梦：本次立即执行（联网即可，无需充电/空闲），进度见下方"
                     result.deferredScopes.values.any {
                         it == DreamSynthesisScheduleDeferral.DAILY_BUDGET_EXHAUSTED
                     } -> "今日额度已用尽（UTC 00:00 重置）"
@@ -475,6 +490,9 @@ class MemoryCenterVM(
             } finally {
                 refreshDreamRuntimeStatus()
                 dreamNowRunning.value = false
+                // 2026-10-11 主公令：触发后持续轮询，让「排队→做梦→完成」实时可见，
+                // 不再出现"只显示正在处理"的悬挂体验。
+                startDreamStatusPolling()
             }
         }
     }
@@ -521,11 +539,16 @@ class MemoryCenterVM(
             }
         }
 
-        // 上次做梦
-        val lastRun = dreamDao.listRecentRuns(scope.value, 10).firstOrNull()
+        // 2026-10-11 主公令：活动 run 与终局 run 分开展示——此前"上次做梦"永远被最新
+        // PENDING 行（排队中永不终局）遮蔽成"进行中"，后台跑了五次的失败明细完全不可见。
+        val recent = dreamDao.listRecentRuns(scope.value, 10)
+        val activeRun = recent.firstOrNull { it.status == "PENDING" || it.status == "RUNNING" }
+        val lastTerminalRun = recent.firstOrNull { it.status != "PENDING" && it.status != "RUNNING" }
+
         var lastRunSummary = "从未做过梦（积压会在条件满足时自动整理）"
-        if (lastRun != null) {
-            val atMs = lastRun.finishedAtMs ?: lastRun.startedAtMs ?: lastRun.createdAtMs
+        if (lastTerminalRun != null) {
+            val atMs = lastTerminalRun.finishedAtMs ?: lastTerminalRun.startedAtMs
+                ?: lastTerminalRun.createdAtMs
             val ago = java.time.Duration.between(
                 java.time.Instant.ofEpochMilli(atMs),
                 java.time.Instant.now(),
@@ -536,12 +559,42 @@ class MemoryCenterVM(
                 ago.toDays() < 1 -> "${ago.toHours()} 小时前"
                 else -> "${ago.toDays()} 天前"
             }
-            val outcome = when (lastRun.status) {
-                "SUCCEEDED" -> "成功"
-                "RUNNING", "PENDING" -> "进行中"
-                else -> lastRun.failureCode?.let { "失败：$it" } ?: "失败"
+            lastRunSummary = "上次做梦：$agoText（${dreamRunOutcomeText(lastTerminalRun)}）"
+        }
+
+        val activeRunSummary: String? = activeRun?.let { run ->
+            val nowMs = System.currentTimeMillis()
+            if (run.status == "RUNNING") {
+                val mins = ((nowMs - (run.startedAtMs ?: run.createdAtMs)) / 60000L).coerceAtLeast(0L)
+                "做梦进行中（已 $mins 分钟）…"
+            } else {
+                val waited = java.time.Duration.between(
+                    java.time.Instant.ofEpochMilli(run.createdAtMs),
+                    java.time.Instant.now(),
+                )
+                val waitedText = when {
+                    waited.toMinutes() < 1 -> "刚进入队列"
+                    waited.toHours() < 1 -> "已排队 ${waited.toMinutes()} 分钟"
+                    else -> "已排队 ${waited.toHours()} 小时"
+                }
+                "$waitedText——等待条件满足后自动开跑（点「立即做梦」可跳过等待）"
             }
-            lastRunSummary = "上次做梦：$agoText（$outcome）"
+        }
+
+        val timeFormatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+        val recentRuns = recent.take(5).map { run ->
+            val atMs = run.startedAtMs ?: run.createdAtMs
+            DreamRunRow(
+                timeText = timeFormatter.format(
+                    java.time.Instant.ofEpochMilli(atMs).atZone(java.time.ZoneId.systemDefault()),
+                ),
+                outcome = dreamRunOutcomeText(run),
+                tokensText = if (run.inputTokens != null || run.outputTokens != null) {
+                    "token 入 ${run.inputTokens ?: 0} / 出 ${run.outputTokens ?: 0}"
+                } else {
+                    null
+                },
+            )
         }
 
         // 被挡原因（generate 关是第一位；其余为成本/设备条件）
@@ -584,7 +637,53 @@ class MemoryCenterVM(
             usageSummary = usageSummary,
             lastRunSummary = lastRunSummary,
             blockers = blockers,
+            activeRunSummary = activeRunSummary,
+            recentRuns = recentRuns,
         )
+    }
+
+    /** run 的中文结果文案：成功带产出条数，失败码翻译成人话，不再裸抛英文枚举。 */
+    private fun dreamRunOutcomeText(run: me.rerere.rikkahub.data.db.entity.DreamRunEntity): String =
+        when (run.status) {
+            "SUCCEEDED" -> "成功·产出 ${run.outputClaimCount ?: 0} 条画像"
+            "PENDING" -> "排队中"
+            "RUNNING" -> "进行中"
+            else -> dreamFailureText(run.failureCode)
+        }
+
+    private fun dreamFailureText(code: String?): String = when (code) {
+        null -> "失败"
+        "MODEL_PERMANENT_FAILURE" -> "失败·模型永久错误"
+        "MODEL_UNAVAILABLE", "MODEL_PROVIDER_UNAVAILABLE" -> "失败·模型或服务商不可用"
+        "MODEL_TIMEOUT" -> "失败·模型超时"
+        "MODEL_CANCELLED_BY_PROVIDER" -> "失败·被服务商取消"
+        "MODEL_OUTPUT_LIMIT" -> "失败·输出超限"
+        "MODEL_SAFETY_REJECTION" -> "失败·模型安全拒绝"
+        "MODEL_INVALID_CONFIGURATION" -> "失败·模型配置无效"
+        "MODEL_AUDIT_MISMATCH" -> "失败·用量审计不符"
+        "MODEL_OUTPUT_PARSE_REJECTED" -> "失败·模型输出无法解析"
+        "MODEL_OUTPUT_VALIDATION_REJECTED" -> "失败·模型输出校验被拒"
+        "SNAPSHOT_COMPILATION_FAILED" -> "失败·快照编译失败"
+        "FEATURE_DISABLED" -> "已取消·功能被关闭"
+        else -> "失败·$code"
+    }
+
+    /**
+     * 手动触发后轮询刷新状态卡（2026-10-11 主公令：进度可视化）。
+     * 每 3 秒刷一次，直到无活动 run 或 90 秒上限——自动通道被充电等条件挡住时，
+     * 页面会一直显示"排队中 + 等待原因"，不再静默悬挂。
+     */
+    private fun startDreamStatusPolling() {
+        dreamStatusPollingJob?.cancel()
+        dreamStatusPollingJob = viewModelScope.launch(Dispatchers.IO) {
+            val deadline = System.currentTimeMillis() + 90_000L
+            while (System.currentTimeMillis() < deadline) {
+                delay(3_000L)
+                val status = runCatching { buildDreamRuntimeStatus() }.getOrNull() ?: break
+                dreamRuntimeStatus.value = status
+                if (status.activeRunSummary == null) break
+            }
+        }
     }
 
     fun processNow(retryFailed: Boolean = false) {

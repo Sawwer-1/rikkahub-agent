@@ -224,6 +224,23 @@ class DreamSynthesisCoordinatorTest {
     }
 
     @Test
+    fun `manual dream-now replaces queued work and bypasses idle`() = runBlocking {
+        // 2026-10-11 主公令：手动通道必须真立即——REPLACE 换掉可能带 idle 阈值延迟与
+        // 充电约束的旧排队请求（KEEP 会静默丢弃新请求），bypassIdle 贯通调度与运行时。
+        val scheduler = RecordingScheduler()
+
+        val result = coordinator(
+            FakeSchedulingStore(mutableListOf(dirty(PRIVATE_SCOPE))),
+            scheduler,
+        ).scanDirtyScopes(DreamSynthesisScanReason.MANUAL, bypassIdle = true)
+
+        assertEquals(listOf(PRIVATE_SCOPE), result.scheduledScopes)
+        assertTrue(scheduler.enqueuedScopes.single().replaceExisting)
+        assertTrue(scheduler.enqueuedScopes.single().bypassIdle)
+        assertFalse(scheduler.enqueuedScopes.single().idleDeadlineAlreadyObserved)
+    }
+
+    @Test
     fun `bounded follow-up stops once the page contains only durable existing runs`() = runBlocking {
         val store = FakeSchedulingStore(mutableListOf(dirty(PRIVATE_SCOPE)))
         val scheduler = RecordingScheduler()
@@ -395,6 +412,7 @@ class DreamSynthesisCoordinatorTest {
             val policy: DreamingCostPolicy,
             val replaceExisting: Boolean,
             val idleDeadlineAlreadyObserved: Boolean,
+            val bypassIdle: Boolean,
         )
 
         val enqueuedScopes = mutableListOf<EnqueuedScope>()
@@ -410,6 +428,7 @@ class DreamSynthesisCoordinatorTest {
             runId: String,
             policy: DreamingCostPolicy,
             replaceExisting: Boolean,
+            bypassIdle: Boolean,
         ) {
             if (throwOnScopeEnqueue) throw ExpectedEnqueueFailure()
             enqueuedScopes += EnqueuedScope(
@@ -418,6 +437,7 @@ class DreamSynthesisCoordinatorTest {
                 policy,
                 replaceExisting,
                 idleDeadlineAlreadyObserved = false,
+                bypassIdle = bypassIdle,
             )
         }
 
@@ -434,6 +454,7 @@ class DreamSynthesisCoordinatorTest {
                 policy,
                 replaceExisting,
                 idleDeadlineAlreadyObserved = true,
+                bypassIdle = false,
             )
         }
 

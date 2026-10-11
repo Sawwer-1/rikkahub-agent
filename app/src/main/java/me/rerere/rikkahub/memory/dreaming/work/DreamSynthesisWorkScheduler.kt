@@ -111,7 +111,16 @@ class AndroidDreamSynthesisWorkScheduler(
             "Invalid Dreaming cost policy"
         }
         val plan = dreamSynthesisScopeWorkPlan(scopeId, runId, replaceExisting)
-        val constraints = dreamSynthesisConstraintPlan(validatedPolicy)
+        // 2026-10-11 主公令：手动「立即做梦」必须真立即。此前 bypassIdle 只写进 payload
+        // （运行时跳 idle 门），WorkManager 层却仍带 idleThresholdMinutes 初始延迟与
+        // 充电/非计量网络硬约束——未插电时排队中的 Work 永不执行，按钮点了毫无反应。
+        // 手动通道：零延迟 + 仅保留联网约束（无网调不了模型），充电/电池/计量门交由
+        // 运行时按 bypassEnvironment 裁决，额度门原样保留。
+        val constraints = if (bypassIdle) {
+            dreamSynthesisManualConstraintPlan(validatedPolicy)
+        } else {
+            dreamSynthesisConstraintPlan(validatedPolicy)
+        }
         dreamSynthesisLegacyScopeWorkNames(scopeId).forEach { legacyName ->
             workManager.cancelUniqueWork(legacyName)
         }
@@ -120,7 +129,9 @@ class AndroidDreamSynthesisWorkScheduler(
             .setConstraints(constraints.toWorkConstraints())
             .setInitialDelay(
                 initialDelayMsOverride
-                    ?: TimeUnit.MINUTES.toMillis(constraints.initialDelayMinutes.toLong()),
+                    ?: TimeUnit.MINUTES.toMillis(
+                        if (bypassIdle) 0L else constraints.initialDelayMinutes.toLong(),
+                    ),
                 TimeUnit.MILLISECONDS,
             )
             .setBackoffCriteria(
@@ -134,6 +145,7 @@ class AndroidDreamSynthesisWorkScheduler(
                     .putString(DreamSynthesisWorker.KEY_SCOPE_ID, plan.scopeId.value)
                     .putString(DreamSynthesisWorker.KEY_RUN_ID, plan.runId)
                     .putBoolean(DreamSynthesisWorker.KEY_BYPASS_IDLE, bypassIdle)
+                    .putBoolean(DreamSynthesisWorker.KEY_BYPASS_ENVIRONMENT, bypassIdle)
                     .build(),
             )
             .build()
@@ -247,6 +259,16 @@ internal fun dreamSynthesisConstraintPlan(policy: DreamingCostPolicy): DreamSynt
         initialDelayMinutes = validated.idleThresholdMinutes,
     )
 }
+
+/** Manual "dream now" plan: run now, only require network (charging/battery/metered stay out). */
+internal fun dreamSynthesisManualConstraintPlan(
+    @Suppress("UNUSED_PARAMETER") policy: DreamingCostPolicy,
+): DreamSynthesisConstraintPlan = DreamSynthesisConstraintPlan(
+    networkPolicy = DreamNetworkPolicy.CONNECTED,
+    requireBatteryNotLow = false,
+    requireCharging = false,
+    initialDelayMinutes = 0,
+)
 
 private fun DreamSynthesisConstraintPlan.toWorkConstraints(): Constraints =
     Constraints.Builder()

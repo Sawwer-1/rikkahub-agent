@@ -127,7 +127,7 @@ fun MemoryDreamTab(
                     }
                     if (dreamNowRunning) {
                         Text(
-                            "已跳过空闲等待，仍受充电/网络/额度条件约束",
+                            "已提交，本次立即执行：联网即跑，不受充电/空闲限制",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -139,6 +139,24 @@ fun MemoryDreamTab(
                             color = MaterialTheme.colorScheme.primary,
                         )
                     }
+                    // 2026-10-11 主公令：进度可视化——活动 run 状态行 + 最近运行历史，
+                    // 排队/进行/失败一目了然，不再出现"只显示正在处理"的黑箱。
+                    runtimeStatus?.activeRunSummary?.let { active ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Text(
+                                active,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
                     runtimeStatus?.let { status ->
                         if (status.blockers.isNotEmpty()) {
                             status.blockers.forEach { blocker ->
@@ -148,12 +166,36 @@ fun MemoryDreamTab(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                            Text(
+                                "（以上为自动做梦的条件；点「立即做梦」不受充电/空闲/计量网络限制，联网即可）",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                         Text(
                             status.lastRunSummary,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        if (status.recentRuns.isNotEmpty()) {
+                            HorizontalDivider()
+                            Text(
+                                "最近运行",
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                            status.recentRuns.forEach { run ->
+                                Text(
+                                    text = buildString {
+                                        append(run.timeText)
+                                        append(" · ")
+                                        append(run.outcome)
+                                        run.tokensText?.let { append(" · "); append(it) }
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     }
                 }
             }

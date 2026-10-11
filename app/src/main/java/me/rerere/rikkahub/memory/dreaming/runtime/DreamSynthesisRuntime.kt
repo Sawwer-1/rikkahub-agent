@@ -87,6 +87,10 @@ class DreamSynthesisRuntime(
         // gate — the user explicitly asked while the app is necessarily in the foreground.
         // Cost-safety gates (network/battery/charging environment, budget) still apply.
         bypassIdle: Boolean = false,
+        // Manual runs also skip the charging/battery/metered environment gates (2026-10-11
+        // 主公令：点了就要跑). The network gate stays: no connection can never reach the
+        // provider, and the budget gate is enforced later regardless.
+        bypassEnvironment: Boolean = false,
     ): DreamSynthesisWorkerDirective {
         require(workAttempt >= 0)
         requireCanonicalDreamRunId(runId)
@@ -101,7 +105,7 @@ class DreamSynthesisRuntime(
                 DreamWorkerDeferralReason.POLICY_UNAVAILABLE,
                 null,
             )
-        environment.deferralFor(policy)?.let { reason ->
+        environment.deferralFor(policy, bypassEnvironment)?.let { reason ->
             return DreamSynthesisWorkerDirective.Deferred(reason, null)
         }
         val now = clock.nowEpochMs()
@@ -217,8 +221,10 @@ private fun DreamRunEntity.hasDurableProviderDispatchEvidence(): Boolean =
 
 internal fun DreamWorkerEnvironment.deferralFor(
     policy: DreamingCostPolicy,
+    bypassEnvironment: Boolean = false,
 ): DreamWorkerDeferralReason? = when {
     !networkConnected -> DreamWorkerDeferralReason.NETWORK_UNAVAILABLE
+    bypassEnvironment -> null
     policy.networkPolicy == DreamNetworkPolicy.UNMETERED && networkMetered ->
         DreamWorkerDeferralReason.UNMETERED_NETWORK_REQUIRED
     policy.requireBatteryNotLow && !batteryNotLow ->

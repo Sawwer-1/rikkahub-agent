@@ -231,10 +231,13 @@ class DreamSynthesisCoordinator(
                         // Worker is still RUNNING, then leave the durable PENDING row with no
                         // Work request. A RUNNING provider call is still protected by
                         // schedule()'s running fence. Cost changes likewise rebuild immutable
-                        // Work constraints.
+                        // Work constraints. MANUAL replaces too: an older queued request can
+                        // still carry the 15-min idle delay + charging constraints, and KEEP
+                        // would silently drop the fresh manual request behind it.
                         replaceExisting = reason == DreamSynthesisScanReason.STARTUP ||
                             reason == DreamSynthesisScanReason.COST_POLICY_CHANGED ||
-                            reason == DreamSynthesisScanReason.APP_IDLE_RECHECK,
+                            reason == DreamSynthesisScanReason.APP_IDLE_RECHECK ||
+                            reason == DreamSynthesisScanReason.MANUAL,
                         idleDeadlineAlreadyObserved =
                             reason == DreamSynthesisScanReason.APP_IDLE_RECHECK,
                         bypassIdle = bypassIdle,

@@ -53,6 +53,19 @@ class DreamWorkerEnvironmentTest {
     }
 
     @Test
+    fun `manual bypass skips charging battery and metered gates but not the network gate`() {
+        // 2026-10-11 主公令：手动「立即做梦」点了就要跑——只保留联网门。
+        assertNull(
+            environment(metered = true, batteryNotLow = false, charging = false)
+                .deferralFor(conservative, bypassEnvironment = true),
+        )
+        assertEquals(
+            DreamWorkerDeferralReason.NETWORK_UNAVAILABLE,
+            environment(connected = false).deferralFor(conservative, bypassEnvironment = true),
+        )
+    }
+
+    @Test
     fun `budget deferral is not converted into a model retry`() {
         val deferred = DreamSynthesisRunResult.PolicyDeferred(
             reason = DreamBudgetDenialReason.DAILY_RUN_LIMIT,

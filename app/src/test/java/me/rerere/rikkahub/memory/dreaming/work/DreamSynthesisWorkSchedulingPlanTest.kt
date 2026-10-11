@@ -103,6 +103,24 @@ class DreamSynthesisWorkSchedulingPlanTest {
         assertEquals(45, plan.initialDelayMinutes)
     }
 
+    @Test
+    fun `manual dream-now plan runs immediately with network as the only constraint`() {
+        // 2026-10-11 主公令：手动通道零延迟 + 仅联网约束（充电/电池/计量门不再挡排队）。
+        val plan = dreamSynthesisManualConstraintPlan(
+            DreamingCostPolicy(
+                networkPolicy = DreamNetworkPolicy.UNMETERED,
+                requireBatteryNotLow = true,
+                requireCharging = true,
+                idleThresholdMinutes = 45,
+            ),
+        )
+
+        assertEquals(DreamNetworkPolicy.CONNECTED, plan.networkPolicy)
+        assertTrue(!plan.requireBatteryNotLow)
+        assertTrue(!plan.requireCharging)
+        assertEquals(0, plan.initialDelayMinutes)
+    }
+
     private fun runId(value: Int): String =
         "00000000-0000-0000-0000-${value.toString().padStart(12, '0')}"
 
