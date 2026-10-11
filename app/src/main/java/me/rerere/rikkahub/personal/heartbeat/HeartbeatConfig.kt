@@ -11,6 +11,11 @@ data class HeartbeatConfig(
     val generationTimeoutSeconds: Int = 180,
     val maxToolSteps: Int = 5,
     val allowLowRiskWrites: Boolean = false,
+    // Floating bubble (assist A, ported from orangechat): pop a Telegram-style round bubble
+    // when the heartbeat delivers a user-visible message / question. Default off — an
+    // overlay popping over other apps is opt-in surface; the toggle lives in the heartbeat
+    // settings page.
+    val floatingBubbleEnabled: Boolean = false,
     val heartbeatPrompt: String = DEFAULT_HEARTBEAT_PROMPT,
     val readOnlyToolNames: Set<String> = DEFAULT_READ_ONLY_TOOLS,
     val lowRiskWriteToolNames: Set<String> = DEFAULT_LOW_RISK_WRITE_TOOLS,

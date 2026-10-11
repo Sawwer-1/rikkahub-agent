@@ -226,6 +226,11 @@ class HeartbeatSettingsActivity : ComponentActivity() {
                                 value = draft.maxToolSteps,
                                 onValueChange = { draft = draft.copy(maxToolSteps = it) },
                             )
+                            ToggleRow(
+                                label = stringResource(R.string.heartbeat_floating_bubble_label),
+                                checked = draft.floatingBubbleEnabled,
+                                onCheckedChange = { draft = draft.copy(floatingBubbleEnabled = it) },
+                            )
                             if (draft.normalized() != draft) {
                                 Text(
                                     text = stringResource(R.string.heartbeat_config_adjustment_warning),

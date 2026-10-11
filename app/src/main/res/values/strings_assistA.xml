@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<resources>
+  <!-- Heartbeat floating bubble (assist A batch) -->
+  <string name="floating_bubble_notification_channel">Heartbeat floating bubble</string>
+  <string name="floating_bubble_notification_title">Waiting for you to take a look</string>
+  <string name="floating_bubble_content_description">Proactive message floating bubble, tap to open the conversation</string>
+  <string name="heartbeat_floating_bubble_label">Floating bubble on proactive message</string>
+</resources>

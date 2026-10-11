@@ -136,6 +136,13 @@ object ToolApprovalDefaults {
         "batch_move",
         "batch_delete",
 
+        // Spreadsheet tools (assist A, ported from orangechat) — excel_write / csv_write land
+        // files on disk; csv_parse reads an arbitrary file into model context, the same trust
+        // footprint as read_file.
+        "excel_write",
+        "csv_parse",
+        "csv_write",
+
         // Telegram outbound — the bot can DM other chats / change its own config
         "telegram_send_message",
         "telegram_send_photo",

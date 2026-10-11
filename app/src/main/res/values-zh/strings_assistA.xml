@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<resources>
+  <!-- 心跳悬浮球（assist A 批次） -->
+  <string name="floating_bubble_notification_channel">心跳悬浮球</string>
+  <string name="floating_bubble_notification_title">等你查看</string>
+  <string name="floating_bubble_content_description">主动消息悬浮球，点按打开会话</string>
+  <string name="heartbeat_floating_bubble_label">主动消息时弹出悬浮球</string>
+</resources>

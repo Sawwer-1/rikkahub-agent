@@ -576,6 +576,19 @@
         android:value="local scheduled personal assistant heartbeat" />
     </service>
 
+    <!-- Heartbeat floating bubble (assist A, ported from orangechat): transient
+         Telegram-style overlay bubble shown when a heartbeat message arrives. Needs
+         SYSTEM_ALERT_WINDOW (already declared); silently degrades to notification-only
+         without the overlay grant or when the per-assistant toggle is off. -->
+    <service
+      android:name=".personal.heartbeat.FloatingBubbleService"
+      android:exported="false"
+      android:foregroundServiceType="specialUse">
+      <property
+        android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+        android:value="transient floating bubble for heartbeat proactive messages" />
+    </service>
+
     <receiver
       android:name=".personal.heartbeat.HeartbeatAlarmReceiver"
       android:exported="false" />

@@ -38,6 +38,7 @@ import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.datastore.getSelectedTTSProvider
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.toMessageNode
 import me.rerere.rikkahub.data.repository.ConversationRepository
@@ -143,7 +144,12 @@ class HeartbeatGenerationWorkflow(
             HeartbeatPromptContext.build(config.heartbeatPrompt, completedConversationMessages),
         )
         val requestMessages = history + prompt
-        val allAvailableTools = buildAvailableTools(settings, assistant, conversationId)
+        val allAvailableTools = buildAvailableTools(
+            settings = settings,
+            assistant = assistant,
+            conversationId = conversationId,
+            bubbleEnabled = config.floatingBubbleEnabled,
+        )
         val allowedTools = HeartbeatToolPolicy(config).filter(allAvailableTools, mode)
         // Memory is read in the assistant scope, which is the only memory scope AAA keeps
         // (jude additionally had per-conversation MemoryScope; AAA has no such store, so the
@@ -305,6 +311,13 @@ class HeartbeatGenerationWorkflow(
             senderName = assistant.name.ifBlank { model.displayName },
             message = generatedText,
         )
+        FloatingBubbleService.showIfEnabled(
+            context = context,
+            enabled = config.floatingBubbleEnabled,
+            conversationId = savedConversationId.toString(),
+            senderName = assistant.name.ifBlank { model.displayName },
+            avatarEmoji = (assistant.avatar as? Avatar.Emoji)?.content,
+        )
         return HeartbeatGenerationResult(
             outcome = HeartbeatGenerationOutcome.SENT,
             reason = HeartbeatRunReason.MESSAGE_SENT,
@@ -453,6 +466,7 @@ class HeartbeatGenerationWorkflow(
         settings: Settings,
         assistant: Assistant,
         conversationId: Uuid,
+        bubbleEnabled: Boolean,
     ): List<Tool> = buildList {
         val voiceCallConfigured = settings.getSelectedTTSProvider() != null
         val invocationContext = ToolInvocationContext(
@@ -490,6 +504,13 @@ class HeartbeatGenerationWorkflow(
                                     conversationId = conversationId.toString(),
                                     senderName = assistant.name.ifBlank { "AI" },
                                     question = questionText,
+                                )
+                                FloatingBubbleService.showIfEnabled(
+                                    context = context,
+                                    enabled = bubbleEnabled,
+                                    conversationId = conversationId.toString(),
+                                    senderName = assistant.name.ifBlank { "AI" },
+                                    avatarEmoji = (assistant.avatar as? Avatar.Emoji)?.content,
                                 )
                                 listOf(
                                     UIMessagePart.Text(

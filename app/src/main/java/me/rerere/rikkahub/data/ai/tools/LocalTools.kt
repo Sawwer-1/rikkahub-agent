@@ -2018,6 +2018,13 @@ class LocalTools(
             tools.add(batchCopyTool())
             tools.add(batchMoveTool())
             tools.add(batchDeleteTool())
+            // Spreadsheet surface (assist A, ported from orangechat CsvParser/ExcelGenerator)
+            // — xlsx write + CSV parse/write. Same toggle group as the file tools; every path
+            // goes through PathSafetyGuard / ContentUriSafetyGuard, and the three tools are
+            // approval-gated via ToolApprovalDefaults.
+            tools.add(me.rerere.rikkahub.data.ai.tools.local.excelWriteTool(context))
+            tools.add(me.rerere.rikkahub.data.ai.tools.local.csvParseTool(context))
+            tools.add(me.rerere.rikkahub.data.ai.tools.local.csvWriteTool(context))
         }
         if (options.contains(LocalToolOption.McpControl)) {
             tools.add(me.rerere.rikkahub.data.ai.mcp.control.mcpListTool(settingsStore, mcpManager))
