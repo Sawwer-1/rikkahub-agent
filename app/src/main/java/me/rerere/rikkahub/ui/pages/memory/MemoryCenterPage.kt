@@ -185,6 +185,7 @@ fun MemoryCenterPage(id: String) {
                         onCreate = vm::createMemory,
                         onUpdate = vm::updateMemory,
                         onArchive = vm::archive,
+                        onDelete = vm::delete,
                         onRestore = vm::restore,
                         revisions = vm::revisions,
                         onRestoreRevision = vm::restoreRevision,
@@ -207,6 +208,17 @@ fun MemoryCenterPage(id: String) {
                     MemoryCenterTab.DREAM -> MemoryDreamTab(
                         projection = dreamProjection,
                         detailState = dreamDetailState,
+                        generateEnabled = dreamingScopePreferences.generate,
+                        onToggleGenerate = { enabled ->
+                            vm.updateDreamingScopePreference(
+                                me.rerere.rikkahub.memory.dreaming.runtime
+                                    .DreamingScopePreferenceMutation.SetGenerate(enabled),
+                            )
+                        },
+                        runtimeStatus = dreamRuntimeStatus,
+                        dreamNowRunning = dreamNowRunning,
+                        dreamNowMessage = dreamNowMessage,
+                        onDreamNow = vm::dreamNow,
                         onOpenClaim = vm::openDreamClaim,
                         onCloseClaim = vm::closeDreamClaim,
                         onRevealEvidence = vm::revealDreamEvidence,

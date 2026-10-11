@@ -527,6 +527,14 @@ sealed interface MemoryMutationCommand {
         val revision: Int,
         val approvalSource: MemoryApprovalSource,
     ) : MemoryMutationCommand
+
+    /** Hard delete (2026-10-11 主公裁定): removes the row and its links/revisions/evidence. */
+    data class Delete(
+        val memoryId: Int,
+        val expectedScopeId: String,
+        val expectedRevision: Int? = null,
+        val approvalSource: MemoryApprovalSource,
+    ) : MemoryMutationCommand
 }
 
 sealed interface MemoryMutationResult {

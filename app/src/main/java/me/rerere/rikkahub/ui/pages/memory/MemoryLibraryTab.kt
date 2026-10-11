@@ -62,6 +62,7 @@ fun MemoryLibraryTab(
     onUpdate: (MemoryEntity, MemoryWriteInput) -> Unit,
     onArchive: (MemoryEntity) -> Unit,
     onRestore: (MemoryEntity) -> Unit,
+    onDelete: (MemoryEntity) -> Unit,
     revisions: (MemoryEntity) -> Flow<List<MemoryRevisionEntity>>,
     onRestoreRevision: (MemoryEntity, Int) -> Unit,
 ) {
@@ -186,6 +187,7 @@ fun MemoryLibraryTab(
             },
         )
     }
+    var deleting by remember { mutableStateOf<MemoryEntity?>(null) }
     detail?.let { memory ->
         MemoryDetailDialog(
             memory = memory,
@@ -202,6 +204,33 @@ fun MemoryLibraryTab(
                 detail = null
             },
             onRestoreRevision = { revision -> onRestoreRevision(memory, revision) },
+            onDelete = {
+                detail = null
+                deleting = memory
+            },
+        )
+    }
+    deleting?.let { memory ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("删除这条记忆？") },
+            text = {
+                Text(
+                    text = "「" + (memory.title?.take(40) ?: "#" + memory.id) + "」将被永久删除，" +
+                        "连同其修订历史与关联关系，此操作不可恢复。",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDelete(memory)
+                    deleting = null
+                }) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleting = null }) { Text(stringResource(R.string.cancel)) }
+            },
         )
     }
     if (showingFilters) {
@@ -543,6 +572,7 @@ private fun MemoryDetailDialog(
     onArchive: () -> Unit,
     onRestore: () -> Unit,
     onRestoreRevision: (Int) -> Unit,
+    onDelete: () -> Unit,
 ) {
     val history by revisions.collectAsState(initial = emptyList())
     AlertDialog(
@@ -596,6 +626,9 @@ private fun MemoryDetailDialog(
                     TextButton(onClick = onRestore) { Text(stringResource(R.string.memory_v2_restore)) }
                 } else {
                     TextButton(onClick = onArchive) { Text(stringResource(R.string.memory_v2_archive)) }
+                }
+                TextButton(onClick = onDelete) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
                 }
             }
         },

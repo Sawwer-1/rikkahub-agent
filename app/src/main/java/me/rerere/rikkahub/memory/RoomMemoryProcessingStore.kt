@@ -1363,6 +1363,7 @@ class RoomMemoryProcessingStore(
             is MemoryMutationCommand.Restore,
             -> AuthorityChangeReason.LIFECYCLE_CHANGE
             is MemoryMutationCommand.RestoreRevision -> AuthorityChangeReason.RESTORE_REVISION
+            is MemoryMutationCommand.Delete -> AuthorityChangeReason.USER_MUTATION
         },
     ) mutation@ { authority ->
         when (command) {
@@ -1482,6 +1483,22 @@ class RoomMemoryProcessingStore(
                 nowMs = nowMs,
                 authority = authority,
             )
+
+            is MemoryMutationCommand.Delete -> {
+                // 2026-10-11 主公裁定：记忆库补直接删除。硬删除主行并清掉
+                // links/revisions/evidence 引用，避免悬空外键；不走 revision 历史
+                // （行已不存在，无法记 after 快照）。乐观并发同 Archive 口径。
+                val old = memoryDao.getMemoryById(command.memoryId, command.expectedScopeId)
+                    ?: return@mutation MemoryMutationResult.NotFound
+                if (command.expectedRevision != null && command.expectedRevision != old.revision) {
+                    return@mutation MemoryMutationResult.Conflict
+                }
+                memoryV2Dao.deleteEvidenceForMemory(command.memoryId)
+                memoryV2Dao.deleteMemoryRevisionsForMemory(command.memoryId)
+                memoryV2Dao.deleteMemoryLinksForMemory(command.memoryId, command.expectedScopeId)
+                memoryV2Dao.deleteMemoryById(command.memoryId, command.expectedScopeId)
+                MemoryMutationResult.Applied(command.memoryId, old.revision)
+            }
 
             is MemoryMutationCommand.RestoreRevision -> {
                 val old = memoryDao.getMemoryById(command.memoryId, command.expectedScopeId)

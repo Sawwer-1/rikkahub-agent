@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -59,6 +60,12 @@ import me.rerere.rikkahub.memory.dreaming.snapshot.DreamSnapshotSection
 fun MemoryDreamTab(
     projection: DreamReviewProjection?,
     detailState: MemoryDreamDetailState,
+    generateEnabled: Boolean,
+    onToggleGenerate: (Boolean) -> Unit,
+    runtimeStatus: MemoryCenterVM.DreamRuntimeStatus?,
+    dreamNowRunning: Boolean,
+    dreamNowMessage: String?,
+    onDreamNow: () -> Unit,
     onOpenClaim: (DreamClaimMutationTarget) -> Unit,
     onCloseClaim: () -> Unit,
     onRevealEvidence: (DreamEvidenceSummary) -> Unit,
@@ -73,6 +80,83 @@ fun MemoryDreamTab(
     ) {
         item {
             DreamStatusCard(projection)
+        }
+        item {
+            // 2026-10-11 主公令：Dream 页从"纯展示"变"可操作"——生成开关、立即做梦、
+            // 被挡原因与用量全部前置到本页，不再要求用户翻到设置页才能触发。
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("生成 Dream 概览", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                text = "开启后才会整理记忆积压并产出可审查的画像",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = generateEnabled,
+                            onCheckedChange = onToggleGenerate,
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Button(
+                            onClick = onDreamNow,
+                            enabled = !dreamNowRunning && generateEnabled,
+                        ) {
+                            Text(if (dreamNowRunning) "做梦进行中…" else "立即做梦")
+                        }
+                        runtimeStatus?.let { status ->
+                            Text(
+                                status.usageSummary,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    if (dreamNowRunning) {
+                        Text(
+                            "已跳过空闲等待，仍受充电/网络/额度条件约束",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    dreamNowMessage?.let { message ->
+                        Text(
+                            message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    runtimeStatus?.let { status ->
+                        if (status.blockers.isNotEmpty()) {
+                            status.blockers.forEach { blocker ->
+                                Text(
+                                    "· $blocker",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        Text(
+                            status.lastRunSummary,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
         }
         if (projection != null) {
             PAIR_PORTRAIT_SECTIONS.forEach { section ->

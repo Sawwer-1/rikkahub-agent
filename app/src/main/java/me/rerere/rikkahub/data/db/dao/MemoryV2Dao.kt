@@ -855,6 +855,21 @@ interface MemoryV2Dao {
     @Query("DELETE FROM memory_links WHERE scope_id = :scopeId")
     suspend fun deleteLinksForScope(scopeId: String): Int
 
+    @Query("DELETE FROM memoryentity WHERE id = :memoryId AND assistant_id = :scopeId")
+    suspend fun deleteMemoryById(memoryId: Int, scopeId: String): Int
+
+    @Query(
+        "DELETE FROM memory_links WHERE scope_id = :scopeId " +
+            "AND (source_memory_id = :memoryId OR target_memory_id = :memoryId)",
+    )
+    suspend fun deleteMemoryLinksForMemory(memoryId: Int, scopeId: String): Int
+
+    @Query("DELETE FROM memory_revisions WHERE memory_id = :memoryId")
+    suspend fun deleteMemoryRevisionsForMemory(memoryId: Int): Int
+
+    @Query("DELETE FROM memory_evidence WHERE memory_id = :memoryId")
+    suspend fun deleteEvidenceForMemory(memoryId: Int): Int
+
     @Query("DELETE FROM memory_relation_candidates WHERE scope_id = :scopeId")
     suspend fun deleteRelationCandidatesForScope(scopeId: String): Int
 

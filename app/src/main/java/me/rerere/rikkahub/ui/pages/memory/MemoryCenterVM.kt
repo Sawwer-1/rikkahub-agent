@@ -749,6 +749,18 @@ class MemoryCenterVM(
         )
     }
 
+    /** 2026-10-11 主公裁定：记忆库补直接删除（硬删，含修订历史与关联）。 */
+    fun delete(memory: MemoryEntity) {
+        mutate(
+            MemoryMutationCommand.Delete(
+                memoryId = memory.id,
+                expectedScopeId = memory.assistantId,
+                expectedRevision = memory.revision,
+                approvalSource = MemoryApprovalSource.MANUAL_UI,
+            ),
+        )
+    }
+
     fun restore(memory: MemoryEntity) {
         mutate(
             MemoryMutationCommand.Restore(
