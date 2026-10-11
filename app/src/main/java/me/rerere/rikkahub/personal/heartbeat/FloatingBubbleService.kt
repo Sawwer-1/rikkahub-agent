@@ -1,7 +1,7 @@
 package me.rerere.rikkahub.personal.heartbeat
 
-import android.app.NotificationChannelCompat
-import android.app.NotificationManagerCompat
+import androidx.core.app.NotificationChannelCompat
+import androidx.core.app.NotificationManagerCompat
 import android.app.Service
 import android.content.Context
 import android.content.Intent
