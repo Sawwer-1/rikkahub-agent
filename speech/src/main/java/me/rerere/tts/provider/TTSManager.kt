@@ -6,12 +6,14 @@ import me.rerere.tts.model.AudioChunk
 import me.rerere.tts.model.TTSRequest
 import me.rerere.tts.provider.providers.AuraTTSProvider
 import me.rerere.tts.provider.providers.ElevenLabsTTSProvider
+import me.rerere.tts.provider.providers.FishAudioTTSProvider
 import me.rerere.tts.provider.providers.GeminiTTSProvider
 import me.rerere.tts.provider.providers.GroqTTSProvider
 import me.rerere.tts.provider.providers.MiMoTTSProvider
 import me.rerere.tts.provider.providers.MiniMaxTTSProvider
 import me.rerere.tts.provider.providers.OpenAITTSProvider
 import me.rerere.tts.provider.providers.QwenTTSProvider
+import me.rerere.tts.provider.providers.StepTTSProvider
 import me.rerere.tts.provider.providers.SystemTTSProvider
 import me.rerere.tts.provider.providers.XAITTSProvider
 import me.rerere.tts.provider.providers.GenericHttpTTSProvider
@@ -27,6 +29,8 @@ class TTSManager(private val context: Context) {
     private val xaiProvider = XAITTSProvider()
     private val elevenLabsProvider = ElevenLabsTTSProvider()
     private val miMoProvider = MiMoTTSProvider()
+    private val stepProvider = StepTTSProvider()
+    private val fishAudioProvider = FishAudioTTSProvider()
     private val genericHttpProvider = GenericHttpTTSProvider()
     private val registry = TTSProviderFactoryRegistry(
         listOf(
@@ -42,6 +46,8 @@ class TTSManager(private val context: Context) {
                     is TTSProviderSetting.XAI -> xaiProvider.generateSpeech(context, setting, request)
                     is TTSProviderSetting.ElevenLabs -> elevenLabsProvider.generateSpeech(context, setting, request)
                     is TTSProviderSetting.MiMo -> miMoProvider.generateSpeech(context, setting, request)
+                    is TTSProviderSetting.Step -> stepProvider.generateSpeech(context, setting, request)
+                    is TTSProviderSetting.FishAudio -> fishAudioProvider.generateSpeech(context, setting, request)
                     is TTSProviderSetting.GenericHttp -> genericHttpProvider.generateSpeech(context, setting, request)
                 }
             },

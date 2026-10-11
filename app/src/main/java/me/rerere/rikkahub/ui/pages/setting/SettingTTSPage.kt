@@ -374,6 +374,8 @@ private fun TTSProviderItem(
                             is TTSProviderSetting.XAI -> "xAI"
                             is TTSProviderSetting.ElevenLabs -> "ElevenLabs"
                             is TTSProviderSetting.MiMo -> "MiMo"
+                            is TTSProviderSetting.Step -> "Step"
+                            is TTSProviderSetting.FishAudio -> "Fish Audio"
                             is TTSProviderSetting.GenericHttp -> stringResource(R.string.setting_tts_page_provider_generic_http)
                         },
                         style = MaterialTheme.typography.bodySmall,

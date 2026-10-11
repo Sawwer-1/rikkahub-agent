@@ -81,6 +81,26 @@
   <string name="vc_tts_style_desc">0.0–1.0，默认 0；数值过高可能显得夸张或不稳定</string>
   <string name="vc_tts_speed_desc">0.7–1.2，默认 1.0；Eleven v3 可能忽略此设置</string>
 
+  <!-- Step TTS 配置 -->
+  <string name="vc_tts_step_volume">音量</string>
+  <string name="vc_tts_step_volume_desc">0.1–2.0，默认 1.0</string>
+  <string name="vc_tts_step_sample_rate">采样率</string>
+  <string name="vc_tts_step_sample_rate_desc">8000 / 16000 / 22050 / 24000 Hz，默认 24000</string>
+  <string name="vc_tts_step_instruction">全局语境指令</string>
+  <string name="vc_tts_step_instruction_desc">最长 200 字符；仅 stepaudio-2.5-tts 模型生效</string>
+
+  <!-- Fish Audio TTS 配置 -->
+  <string name="vc_tts_fish_temperature">温度</string>
+  <string name="vc_tts_fish_temperature_desc">数值越高越有创造性；默认 0.7</string>
+  <string name="vc_tts_fish_top_p">Top P</string>
+  <string name="vc_tts_fish_top_p_desc">核采样阈值；默认 0.7</string>
+  <string name="vc_tts_fish_chunk_length">分块长度</string>
+  <string name="vc_tts_fish_chunk_length_desc">每次合成的文本字符数；默认 300</string>
+  <string name="vc_tts_fish_normalize">文本规范化</string>
+  <string name="vc_tts_fish_normalize_desc">由服务端在合成前规范化数字与符号</string>
+  <string name="vc_tts_fish_latency">延迟模式</string>
+  <string name="vc_tts_fish_latency_desc">normal 重质量，balanced 重速度</string>
+
   <!-- 语音通话情绪标签模型设置 -->
   <string name="vc_model_voice_tag_model">语音通话情绪标签模型</string>
   <string name="vc_model_voice_tag_model_desc">通话中为语音自动挑选情绪标签的模型</string>

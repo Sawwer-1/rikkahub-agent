@@ -26,6 +26,40 @@ import java.util.UUID
 
 private const val TAG = "TtsController"
 
+// 一次合成的最大尝试次数。没有重试前, 一次抖动的合成失败会让该分片从朗读文本里
+// 永久消失: awaitOrCreate 从不重试, 且失败的 Deferred 留在缓存里, 之后手动重播同一
+// 分片只会重放同一场旧失败。
+private const val MAX_SYNTHESIS_ATTEMPTS = 2
+
+/**
+ * 重试一个带缓存的挂起计算, 最多 [maxAttempts] 次; 每次重试前把失败的
+ * [kotlinx.coroutines.Deferred] 从 [cache] 中驱逐, 让下一次尝试 (或之后对同一 [key]
+ * 的重播) 真正重新合成, 而不是重放缓存里的旧失败。从 [TtsController.awaitOrCreate]
+ * 提取为普通的泛型顶层函数——它只接触给定的 map 与 Deferred, 不接触 Context 或
+ * Dispatchers.Main——因此重试/驱逐簿记本身可以在没有 Android 运行时的前提下做
+ * JVM 单测 (见 TtsControllerAwaitWithRetryTest)。
+ */
+internal suspend fun <K : Any, V> awaitWithRetry(
+    cache: java.util.concurrent.ConcurrentMap<K, kotlinx.coroutines.Deferred<V>>,
+    key: K,
+    maxAttempts: Int,
+    create: () -> kotlinx.coroutines.Deferred<V>
+): V {
+    var lastError: Throwable? = null
+    repeat(maxAttempts) {
+        val deferred = cache.computeIfAbsent(key) { create() }
+        try {
+            return deferred.await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            lastError = e
+            cache.remove(key, deferred)
+        }
+    }
+    throw lastError ?: IllegalStateException("Synthesis retries exhausted for key $key")
+}
+
 /**
  * TTS 控制器（重构版）
  * - 负责文本分片、预取合成、排队播放与状态上报
@@ -370,16 +404,13 @@ class TtsController(
         lastPrefetchedIndex = endExclusive - 1
     }
 
-    private suspend fun awaitOrCreate(chunk: TtsChunk, provider: TTSProviderSetting): TTSResponse {
-        val deferred = cache.computeIfAbsent(chunk.id) {
+    private suspend fun awaitOrCreate(chunk: TtsChunk, provider: TTSProviderSetting): TTSResponse =
+        // 重试/驱逐簿记在顶层 awaitWithRetry (见 TtsControllerAwaitWithRetryTest);
+        // 这里只负责提供本控制器的缓存、key 与合成 lambda。合成成功的 Deferred 保留
+        // 在缓存中, 便于重播; 失败的被驱逐, 重试与重播才会真正重新合成。
+        awaitWithRetry(cache, chunk.id, MAX_SYNTHESIS_ATTEMPTS) {
             scope.async(Dispatchers.IO) { synthesizer.synthesize(provider, chunk) }
         }
-        return try {
-            deferred.await()
-        } finally {
-            // 可按需保留缓存（此处保留，便于重播/重试）
-        }
-    }
 
     private data class ChunkAudioCallback(
         val callback: suspend (TtsChunk, Int, Int, TTSResponse) -> Unit,

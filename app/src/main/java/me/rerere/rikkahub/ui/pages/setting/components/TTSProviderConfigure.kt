@@ -62,6 +62,8 @@ fun TTSProviderConfigure(
                         is TTSProviderSetting.XAI -> "xAI"
                         is TTSProviderSetting.ElevenLabs -> "ElevenLabs"
                         is TTSProviderSetting.MiMo -> "MiMo"
+                        is TTSProviderSetting.Step -> "Step"
+                        is TTSProviderSetting.FishAudio -> "Fish Audio"
                         is TTSProviderSetting.GenericHttp -> stringResource(R.string.setting_tts_page_provider_generic_http)
                     },
                     onValueChange = {},
@@ -92,6 +94,8 @@ fun TTSProviderConfigure(
                                         TTSProviderSetting.XAI::class -> "xAI"
                                         TTSProviderSetting.ElevenLabs::class -> "ElevenLabs"
                                         TTSProviderSetting.MiMo::class -> "MiMo"
+                                        TTSProviderSetting.Step::class -> "Step"
+                                        TTSProviderSetting.FishAudio::class -> "Fish Audio"
                                         TTSProviderSetting.GenericHttp::class -> "Generic HTTP"
                                         else -> providerClass.simpleName ?: "Unknown"
                                     }
@@ -150,6 +154,16 @@ fun TTSProviderConfigure(
                                         name = "MiMo TTS"
                                     )
 
+                                    TTSProviderSetting.Step::class -> TTSProviderSetting.Step(
+                                        id = setting.id,
+                                        name = "Step TTS"
+                                    )
+
+                                    TTSProviderSetting.FishAudio::class -> TTSProviderSetting.FishAudio(
+                                        id = setting.id,
+                                        name = "Fish Audio TTS"
+                                    )
+
                                     TTSProviderSetting.GenericHttp::class -> TTSProviderSetting.GenericHttp(
                                         id = setting.id,
                                         name = "Generic HTTP TTS",
@@ -192,6 +206,8 @@ fun TTSProviderConfigure(
             is TTSProviderSetting.XAI -> XAITTSConfiguration(setting, onValueChange)
             is TTSProviderSetting.ElevenLabs -> ElevenLabsTTSConfiguration(setting, onValueChange)
             is TTSProviderSetting.MiMo -> MiMoTTSConfiguration(setting, onValueChange)
+            is TTSProviderSetting.Step -> StepTTSConfiguration(setting, onValueChange)
+            is TTSProviderSetting.FishAudio -> FishAudioTTSConfiguration(setting, onValueChange)
             is TTSProviderSetting.GenericHttp -> GenericHttpTTSConfiguration(setting, onValueChange)
         }
     }
@@ -700,6 +716,316 @@ private fun MiniMaxTTSConfiguration(
             },
             modifier = Modifier.fillMaxWidth(),
             label = stringResource(R.string.setting_tts_page_speed)
+        )
+    }
+}
+
+@Composable
+private fun StepTTSConfiguration(
+    setting: TTSProviderSetting.Step,
+    onValueChange: (TTSProviderSetting) -> Unit
+) {
+    // API Key
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_api_key)) },
+        description = { Text(stringResource(R.string.setting_tts_page_api_key_description)) }
+    ) {
+        OutlinedTextField(
+            value = setting.apiKey,
+            onValueChange = { newApiKey ->
+                onValueChange(setting.copy(apiKey = newApiKey))
+            },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("sk-xxx") },
+        )
+    }
+
+    // Base URL
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_base_url)) },
+        description = { Text(stringResource(R.string.setting_tts_page_base_url_description)) }
+    ) {
+        OutlinedTextField(
+            value = setting.baseUrl,
+            onValueChange = { newBaseUrl ->
+                onValueChange(setting.copy(baseUrl = newBaseUrl))
+            },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("https://api.stepfun.com") }
+        )
+    }
+
+    // Model
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_model)) },
+        description = { Text(stringResource(R.string.setting_tts_page_model_description)) }
+    ) {
+        EditableDropdownField(
+            value = setting.model,
+            onValueChange = { onValueChange(setting.copy(model = it)) },
+            options = listOf(
+                "step-tts-mini" to "step-tts-mini",
+                "step-tts-vivid" to "step-tts-vivid",
+                "stepaudio-2.5-tts" to "stepaudio-2.5-tts",
+            ),
+        )
+    }
+
+    // Voice
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_voice)) },
+        description = { Text(stringResource(R.string.setting_tts_page_voice_description)) }
+    ) {
+        EditableDropdownField(
+            value = setting.voice,
+            onValueChange = { onValueChange(setting.copy(voice = it)) },
+            options = listOf(
+                "elegantgentle-female" to "elegantgentle-female",
+                "cixingnansheng" to "cixingnansheng",
+            ),
+        )
+    }
+
+    // Response format
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_generic_audio_format)) },
+    ) {
+        EditableDropdownField(
+            value = setting.responseFormat,
+            onValueChange = { onValueChange(setting.copy(responseFormat = it)) },
+            options = listOf("mp3", "wav", "pcm", "opus", "flac").map { it to it },
+        )
+    }
+
+    // Speed
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_speed)) },
+        description = { Text(stringResource(R.string.setting_tts_page_speed_description)) }
+    ) {
+        OutlinedNumberInput(
+            value = setting.speed,
+            onValueChange = { newSpeed ->
+                if (newSpeed in 0.5f..2.0f) {
+                    onValueChange(setting.copy(speed = newSpeed))
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = stringResource(R.string.setting_tts_page_speed)
+        )
+    }
+
+    // Volume
+    FormItem(
+        label = { Text(stringResource(R.string.vc_tts_step_volume)) },
+        description = { Text(stringResource(R.string.vc_tts_step_volume_desc)) }
+    ) {
+        OutlinedNumberInput(
+            value = setting.volume,
+            onValueChange = { newVolume ->
+                if (newVolume in 0.1f..2.0f) {
+                    onValueChange(setting.copy(volume = newVolume))
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = stringResource(R.string.vc_tts_step_volume)
+        )
+    }
+
+    // Sample rate
+    FormItem(
+        label = { Text(stringResource(R.string.vc_tts_step_sample_rate)) },
+        description = { Text(stringResource(R.string.vc_tts_step_sample_rate_desc)) }
+    ) {
+        EditableDropdownField(
+            value = setting.sampleRate.toString(),
+            onValueChange = { raw ->
+                raw.toIntOrNull()?.let { rate ->
+                    onValueChange(setting.copy(sampleRate = rate))
+                }
+            },
+            options = listOf(8000, 16000, 22050, 24000).map { it.toString() to it.toString() },
+        )
+    }
+
+    // Instruction (stepaudio-2.5-tts only)
+    FormItem(
+        label = { Text(stringResource(R.string.vc_tts_step_instruction)) },
+        description = { Text(stringResource(R.string.vc_tts_step_instruction_desc)) }
+    ) {
+        OutlinedTextField(
+            value = setting.instruction,
+            onValueChange = { onValueChange(setting.copy(instruction = it.take(200))) },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 2,
+        )
+    }
+}
+
+@Composable
+private fun FishAudioTTSConfiguration(
+    setting: TTSProviderSetting.FishAudio,
+    onValueChange: (TTSProviderSetting) -> Unit
+) {
+    // API Key
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_api_key)) },
+        description = { Text(stringResource(R.string.setting_tts_page_api_key_description)) }
+    ) {
+        OutlinedTextField(
+            value = setting.apiKey,
+            onValueChange = { newApiKey ->
+                onValueChange(setting.copy(apiKey = newApiKey))
+            },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("xxxx") },
+        )
+    }
+
+    // Base URL
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_base_url)) },
+        description = { Text(stringResource(R.string.setting_tts_page_base_url_description)) }
+    ) {
+        OutlinedTextField(
+            value = setting.baseUrl,
+            onValueChange = { newBaseUrl ->
+                onValueChange(setting.copy(baseUrl = newBaseUrl))
+            },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("https://api.fish.audio") }
+        )
+    }
+
+    // Model
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_model)) },
+        description = { Text(stringResource(R.string.setting_tts_page_model_description)) }
+    ) {
+        OutlinedTextField(
+            value = setting.model,
+            onValueChange = { newModel ->
+                onValueChange(setting.copy(model = newModel))
+            },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("s2.1-pro") }
+        )
+    }
+
+    // Reference ID (voice)
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_voice_id)) },
+        description = { Text(stringResource(R.string.setting_tts_page_voice_id_description)) }
+    ) {
+        OutlinedTextField(
+            value = setting.referenceId,
+            onValueChange = { newReferenceId ->
+                onValueChange(setting.copy(referenceId = newReferenceId))
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+
+    // Format
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_generic_audio_format)) },
+    ) {
+        EditableDropdownField(
+            value = setting.format,
+            onValueChange = { onValueChange(setting.copy(format = it)) },
+            options = listOf("mp3", "wav", "pcm", "opus").map { it to it },
+        )
+    }
+
+    // Temperature
+    FormItem(
+        label = { Text(stringResource(R.string.vc_tts_fish_temperature)) },
+        description = { Text(stringResource(R.string.vc_tts_fish_temperature_desc)) }
+    ) {
+        OutlinedNumberInput(
+            value = setting.temperature,
+            onValueChange = { newTemperature ->
+                if (newTemperature in 0.0f..2.0f) {
+                    onValueChange(setting.copy(temperature = newTemperature))
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = stringResource(R.string.vc_tts_fish_temperature)
+        )
+    }
+
+    // Top P
+    FormItem(
+        label = { Text(stringResource(R.string.vc_tts_fish_top_p)) },
+        description = { Text(stringResource(R.string.vc_tts_fish_top_p_desc)) }
+    ) {
+        OutlinedNumberInput(
+            value = setting.topP,
+            onValueChange = { newTopP ->
+                if (newTopP in 0.0f..1.0f) {
+                    onValueChange(setting.copy(topP = newTopP))
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = stringResource(R.string.vc_tts_fish_top_p)
+        )
+    }
+
+    // Speed
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_speed)) },
+        description = { Text(stringResource(R.string.setting_tts_page_speed_description)) }
+    ) {
+        OutlinedNumberInput(
+            value = setting.speed,
+            onValueChange = { newSpeed ->
+                if (newSpeed in 0.5f..2.0f) {
+                    onValueChange(setting.copy(speed = newSpeed))
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = stringResource(R.string.setting_tts_page_speed)
+        )
+    }
+
+    // Chunk length
+    FormItem(
+        label = { Text(stringResource(R.string.vc_tts_fish_chunk_length)) },
+        description = { Text(stringResource(R.string.vc_tts_fish_chunk_length_desc)) }
+    ) {
+        OutlinedTextField(
+            value = setting.chunkLength.toString(),
+            onValueChange = { raw ->
+                raw.toIntOrNull()?.let { length ->
+                    onValueChange(setting.copy(chunkLength = length))
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+
+    // Normalize
+    FormItem(
+        label = { Text(stringResource(R.string.vc_tts_fish_normalize)) },
+        description = { Text(stringResource(R.string.vc_tts_fish_normalize_desc)) },
+        tail = {
+            androidx.compose.material3.Switch(
+                checked = setting.normalize,
+                onCheckedChange = { enabled ->
+                    onValueChange(setting.copy(normalize = enabled))
+                },
+            )
+        },
+    )
+
+    // Latency
+    FormItem(
+        label = { Text(stringResource(R.string.vc_tts_fish_latency)) },
+        description = { Text(stringResource(R.string.vc_tts_fish_latency_desc)) }
+    ) {
+        EditableDropdownField(
+            value = setting.latency,
+            onValueChange = { onValueChange(setting.copy(latency = it)) },
+            options = listOf("normal", "balanced").map { it to it },
         )
     }
 }

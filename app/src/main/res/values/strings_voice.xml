@@ -81,6 +81,26 @@
   <string name="vc_tts_style_desc">0.0–1.0. Default is 0; high values can sound theatrical or unstable</string>
   <string name="vc_tts_speed_desc">0.7–1.2. Default is 1.0; Eleven v3 may ignore this setting</string>
 
+  <!-- Step TTS configuration -->
+  <string name="vc_tts_step_volume">Volume</string>
+  <string name="vc_tts_step_volume_desc">0.1–2.0. Default is 1.0</string>
+  <string name="vc_tts_step_sample_rate">Sample rate</string>
+  <string name="vc_tts_step_sample_rate_desc">8000 / 16000 / 22050 / 24000 Hz. Default is 24000</string>
+  <string name="vc_tts_step_instruction">Instruction</string>
+  <string name="vc_tts_step_instruction_desc">Global context up to 200 chars; only takes effect on stepaudio-2.5-tts</string>
+
+  <!-- Fish Audio TTS configuration -->
+  <string name="vc_tts_fish_temperature">Temperature</string>
+  <string name="vc_tts_fish_temperature_desc">Higher values are more creative; default is 0.7</string>
+  <string name="vc_tts_fish_top_p">Top P</string>
+  <string name="vc_tts_fish_top_p_desc">Nucleus sampling threshold; default is 0.7</string>
+  <string name="vc_tts_fish_chunk_length">Chunk length</string>
+  <string name="vc_tts_fish_chunk_length_desc">Text characters per synthesis chunk; default is 300</string>
+  <string name="vc_tts_fish_normalize">Normalize text</string>
+  <string name="vc_tts_fish_normalize_desc">Let the service normalize numbers and symbols before synthesis</string>
+  <string name="vc_tts_fish_latency">Latency</string>
+  <string name="vc_tts_fish_latency_desc">normal favors quality, balanced favors speed</string>
+
   <!-- Voice call emotion tag model setting -->
   <string name="vc_model_voice_tag_model">Voice call emotion tag model</string>
   <string name="vc_model_voice_tag_model_desc">Model used to pick emotion tags for call speech</string>

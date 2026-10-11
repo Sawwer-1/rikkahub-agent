@@ -117,6 +117,10 @@ internal fun TTSProviderSetting.configurationError(): ChatVoiceReplyError? {
         is TTSProviderSetting.XAI -> remoteConfigurationError(apiKey, baseUrl, voice = voiceId)
         is TTSProviderSetting.ElevenLabs -> remoteConfigurationError(apiKey, baseUrl, model, voiceId)
         is TTSProviderSetting.MiMo -> remoteConfigurationError(apiKey, baseUrl, model, voice)
+        is TTSProviderSetting.Step -> remoteConfigurationError(apiKey, baseUrl, model, voice)
+        // FishAudio's referenceId is optional (blank means the default voice), so only
+        // apiKey/baseUrl/model are pre-validated here.
+        is TTSProviderSetting.FishAudio -> remoteConfigurationError(apiKey, baseUrl, model)
         // GenericHttp providers carry their own endpoint template; blank runtimeSecret is
         // legitimate for unauthenticated endpoints, so there is nothing to pre-validate here.
         is TTSProviderSetting.GenericHttp -> null
