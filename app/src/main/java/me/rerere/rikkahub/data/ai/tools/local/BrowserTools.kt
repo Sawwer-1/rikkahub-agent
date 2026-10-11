@@ -1007,7 +1007,9 @@ fun browserClickAndReadTool(): Tool = Tool(
                         } catch(e) { return JSON.stringify({error:'js_failed', detail:String(e)}); }
                     })()"""
                     val clickRes = parseJsResult(webView.evaluateJavascriptAsync(clickJs))
-                    if (clickRes.containsKey("error")) return@withController clickRes
+                    // trackJsonAction 非 inline，不能穿它 return@withController；
+                    // 提前结束动作块并透传 envelope，语义等价。
+                    if (clickRes.containsKey("error")) return@trackJsonAction clickRes
                     webView.awaitReadyState(8_000L)
                     val postUrl = withContext(Dispatchers.Main) { webView.url.orEmpty() }
                     val postTitle = withContext(Dispatchers.Main) { webView.title.orEmpty() }
@@ -1033,7 +1035,7 @@ fun browserClickAndReadTool(): Tool = Tool(
                                 text to "readability"
                             } else if (mode == "readability") {
                                 // Forced mode + null result → surface the error envelope.
-                                return@withController buildJsonObject {
+                                return@trackJsonAction buildJsonObject {
                                     put("success", false)
                                     put("post_click_url", postUrl)
                                     put("page_title", postTitle)
