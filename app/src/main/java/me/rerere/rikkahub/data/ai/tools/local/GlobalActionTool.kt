@@ -33,7 +33,10 @@ fun globalActionTool(
     description = """
         Perform an Android system-level action: back / home / recents / notifications /
         quick_settings / lock_screen / power_dialog. Routed through
-        AccessibilityService.performGlobalAction. Returns {success: bool}.
+        AccessibilityService.performGlobalAction. Returns {success: bool}. success only means
+        the OS accepted the action; verify the outcome via the returned "after" object
+        (e.g. after home, confirm shade_open is absent and the launcher package is foreground
+        before assuming you are on the home screen).
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
@@ -62,18 +65,20 @@ fun globalActionTool(
             )
         }
         val payload = AccessibilityServiceHandle.withService { svc ->
-            val ok = svc.performGlobalAction(code)
-            svc.appendLog(
-                ActionLogEntry(
-                    type = "global_action",
-                    paramsSummary = action,
-                    success = ok,
-                    timestampMs = System.currentTimeMillis(),
+            withActionEnvelope(svc) { _ ->
+                val ok = svc.performGlobalAction(code)
+                svc.appendLog(
+                    ActionLogEntry(
+                        type = "global_action",
+                        paramsSummary = action,
+                        success = ok,
+                        timestampMs = System.currentTimeMillis(),
+                    )
                 )
-            )
-            buildJsonObject {
-                put("success", ok)
-                if (!ok) put("reason", "rejected_by_os")
+                buildJsonObject {
+                    put("success", ok)
+                    if (!ok) put("reason", "rejected_by_os")
+                }
             }
         }
         streamer.streamIfHeadless(invocationContext, "GlobalAction $action")

@@ -60,6 +60,12 @@ class RikkaAccessibilityService : AccessibilityService() {
     private val _windowState = MutableStateFlow(AccessibilityWindowState())
     val windowState = _windowState.asStateFlow()
 
+    // Uptime of the last window signal event. ScreenState.awaitQuiet polls this to detect
+    // UI settle after an action tool (tap/swipe/scroll/global_action) runs.
+    @Volatile
+    var lastWindowEventUptime: Long = 0L
+        private set
+
     // Serialise overlapping gesture-dispatch callers. Each caller takes a ticket; the
     // shared current-counter advances when a caller's `finally` runs. Both fields are
     // INSTANCE-scoped (was a companion-static AtomicInteger pair previously) so a
@@ -99,6 +105,9 @@ class RikkaAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event != null && event.eventType in WINDOW_SIGNAL_EVENT_TYPES) {
+            lastWindowEventUptime = android.os.SystemClock.uptimeMillis()
+        }
         // Phase 12 — feed foreground-app transitions to the workflow trigger dispatcher.
         // We only care about TYPE_WINDOW_STATE_CHANGED and only when the package name is
         // present. The dispatcher itself de-dupes (skips no-op transitions) and dispatches
@@ -197,13 +206,19 @@ class RikkaAccessibilityService : AccessibilityService() {
     /**
      * Walk the active window's node tree depth-first. `filter` decides whether to emit a node;
      * traversal stops once `cap` nodes have been emitted. Returns (emitted, totalSeen, truncated).
+     *
+     * recycle=true recycles every visited non-root node on API < 33 after its subtree is
+     * done (a no-op on 33+ where nodes are not pooled). Callers passing recycle=true MUST
+     * NOT retain nodes past the emit callback; serialise or copy inside emit.
      */
     fun traverseTree(
         root: AccessibilityNodeInfo,
         filter: (AccessibilityNodeInfo, depth: Int) -> Boolean,
         cap: Int,
         emit: (AccessibilityNodeInfo, depth: Int, traversalIndex: Int) -> Unit,
+        recycle: Boolean = false,
     ): Triple<Int, Int, Boolean> {
+        val canRecycle = recycle && Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
         var emitted = 0
         var seen = 0
         var truncated = false
@@ -215,6 +230,10 @@ class RikkaAccessibilityService : AccessibilityService() {
                 emitted++
                 if (emitted >= cap) {
                     truncated = true
+                    if (canRecycle && n !== root) {
+                        @Suppress("DEPRECATION")
+                        n.recycle()
+                    }
                     return
                 }
             }
@@ -222,6 +241,10 @@ class RikkaAccessibilityService : AccessibilityService() {
                 if (truncated) return
                 val child = n.getChild(i) ?: continue
                 walk(child, depth + 1)
+                if (canRecycle && child !== root) {
+                    @Suppress("DEPRECATION")
+                    child.recycle()
+                }
             }
         }
         walk(root, 0)

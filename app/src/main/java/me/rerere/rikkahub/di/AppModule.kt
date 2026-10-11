@@ -594,6 +594,10 @@ val appModule = module {
         AILoggingManager(get(), get())
     }
 
+    single {
+        me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceTerminalSessionManager(get(), get())
+    }
+
     // P0: Agent safety and security gate
     single { AgentSafetySettings(context = get()) }
     single {

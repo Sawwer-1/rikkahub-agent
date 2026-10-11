@@ -172,6 +172,43 @@ internal class ManagedFolderCoordinator(
         )
     }
 
+    /**
+     * Cleanup restricted to records created before [cutoffMillis] (age-based cleaning,
+     * ported from upstream CleanFilesSheet). Orphan records that are already missing on
+     * disk are only removed when they match the age filter; safer-path and disk-delete
+     * semantics are identical to [cleanup].
+     */
+    suspend fun cleanupOlderThan(folder: ManagedFolder, cutoffMillis: Long): FolderCleanupResult {
+        val records = index.list(folder.directoryName)
+        if (!pathsAreSafe(folder, emptyList(), records)) {
+            return FolderCleanupResult(0, records.size, 0, complete = false)
+        }
+
+        var deletedFiles = 0
+        var retainedFiles = 0
+        var removedRecords = 0
+        records.filter { it.createdAt < cutoffMillis }.forEach { record ->
+            when (disk.delete(folder, record.relativePath)) {
+                ManagedFileDeleteStatus.Deleted -> {
+                    deletedFiles += 1
+                    removedRecords += index.delete(record.id)
+                }
+                ManagedFileDeleteStatus.Missing -> {
+                    removedRecords += index.delete(record.id)
+                }
+                ManagedFileDeleteStatus.Failed,
+                ManagedFileDeleteStatus.UnsafePath,
+                -> retainedFiles += 1
+            }
+        }
+        return FolderCleanupResult(
+            deletedFiles = deletedFiles,
+            retainedFiles = retainedFiles,
+            removedRecords = removedRecords,
+            complete = retainedFiles == 0,
+        )
+    }
+
     suspend fun delete(id: Long, deleteFromDisk: Boolean): Boolean {
         val record = index.get(id) ?: return false
         val folder = ManagedFolder.fromDirectoryName(record.folder) ?: return false

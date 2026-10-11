@@ -28,7 +28,9 @@ fun swipeTool(
     description = """
         Swipe between two absolute screen coordinates. Default duration is 300ms; provide
         duration_ms (>= 50, <= 5000) to override. Returns {success: bool, reason?: string} or
-        the standard service-not-active envelope.
+        the standard service-not-active envelope. For primary-display swipes the result also
+        carries an "after" object (foreground surface, shade_open, screen_changed); check it
+        to verify the swipe did what you intended before acting again.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
@@ -88,25 +90,27 @@ fun swipeTool(
             )
         }
         val payload = AccessibilityServiceHandle.withService { svc ->
-            val path = svc.buildSwipePath(sx.toFloat(), sy.toFloat(), ex.toFloat(), ey.toFloat())
-            val gesture = GestureDescription.Builder()
-                .addStroke(GestureDescription.StrokeDescription(path, 0L, duration))
-                .buildForDisplay(displayTarget.displayId)
-                ?: return@withService buildJsonObject {
-                    put("error", "display_api_unsupported")
-                }
-            val ok = svc.dispatchGestureAsync(gesture)
-            svc.appendLog(
-                ActionLogEntry(
-                    type = "swipe",
-                    paramsSummary = "(${sx.toInt()},${sy.toInt()})->(${ex.toInt()},${ey.toInt()}) ${duration}ms display=${displayTarget.displayId}",
-                    success = ok,
-                    timestampMs = System.currentTimeMillis(),
+            withActionEnvelopeIfPrimary(svc, displayTarget.isPrimary) { _ ->
+                val path = svc.buildSwipePath(sx.toFloat(), sy.toFloat(), ex.toFloat(), ey.toFloat())
+                val gesture = GestureDescription.Builder()
+                    .addStroke(GestureDescription.StrokeDescription(path, 0L, duration))
+                    .buildForDisplay(displayTarget.displayId)
+                    ?: return@withActionEnvelopeIfPrimary buildJsonObject {
+                        put("error", "display_api_unsupported")
+                    }
+                val ok = svc.dispatchGestureAsync(gesture)
+                svc.appendLog(
+                    ActionLogEntry(
+                        type = "swipe",
+                        paramsSummary = "(${sx.toInt()},${sy.toInt()})->(${ex.toInt()},${ey.toInt()}) ${duration}ms display=${displayTarget.displayId}",
+                        success = ok,
+                        timestampMs = System.currentTimeMillis(),
+                    )
                 )
-            )
-            buildJsonObject {
-                put("success", ok)
-                if (!ok) put("reason", "gesture_cancelled_or_timeout")
+                buildJsonObject {
+                    put("success", ok)
+                    if (!ok) put("reason", "gesture_cancelled_or_timeout")
+                }
             }
         }
         streamer.streamIfHeadless(invocationContext, "Swipe (${sx.toInt()},${sy.toInt()})->(${ex.toInt()},${ey.toInt()}) ${duration}ms")

@@ -31,6 +31,9 @@ fun tapTool(
         Tap at absolute screen coordinates (pixels). Requires the AccessibilityService to be enabled.
         Returns {success: true} if the gesture completed, or {success: false, reason} if cancelled.
         If the AccessibilityService is not active, returns {error, recovery} so you can ask the user to enable it.
+        For primary-display taps the result also carries an "after" object (foreground package/window,
+        shade_open, ime_visible, display size, screen_changed telling you whether the tap actually
+        changed the UI); read it before deciding your next action instead of taking a screenshot.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
@@ -80,25 +83,27 @@ fun tapTool(
             me.rerere.rikkahub.service.RikkaAccessibilityService.instance?.let { wakeScreenIfNeeded(it) }
         }
         val payload = AccessibilityServiceHandle.withService { svc ->
-            val path = svc.buildTapPath(x.toFloat(), y.toFloat())
-            val gesture = GestureDescription.Builder()
-                .addStroke(GestureDescription.StrokeDescription(path, 0L, 50L))
-                .buildForDisplay(displayTarget.displayId)
-                ?: return@withService buildJsonObject {
-                    put("error", "display_api_unsupported")
-                }
-            val ok = svc.dispatchGestureAsync(gesture)
-            svc.appendLog(
-                ActionLogEntry(
-                    type = "tap",
-                    paramsSummary = "(${x.toInt()}, ${y.toInt()}) display=${displayTarget.displayId}",
-                    success = ok,
-                    timestampMs = System.currentTimeMillis(),
+            withActionEnvelopeIfPrimary(svc, displayTarget.isPrimary) { _ ->
+                val path = svc.buildTapPath(x.toFloat(), y.toFloat())
+                val gesture = GestureDescription.Builder()
+                    .addStroke(GestureDescription.StrokeDescription(path, 0L, 50L))
+                    .buildForDisplay(displayTarget.displayId)
+                    ?: return@withActionEnvelopeIfPrimary buildJsonObject {
+                        put("error", "display_api_unsupported")
+                    }
+                val ok = svc.dispatchGestureAsync(gesture)
+                svc.appendLog(
+                    ActionLogEntry(
+                        type = "tap",
+                        paramsSummary = "(${x.toInt()}, ${y.toInt()}) display=${displayTarget.displayId}",
+                        success = ok,
+                        timestampMs = System.currentTimeMillis(),
+                    )
                 )
-            )
-            buildJsonObject {
-                put("success", ok)
-                if (!ok) put("reason", "gesture_cancelled_or_timeout")
+                buildJsonObject {
+                    put("success", ok)
+                    if (!ok) put("reason", "gesture_cancelled_or_timeout")
+                }
             }
         }
         streamer.streamIfHeadless(invocationContext, "Tap (${x.toInt()}, ${y.toInt()})")
@@ -114,7 +119,9 @@ fun longPressTool(
     name = "long_press",
     description = """
         Long-press at absolute screen coordinates (pixels). Default duration is 600ms; provide
-        duration_ms (>= 100, <= 5000) to override. Same return shape as tap.
+        duration_ms (>= 100, <= 5000) to override. Same return shape as tap, including the
+        "after" state object on primary-display presses; check after.screen_changed to verify
+        the press had an effect.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
@@ -177,25 +184,27 @@ fun longPressTool(
             )
         }
         val payload = AccessibilityServiceHandle.withService { svc ->
-            val path = svc.buildTapPath(x.toFloat(), y.toFloat())
-            val gesture = GestureDescription.Builder()
-                .addStroke(GestureDescription.StrokeDescription(path, 0L, durationRaw))
-                .buildForDisplay(displayTarget.displayId)
-                ?: return@withService buildJsonObject {
-                    put("error", "display_api_unsupported")
-                }
-            val ok = svc.dispatchGestureAsync(gesture)
-            svc.appendLog(
-                ActionLogEntry(
-                    type = "long_press",
-                    paramsSummary = "(${x.toInt()}, ${y.toInt()}) ${durationRaw}ms display=${displayTarget.displayId}",
-                    success = ok,
-                    timestampMs = System.currentTimeMillis(),
+            withActionEnvelopeIfPrimary(svc, displayTarget.isPrimary) { _ ->
+                val path = svc.buildTapPath(x.toFloat(), y.toFloat())
+                val gesture = GestureDescription.Builder()
+                    .addStroke(GestureDescription.StrokeDescription(path, 0L, durationRaw))
+                    .buildForDisplay(displayTarget.displayId)
+                    ?: return@withActionEnvelopeIfPrimary buildJsonObject {
+                        put("error", "display_api_unsupported")
+                    }
+                val ok = svc.dispatchGestureAsync(gesture)
+                svc.appendLog(
+                    ActionLogEntry(
+                        type = "long_press",
+                        paramsSummary = "(${x.toInt()}, ${y.toInt()}) ${durationRaw}ms display=${displayTarget.displayId}",
+                        success = ok,
+                        timestampMs = System.currentTimeMillis(),
+                    )
                 )
-            )
-            buildJsonObject {
-                put("success", ok)
-                if (!ok) put("reason", "gesture_cancelled_or_timeout")
+                buildJsonObject {
+                    put("success", ok)
+                    if (!ok) put("reason", "gesture_cancelled_or_timeout")
+                }
             }
         }
         streamer.streamIfHeadless(invocationContext, "LongPress (${x.toInt()}, ${y.toInt()}) ${durationRaw}ms")

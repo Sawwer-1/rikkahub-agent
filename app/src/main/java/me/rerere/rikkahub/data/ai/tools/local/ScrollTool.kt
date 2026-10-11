@@ -62,7 +62,9 @@ fun scrollTool(
         Scroll the active window in the given direction (up/down/left/right). If x and y are
         provided, scrolls the scrollable container at that point; otherwise scrolls the first
         scrollable container found. Falls back to a swipe gesture if no scrollable container
-        can be located. Returns {success: bool, reason?: string}.
+        can be located. Returns {success: bool, reason?: string}. For primary-display scrolls
+        the result also carries an "after" object; after.screen_changed is the ground truth
+        that the scroll was accepted.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
@@ -112,77 +114,79 @@ fun scrollTool(
         }
 
         val payload = AccessibilityServiceHandle.withService { svc ->
-            val root = svc.rootForDisplay(displayTarget.displayId)
-                ?: return@withService buildJsonObject { put("error", "no_active_window") }
+            withActionEnvelopeIfPrimary(svc, displayTarget.isPrimary) { _ ->
+                val root = svc.rootForDisplay(displayTarget.displayId)
+                    ?: return@withActionEnvelopeIfPrimary buildJsonObject { put("error", "no_active_window") }
 
-            val target = if (anchorX != null && anchorY != null) {
-                findScrollableAt(root, anchorX.toInt(), anchorY.toInt())
-            } else {
-                findFirstScrollable(root)
-            }
-
-            val ok = if (target != null) {
-                val action = when (direction) {
-                    "down", "right" -> AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
-                    "up", "left" -> AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
-                    else -> AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                val target = if (anchorX != null && anchorY != null) {
+                    findScrollableAt(root, anchorX.toInt(), anchorY.toInt())
+                } else {
+                    findFirstScrollable(root)
                 }
-                target.performAction(action)
-            } else {
-                if (displayTarget.sessionId != null) {
-                    when (
-                        val gestureResolution = resolveDisplayTargetOrPrimary(
-                            resolver = displayTargetResolver,
-                            input = input,
-                            invocationContext = invocationContext,
-                            requiredCapability = me.rerere.rikkahub.display.DisplayCapability.GESTURE,
-                        )
-                    ) {
-                        is DisplayTargetResolution.Error -> return@withService displayTargetError(gestureResolution.code)
-                        is DisplayTargetResolution.Resolved -> {
-                            if (gestureResolution.target.displayId != displayTarget.displayId) {
-                                return@withService displayTargetError("display_id_mismatch")
+
+                val ok = if (target != null) {
+                    val action = when (direction) {
+                        "down", "right" -> AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                        "up", "left" -> AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+                        else -> AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                    }
+                    target.performAction(action)
+                } else {
+                    if (displayTarget.sessionId != null) {
+                        when (
+                            val gestureResolution = resolveDisplayTargetOrPrimary(
+                                resolver = displayTargetResolver,
+                                input = input,
+                                invocationContext = invocationContext,
+                                requiredCapability = me.rerere.rikkahub.display.DisplayCapability.GESTURE,
+                            )
+                        ) {
+                            is DisplayTargetResolution.Error -> return@withActionEnvelopeIfPrimary displayTargetError(gestureResolution.code)
+                            is DisplayTargetResolution.Resolved -> {
+                                if (gestureResolution.target.displayId != displayTarget.displayId) {
+                                    return@withActionEnvelopeIfPrimary displayTargetError("display_id_mismatch")
+                                }
                             }
                         }
                     }
+                    // Fallback: dispatch a swipe gesture across the screen center
+                    val rect = Rect()
+                    root.getBoundsInScreen(rect)
+                    val cx = (rect.left + rect.right) / 2f
+                    val cy = (rect.top + rect.bottom) / 2f
+                    val w = (rect.width() / 3f).coerceAtLeast(100f)
+                    val h = (rect.height() / 3f).coerceAtLeast(100f)
+                    val (sx, sy, ex, ey) = when (direction) {
+                        "down" -> floatArrayOf(cx, cy + h, cx, cy - h)
+                        "up" -> floatArrayOf(cx, cy - h, cx, cy + h)
+                        "right" -> floatArrayOf(cx + w, cy, cx - w, cy)
+                        else /* left */ -> floatArrayOf(cx - w, cy, cx + w, cy)
+                    }.let { arr -> Quadruple(arr[0], arr[1], arr[2], arr[3]) }
+                    val path = Path().apply { moveTo(sx, sy); lineTo(ex, ey) }
+                    svc.dispatchGestureAsync(
+                        GestureDescription.Builder()
+                            .addStroke(GestureDescription.StrokeDescription(path, 0L, SCROLL_GESTURE_MS))
+                            .buildForDisplay(displayTarget.displayId)
+                            ?: return@withActionEnvelopeIfPrimary buildJsonObject {
+                                put("error", "display_api_unsupported")
+                            }
+                    )
                 }
-                // Fallback: dispatch a swipe gesture across the screen center
-                val rect = Rect()
-                root.getBoundsInScreen(rect)
-                val cx = (rect.left + rect.right) / 2f
-                val cy = (rect.top + rect.bottom) / 2f
-                val w = (rect.width() / 3f).coerceAtLeast(100f)
-                val h = (rect.height() / 3f).coerceAtLeast(100f)
-                val (sx, sy, ex, ey) = when (direction) {
-                    "down" -> floatArrayOf(cx, cy + h, cx, cy - h)
-                    "up" -> floatArrayOf(cx, cy - h, cx, cy + h)
-                    "right" -> floatArrayOf(cx + w, cy, cx - w, cy)
-                    else /* left */ -> floatArrayOf(cx - w, cy, cx + w, cy)
-                }.let { arr -> Quadruple(arr[0], arr[1], arr[2], arr[3]) }
-                val path = Path().apply { moveTo(sx, sy); lineTo(ex, ey) }
-                svc.dispatchGestureAsync(
-                    GestureDescription.Builder()
-                        .addStroke(GestureDescription.StrokeDescription(path, 0L, SCROLL_GESTURE_MS))
-                        .buildForDisplay(displayTarget.displayId)
-                        ?: return@withService buildJsonObject {
-                            put("error", "display_api_unsupported")
-                        }
+                svc.appendLog(
+                    ActionLogEntry(
+                        type = "scroll",
+                        paramsSummary = "$direction display=${displayTarget.displayId}" +
+                            (if (target != null) " (node)" else " (fallback swipe)"),
+                        success = ok,
+                        timestampMs = System.currentTimeMillis(),
+                    )
                 )
-            }
-            svc.appendLog(
-                ActionLogEntry(
-                    type = "scroll",
-                    paramsSummary = "$direction display=${displayTarget.displayId}" +
-                        (if (target != null) " (node)" else " (fallback swipe)"),
-                    success = ok,
-                    timestampMs = System.currentTimeMillis(),
-                )
-            )
-            buildJsonObject {
-                put("success", ok)
-                if (!ok) put("reason", "no_scroll_action_accepted")
-                put("display_id", displayTarget.displayId)
-                displayTarget.sessionId?.let { put(DisplayTargetResolver.DISPLAY_SESSION_ID, it) }
+                buildJsonObject {
+                    put("success", ok)
+                    if (!ok) put("reason", "no_scroll_action_accepted")
+                    put("display_id", displayTarget.displayId)
+                    displayTarget.sessionId?.let { put(DisplayTargetResolver.DISPLAY_SESSION_ID, it) }
+                }
             }
         }
         streamer.streamIfHeadless(invocationContext, "Scroll $direction")

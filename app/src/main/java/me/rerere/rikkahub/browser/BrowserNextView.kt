@@ -139,7 +139,7 @@ fun BrowserNextView(
                 BrowserTabStrip(state)
             }
         },
-        bottomBar = { BrowserAiStripe() },
+        bottomBar = { BrowserAiStripe(onStopAi = { BrowserController.stopCurrentTask() }) },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             key(state.selectedTabId, state.attachmentEpoch) {

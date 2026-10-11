@@ -438,6 +438,13 @@ class FilesManager(
         managedFolderCoordinator.cleanup(folder)
     }
 
+    suspend fun deleteOlderThan(
+        folder: ManagedFolder = ManagedFolder.Upload,
+        cutoffMillis: Long,
+    ): FolderCleanupResult = withContext(Dispatchers.IO) {
+        managedFolderCoordinator.cleanupOlderThan(folder, cutoffMillis)
+    }
+
     suspend fun delete(id: Long, deleteFromDisk: Boolean = true): Boolean = withContext(Dispatchers.IO) {
         managedFolderCoordinator.delete(id, deleteFromDisk)
     }

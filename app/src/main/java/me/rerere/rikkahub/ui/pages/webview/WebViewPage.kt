@@ -31,27 +31,33 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.webview.WebView
+import me.rerere.rikkahub.ui.components.webview.WebViewContentCache
 import me.rerere.rikkahub.ui.components.webview.MERMAID_ASSET_PATH
 import me.rerere.rikkahub.ui.components.webview.RIKKAHUB_LOCAL_ORIGIN
 import me.rerere.rikkahub.ui.components.webview.isBundledMermaidHtml
 import me.rerere.rikkahub.ui.components.webview.rememberWebViewState
 import me.rerere.rikkahub.ui.components.webview.rememberRikkaHubAssetWebViewClient
 import me.rerere.rikkahub.ui.theme.JetbrainsMono
-import me.rerere.rikkahub.utils.base64Decode
 import androidx.compose.ui.res.stringResource
 import me.rerere.rikkahub.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WebViewPage(url: String, content: String) {
-    val decodedContent = remember(content) { content.base64Decode() }
-    val bundledMermaid = url.isEmpty() && isBundledMermaidHtml(decodedContent)
+fun WebViewPage(url: String, contentId: String) {
+    val context = LocalContext.current
+    // Content travels by cache id (Screen.WebView carries only the sha256), not in the
+    // navigation route — large HTML in the route can hit the binder transaction limit.
+    val content = remember(contentId) {
+        WebViewContentCache.load(context.cacheDir, contentId).orEmpty()
+    }
+    val bundledMermaid = url.isEmpty() && isBundledMermaidHtml(content)
     val state = if (url.isNotEmpty()) {
         rememberWebViewState(
             url = url,
@@ -63,7 +69,7 @@ fun WebViewPage(url: String, content: String) {
             })
     } else {
         rememberWebViewState(
-            data = decodedContent,
+            data = content,
             baseUrl = RIKKAHUB_LOCAL_ORIGIN,
             mimeType = "text/html",
             settings = {
