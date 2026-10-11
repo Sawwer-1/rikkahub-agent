@@ -28,6 +28,8 @@ jobs:
 
       - name: Set up pnpm (web-ui deps)
         uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - name: Export schemas via KSP
         run: ./gradlew :app:kspDebugKotlin --stacktrace

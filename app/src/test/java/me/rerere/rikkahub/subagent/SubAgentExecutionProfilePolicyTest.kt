@@ -8,6 +8,99 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SubAgentExecutionProfilePolicyTest {
+    private val nameModelA = Uuid.random()
+    private val nameModelB = Uuid.random()
+    private val nameCandidates = listOf(
+        SubAgentModelCandidate(nameModelA, "deepseek-v4-flash", "DeepSeek V4 Flash"),
+        SubAgentModelCandidate(nameModelB, "claude-3-5-sonnet", "Claude 3.5 Sonnet"),
+    )
+
+    @Test
+    fun `dispatch model_id resolves by modelId ignoring case`() {
+        val resolution = resolveSubAgentExecutionProfile(
+            runId = "run-name-1",
+            request = SubAgentRequest(task = "research", modelId = "DEEPSEEK-V4-FLASH"),
+            inputs = SubAgentExecutionInputs(
+                parentEffectiveModelId = Uuid.random(),
+                assistantDefaultModelId = null,
+                assistantSystemPrompt = "",
+                availableModelIds = setOf(nameModelA, nameModelB),
+                callerToolNames = emptySet(),
+                headlessToolNames = emptySet(),
+                modelCandidates = nameCandidates,
+            ),
+        ) as SubAgentExecutionProfileResolution.Resolved
+
+        assertEquals(nameModelA, resolution.profile.effectiveModelId)
+    }
+
+    @Test
+    fun `dispatch model_id resolves by displayName ignoring case`() {
+        val resolution = resolveSubAgentExecutionProfile(
+            runId = "run-name-2",
+            request = SubAgentRequest(task = "research", modelId = "claude 3.5 sonnet"),
+            inputs = SubAgentExecutionInputs(
+                parentEffectiveModelId = Uuid.random(),
+                assistantDefaultModelId = null,
+                assistantSystemPrompt = "",
+                availableModelIds = setOf(nameModelA, nameModelB),
+                callerToolNames = emptySet(),
+                headlessToolNames = emptySet(),
+                modelCandidates = nameCandidates,
+            ),
+        ) as SubAgentExecutionProfileResolution.Resolved
+
+        assertEquals(nameModelB, resolution.profile.effectiveModelId)
+    }
+
+    @Test
+    fun `unknown model name fails loudly with the full candidate list`() {
+        val resolution = resolveSubAgentExecutionProfile(
+            runId = "run-name-3",
+            request = SubAgentRequest(task = "research", modelId = "gpt-9-hallucinated"),
+            inputs = SubAgentExecutionInputs(
+                parentEffectiveModelId = nameModelA,
+                assistantDefaultModelId = null,
+                assistantSystemPrompt = "",
+                availableModelIds = setOf(nameModelA, nameModelB),
+                callerToolNames = emptySet(),
+                headlessToolNames = emptySet(),
+                modelCandidates = nameCandidates,
+            ),
+        ) as SubAgentExecutionProfileResolution.Rejected
+
+        assertEquals("unknown_model", resolution.error)
+        assertTrue(resolution.detail.contains("Available chat models"))
+        assertTrue(resolution.detail.contains("deepseek-v4-flash"))
+        assertTrue(resolution.detail.contains("Claude 3.5 Sonnet"))
+        assertTrue(resolution.detail.contains(nameModelB.toString()))
+    }
+
+    @Test
+    fun `ambiguous displayName match is rejected with a self-correct hint`() {
+        val dupA = Uuid.random()
+        val dupB = Uuid.random()
+        val resolution = resolveSubAgentExecutionProfile(
+            runId = "run-name-4",
+            request = SubAgentRequest(task = "research", modelId = "Same Display"),
+            inputs = SubAgentExecutionInputs(
+                parentEffectiveModelId = nameModelA,
+                assistantDefaultModelId = null,
+                assistantSystemPrompt = "",
+                availableModelIds = setOf(dupA, dupB),
+                callerToolNames = emptySet(),
+                headlessToolNames = emptySet(),
+                modelCandidates = listOf(
+                    SubAgentModelCandidate(dupA, "model-one", "Same Display"),
+                    SubAgentModelCandidate(dupB, "model-two", "same display"),
+                ),
+            ),
+        ) as SubAgentExecutionProfileResolution.Rejected
+
+        assertEquals("ambiguous_model", resolution.error)
+        assertTrue(resolution.detail.contains("matches multiple models"))
+    }
+
     @Test
     fun `request overrides become the effective child execution profile`() {
         val parentModel = Uuid.random()

@@ -120,6 +120,22 @@ data class SubAgentExecutionInputs(
     val callerToolNames: Set<String>,
     val headlessToolNames: Set<String>,
     val knownToolNames: Set<String> = callerToolNames + headlessToolNames,
+    /**
+     * Chat models offered by enabled providers, used to resolve a dispatch `model_id` that is
+     * not a UUID (extv #28 SubAgentModelResolver parity: UUID → modelId → displayName, all
+     * case-insensitive). Empty list = no name resolution (tests / headless snippets).
+     */
+    val modelCandidates: List<SubAgentModelCandidate> = emptyList(),
+)
+
+/**
+ * One resolvable chat model advertised by an enabled provider. Kept deliberately tiny so the
+ * engine can build it straight off the Settings provider tree without leaking provider types.
+ */
+data class SubAgentModelCandidate(
+    val id: Uuid,
+    val modelId: String,
+    val displayName: String,
 )
 
 /** Immutable execution contract consumed by the existing conversation generation pipeline. */
@@ -162,6 +178,36 @@ sealed interface SubAgentExecutionProfileResolution {
     data class Rejected(val error: String, val detail: String) : SubAgentExecutionProfileResolution
 }
 
+/** Cap on how many candidates the loud-failure detail lists so prompts stay readable. */
+private const val MAX_LISTED_MODEL_CANDIDATES = 20
+
+/**
+ * extv #28 loud-failure message: unknown/ambiguous model_id must list every available chat
+ * model (displayName + modelId + uuid) so the dispatching AI can self-correct and retry.
+ */
+private fun describeAvailableModels(
+    requested: String?,
+    candidates: List<SubAgentModelCandidate>,
+    prefix: String? = null,
+): String {
+    val body = buildString {
+        if (!prefix.isNullOrBlank()) append(prefix).append(". ")
+        if (requested != null) append("model_id '$requested' did not resolve. ")
+        if (candidates.isEmpty()) {
+            append("No chat models are advertised by enabled providers.")
+        } else {
+            append("Available chat models: ")
+            candidates.take(MAX_LISTED_MODEL_CANDIDATES).joinTo(this, "; ") { candidate ->
+                "'${candidate.displayName}' (${candidate.modelId}) = ${candidate.id}"
+            }
+            if (candidates.size > MAX_LISTED_MODEL_CANDIDATES) {
+                append("; … and ${candidates.size - MAX_LISTED_MODEL_CANDIDATES} more")
+            }
+        }
+    }
+    return body
+}
+
 /**
  * Resolves request overrides into one frozen child-run profile without mutating the parent
  * [me.rerere.rikkahub.data.model.Assistant]. Tool names are intersected with both the caller's
@@ -172,12 +218,42 @@ fun resolveSubAgentExecutionProfile(
     request: SubAgentRequest,
     inputs: SubAgentExecutionInputs,
 ): SubAgentExecutionProfileResolution {
-    val requestedModelId = request.modelId?.trim()?.takeIf(String::isNotEmpty)?.let { raw ->
-        runCatching { Uuid.parse(raw) }.getOrElse {
-            return SubAgentExecutionProfileResolution.Rejected(
-                error = "invalid_model_id",
-                detail = "model_id is not a valid UUID",
-            )
+    val requestedRaw = request.modelId?.trim()?.takeIf(String::isNotEmpty)
+    val requestedModelId: Uuid? = if (requestedRaw == null) {
+        null
+    } else {
+        // SubAgentModelResolver parity (extv #28, 2026-10-11 裁定③): a dispatch model_id is
+        // resolved through three case-insensitive stages — exact UUID → modelId string →
+        // displayName string. AI dispatchers usually only know a model by name, so a bare
+        // "claude-3-5-sonnet" must resolve instead of being rejected. Unknown/ambiguous lookups
+        // fail loudly with the full candidate list so the model can self-correct and retry.
+        val uuid = runCatching { Uuid.parse(requestedRaw) }.getOrNull()
+        if (uuid != null) {
+            uuid
+        } else {
+            val needle = requestedRaw.lowercase()
+            val byModelId = inputs.modelCandidates.filter { it.modelId.lowercase() == needle }
+            val byName = inputs.modelCandidates.filter { it.displayName.lowercase() == needle }
+            val matched = (byModelId.map { it.id } + byName.map { it.id }).distinct()
+            when (matched.size) {
+                1 -> matched.single()
+                0 -> return SubAgentExecutionProfileResolution.Rejected(
+                    error = "unknown_model",
+                    detail = describeAvailableModels(
+                        requested = requestedRaw,
+                        candidates = inputs.modelCandidates,
+                    ),
+                )
+                else -> return SubAgentExecutionProfileResolution.Rejected(
+                    error = "ambiguous_model",
+                    detail = describeAvailableModels(
+                        requested = requestedRaw,
+                        candidates = inputs.modelCandidates,
+                        prefix = "model_id '$requestedRaw' matches multiple models; " +
+                            "pass the exact UUID instead",
+                    ),
+                )
+            }
         }
     }
     val effectiveModelId = requestedModelId
@@ -186,7 +262,11 @@ fun resolveSubAgentExecutionProfile(
     if (effectiveModelId !in inputs.availableModelIds) {
         return SubAgentExecutionProfileResolution.Rejected(
             error = "unknown_model",
-            detail = "the selected child model is not available",
+            detail = describeAvailableModels(
+                requested = requestedRaw,
+                candidates = inputs.modelCandidates,
+                prefix = "the selected child model is not available",
+            ),
         )
     }
 

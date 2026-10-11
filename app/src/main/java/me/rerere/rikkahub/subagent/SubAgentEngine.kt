@@ -116,6 +116,21 @@ class SubAgentEngine(
             .flatMap { it.models.asSequence() }
             .map { it.id }
             .toSet()
+        // SubAgentModelResolver parity (2026-10-11 裁定③): advertise every enabled-provider
+        // chat model so a dispatch model_id can resolve by modelId/displayName, not just UUID.
+        val modelCandidates = settings.providers
+            .asSequence()
+            .filter { it.enabled }
+            .flatMap { it.models.asSequence() }
+            .map { model ->
+                me.rerere.rikkahub.subagent.SubAgentModelCandidate(
+                    id = model.id,
+                    modelId = model.modelId,
+                    displayName = model.displayName.ifBlank { model.modelId },
+                )
+            }
+            .distinctBy { it.id }
+            .toList()
         val profile = when (val resolution = resolveSubAgentExecutionProfile(
             runId = runId,
             request = cleaned,
@@ -127,6 +142,7 @@ class SubAgentEngine(
                 callerToolNames = caller.toolNames.available,
                 headlessToolNames = subAgentHeadlessToolNames(caller.toolNames.available),
                 knownToolNames = caller.toolNames.known,
+                modelCandidates = modelCandidates,
             ),
         )) {
             is SubAgentExecutionProfileResolution.Resolved -> resolution.profile
