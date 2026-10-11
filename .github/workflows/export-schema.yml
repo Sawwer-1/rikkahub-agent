@@ -23,6 +23,12 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Set up bun (web-ui deps)
+        uses: oven-sh/setup-bun@v2
+
+      - name: Set up pnpm (web-ui deps)
+        uses: pnpm/action-setup@v4
+
       - name: Export schemas via KSP
         run: ./gradlew :app:kspDebugKotlin --stacktrace
 
