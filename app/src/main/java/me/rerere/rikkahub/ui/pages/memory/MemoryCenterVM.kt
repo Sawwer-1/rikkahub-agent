@@ -467,8 +467,11 @@ class MemoryCenterVM(
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
-                dreamNowMessage.value = "触发失败，请稍后重试"
+            } catch (e: Exception) {
+                // 2026-10-11 主公报“频繁报错”：原文案吞掉了异常细节，无法定位。
+                // 现在把异常类名与消息原样透出到页面，并提供日志行。
+                android.util.Log.e("MemoryCenterVM", "dreamNow scan failed", e)
+                dreamNowMessage.value = "触发失败：${e.javaClass.simpleName}: ${e.message ?: "无详细信息"}"
             } finally {
                 refreshDreamRuntimeStatus()
                 dreamNowRunning.value = false

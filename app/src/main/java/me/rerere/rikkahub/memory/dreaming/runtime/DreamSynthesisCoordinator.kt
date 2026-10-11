@@ -215,25 +215,32 @@ class DreamSynthesisCoordinator(
             } else if (coarseBudget.deferral != null) {
                 deferred[scope.scopeId] = coarseBudget.deferral
             } else {
-                when (val one = schedule(
-                    scope = scope,
-                    policy = policy,
-                    nowMs = now,
-                    allowCreate = remainingNewRuns > 0L,
-                    // Startup replaces a queued PENDING request so stale WorkManager backoff and
-                    // pre-upgrade attempt counters cannot delay durable recovery for hours. An
-                    // exact idle recheck must also replace the just-finishing Worker: otherwise
-                    // KEEP can discard its successor while the deferring Worker is still RUNNING,
-                    // then leave the durable PENDING row with no Work request. A RUNNING provider
-                    // call is still protected by schedule()'s running fence. Cost changes likewise
-                    // rebuild immutable Work constraints.
-                    replaceExisting = reason == DreamSynthesisScanReason.STARTUP ||
-                        reason == DreamSynthesisScanReason.COST_POLICY_CHANGED ||
-                        reason == DreamSynthesisScanReason.APP_IDLE_RECHECK,
-                    idleDeadlineAlreadyObserved =
-                        reason == DreamSynthesisScanReason.APP_IDLE_RECHECK,
-                    bypassIdle = bypassIdle,
-                )) {
+                // 2026-10-11 主公报“立即做梦频繁报错”：enqueue 链上任何单点异常
+                // （WorkManager/策略校验等）原先会炸穿整次扫描——逐范围容错降级，
+                // 一个范围失败不再拖垮其余范围与本次手动触发。
+                val one = runCatching {
+                    schedule(
+                        scope = scope,
+                        policy = policy,
+                        nowMs = now,
+                        allowCreate = remainingNewRuns > 0L,
+                        // Startup replaces a queued PENDING request so stale WorkManager backoff
+                        // and pre-upgrade attempt counters cannot delay durable recovery for
+                        // hours. An exact idle recheck must also replace the just-finishing
+                        // Worker: otherwise KEEP can discard its successor while the deferring
+                        // Worker is still RUNNING, then leave the durable PENDING row with no
+                        // Work request. A RUNNING provider call is still protected by
+                        // schedule()'s running fence. Cost changes likewise rebuild immutable
+                        // Work constraints.
+                        replaceExisting = reason == DreamSynthesisScanReason.STARTUP ||
+                            reason == DreamSynthesisScanReason.COST_POLICY_CHANGED ||
+                            reason == DreamSynthesisScanReason.APP_IDLE_RECHECK,
+                        idleDeadlineAlreadyObserved =
+                            reason == DreamSynthesisScanReason.APP_IDLE_RECHECK,
+                        bypassIdle = bypassIdle,
+                    )
+                }.getOrElse { ScheduleOneResult.Deferred(DreamSynthesisScheduleDeferral.STORE_FAILURE) }
+                when (one) {
                     is ScheduleOneResult.Scheduled -> {
                         scheduled += scope.scopeId
                         if (one.created) {
