@@ -596,6 +596,9 @@ class GenerationHandler(
         NoOpDreamRuntimeUsageRecorder,
     private val dreamRuntimeDiagnosticsSink: DreamRuntimeDiagnosticsSink =
         NoOpDreamRuntimeDiagnosticsSink,
+    // Security-audit sidecar (rolling JSONL). Nullable with a default so test constructions
+    // keep compiling; record() never throws so the approval read-path cannot be disturbed.
+    private val securityAudit: me.rerere.rikkahub.data.security.SecurityAuditRepository? = null,
 ) {
     fun generateText(
         settings: Settings,
@@ -1616,6 +1619,16 @@ class GenerationHandler(
                     // envelope to the model without executing.
                     val hardlineReason = me.rerere.rikkahub.data.ai.tools
                         .HardlineCommandGuard.checkTool(tool.toolName, tool.input)
+                    if (hardlineReason != null) {
+                        securityAudit?.record(
+                            category = me.rerere.rikkahub.data.security.SecurityAuditToolObserver.CATEGORY_APPROVAL,
+                            action = "blocked",
+                            target = tool.toolName,
+                            detail = "hardline: $hardlineReason origin=$callOrigin",
+                            status = "blocked",
+                            sensitive = true,
+                        )
+                    }
                     val transformed = when {
                         hardlineReason != null && tool.approvalState is ToolApprovalState.Auto -> {
                             Log.w(TAG, "hardline-blocked ${tool.toolName}: $hardlineReason")
@@ -1644,6 +1657,13 @@ class GenerationHandler(
                                 tool  // leave as Auto so the executor runs it without prompting
                             } else {
                                 hasPendingApproval = true
+                                securityAudit?.record(
+                                    category = me.rerere.rikkahub.data.security.SecurityAuditToolObserver.CATEGORY_APPROVAL,
+                                    action = "approval_requested",
+                                    target = tool.toolName,
+                                    detail = "origin=$callOrigin conversation=${conversationId ?: "none"}",
+                                    status = "pending",
+                                )
                                 tool.copy(approvalState = ToolApprovalState.Pending)
                             }
                         }
@@ -1745,6 +1765,13 @@ class GenerationHandler(
                     is ToolApprovalState.Denied -> {
                         // Tool was denied by user
                         val reason = (tool.approvalState as ToolApprovalState.Denied).reason
+                        securityAudit?.record(
+                            category = me.rerere.rikkahub.data.security.SecurityAuditToolObserver.CATEGORY_APPROVAL,
+                            action = "denied",
+                            target = tool.toolName,
+                            detail = "reason=${reason.ifBlank { "none" }} origin=$callOrigin",
+                            status = "denied",
+                        )
                         executedTools += tool.copy(
                             output = listOf(
                                 UIMessagePart.Text(
@@ -1811,6 +1838,14 @@ class GenerationHandler(
                             .HardlineCommandGuard.checkTool(tool.toolName, tool.input)
                         if (resumeHardlineReason != null) {
                             Log.w(TAG, "generateText: resume-path hardline re-check blocked ${tool.toolName}: $resumeHardlineReason")
+                            securityAudit?.record(
+                                category = me.rerere.rikkahub.data.security.SecurityAuditToolObserver.CATEGORY_APPROVAL,
+                                action = "blocked",
+                                target = tool.toolName,
+                                detail = "hardline_resume: $resumeHardlineReason origin=$callOrigin",
+                                status = "blocked",
+                                sensitive = true,
+                            )
                             executedTools += tool.copy(
                                 output = listOf(
                                     UIMessagePart.Text(
@@ -2383,6 +2418,13 @@ class GenerationHandler(
                         is ToolApprovalState.Denied -> {
                             flushReadySegment()
                             val reason = (tool.approvalState as ToolApprovalState.Denied).reason
+                            securityAudit?.record(
+                                category = me.rerere.rikkahub.data.security.SecurityAuditToolObserver.CATEGORY_APPROVAL,
+                                action = "denied",
+                                target = tool.toolName,
+                                detail = "reason=${reason.ifBlank { "none" }} origin=$callOrigin",
+                                status = "denied",
+                            )
                             executedTools += tool.copy(
                                 output = listOf(
                                     UIMessagePart.Text(

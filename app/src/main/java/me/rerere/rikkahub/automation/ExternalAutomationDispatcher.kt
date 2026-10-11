@@ -79,6 +79,11 @@ class ExternalAutomationDispatcher(
      * means a kill mid-run is reconciled to `process_lost` on next start. No DI-cycle risk.
      */
     private val agentRunRepo: AgentRunRepository,
+    /**
+     * Security-audit sidecar (rolling JSONL). Nullable so non-DI constructions keep working;
+     * record() never throws, so trigger logging cannot break dispatch.
+     */
+    private val securityAudit: me.rerere.rikkahub.data.security.SecurityAuditRepository? = null,
 ) {
 
     sealed class TrustResult {
@@ -113,6 +118,13 @@ class ExternalAutomationDispatcher(
         val parsedPrompt = prompt.trim()
         if (parsedPrompt.isEmpty()) {
             log(callerPackage, "RUN_TASK", "rejected:empty_prompt", requestId)
+            securityAudit?.record(
+                category = me.rerere.rikkahub.data.security.SecurityAuditToolObserver.CATEGORY_AUTOMATION,
+                action = "run_task",
+                target = callerPackage,
+                detail = "requestId=${requestId.orEmpty()}",
+                status = "rejected:empty_prompt",
+            )
             sendCallback(returnAction, returnPackage, requestId, "rejected", "empty prompt")
             return "rejected:empty_prompt"
         }
@@ -130,6 +142,13 @@ class ExternalAutomationDispatcher(
             val seenAt = recentRequestIds[dedupKey]
             if (seenAt != null && nowMs - seenAt < REQUEST_ID_DEDUP_WINDOW_MS) {
                 log(callerPackage, "RUN_TASK", "deduped:request_id_replay", requestId)
+                securityAudit?.record(
+                    category = me.rerere.rikkahub.data.security.SecurityAuditToolObserver.CATEGORY_AUTOMATION,
+                    action = "run_task",
+                    target = callerPackage,
+                    detail = "requestId=${requestId.orEmpty()}",
+                    status = "rejected:duplicate_request_id",
+                )
                 sendCallback(returnAction, returnPackage, requestId, "rejected", "duplicate request_id within ${REQUEST_ID_DEDUP_WINDOW_MS / 1000}s window")
                 return "rejected:duplicate_request_id"
             }
@@ -140,6 +159,13 @@ class ExternalAutomationDispatcher(
         // Telemetry must never strand an already-accepted task before dispatch.
         try {
             log(callerPackage, "RUN_TASK", "accepted", requestId)
+            securityAudit?.record(
+                category = me.rerere.rikkahub.data.security.SecurityAuditToolObserver.CATEGORY_AUTOMATION,
+                action = "run_task",
+                target = callerPackage,
+                detail = "requestId=${requestId.orEmpty()}",
+                status = "accepted",
+            )
         } catch (cancelled: CancellationException) {
             withContext(NonCancellable) {
                 sendCallback(returnAction, returnPackage, requestId, "cancelled", "dispatch cancelled")
@@ -324,6 +350,13 @@ class ExternalAutomationDispatcher(
         reason: String,
     ) {
         log(callerPackage, action, "rejected:$reason", requestId)
+        securityAudit?.record(
+            category = me.rerere.rikkahub.data.security.SecurityAuditToolObserver.CATEGORY_AUTOMATION,
+            action = action,
+            target = callerPackage,
+            detail = "requestId=${requestId.orEmpty()}",
+            status = "rejected:$reason",
+        )
         sendCallback(returnAction, returnPackage, requestId, "rejected", reason)
     }
 

@@ -909,6 +909,7 @@ val dataSourceModule = module {
             dreamSnapshotProjectionReader = get(),
             dreamRuntimeUsageRecorder = get(),
             dreamRuntimeDiagnosticsSink = get(),
+            securityAudit = get(),
         )
     }
 

@@ -66,6 +66,7 @@ import me.rerere.hugeicons.stroke.Connect
 import me.rerere.hugeicons.stroke.ServerStack01
 import me.rerere.hugeicons.stroke.Shield01
 import me.rerere.hugeicons.stroke.Telegram
+import me.rerere.hugeicons.stroke.WebDesign01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Share04
 import me.rerere.hugeicons.stroke.SmartPhone01
@@ -309,6 +310,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         headlineContent = { Text(stringResource(R.string.setting_page_telegram)) },
                     )
                     item(
+                        onClick = { navController.navigate(Screen.MiniApps) },
+                        leadingContent = { Icon(HugeIcons.WebDesign01, null) },
+                        supportingContent = { Text(stringResource(R.string.mini_app_page_desc)) },
+                        headlineContent = { Text(stringResource(R.string.mini_app_page_title)) },
+                    )
+                    item(
                         onClick = { navController.navigate(Screen.SettingWorkflows) },
                         leadingContent = { Icon(HugeIcons.Connect, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_workflows_desc)) },
@@ -349,6 +356,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { Icon(HugeIcons.Tick01, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_tool_approvals_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_tool_approvals)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.SettingSecurityAudit) },
+                        leadingContent = { Icon(HugeIcons.Shield01, null) },
+                        supportingContent = { Text(stringResource(R.string.security_audit_page_desc)) },
+                        headlineContent = { Text(stringResource(R.string.security_audit_page_title)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingAccessibility) },

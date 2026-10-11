@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- strings_assistB: additive resources for SecurityAudit + MiniApp (craftsman 4B).
+     Kept separate from the shared strings.xml to avoid merge conflicts. -->
+<resources>
+    <!-- Security audit -->
+    <string name="security_audit_page_title">Security audit</string>
+    <string name="security_audit_page_desc">Tool executions, approvals and automation triggers</string>
+    <string name="security_audit_empty">No audit entries yet</string>
+    <string name="security_audit_clear">Clear log</string>
+    <string name="security_audit_clear_confirm_title">Clear audit log?</string>
+    <string name="security_audit_clear_confirm_body">All security audit entries will be deleted. This cannot be undone.</string>
+    <string name="security_audit_filter_all">All</string>
+    <string name="security_audit_filter_tool">Tools</string>
+    <string name="security_audit_filter_approval">Approvals</string>
+    <string name="security_audit_filter_automation">Automation</string>
+    <string name="security_audit_sensitive">sensitive</string>
+
+    <!-- Mini App -->
+    <string name="mini_app_page_title">Mini apps</string>
+    <string name="mini_app_page_desc">Add web pages as in-chat mini apps</string>
+    <string name="mini_app_empty">No mini apps yet</string>
+    <string name="mini_app_empty_hint">Tap + to add a web page, open it right from the chat input sheet</string>
+    <string name="mini_app_add">Add</string>
+    <string name="mini_app_add_title">Add mini app</string>
+    <string name="mini_app_edit_title">Edit mini app</string>
+    <string name="mini_app_edit">Edit</string>
+    <string name="mini_app_open">Open</string>
+    <string name="mini_app_manage">Manage apps</string>
+    <string name="mini_app_save">Save</string>
+    <string name="mini_app_name_label">Name</string>
+    <string name="mini_app_name_hint">e.g. Daily quote</string>
+    <string name="mini_app_url_label">URL</string>
+    <string name="mini_app_icon_label">Icon URL (optional)</string>
+    <string name="mini_app_desc_label">Description (optional)</string>
+    <string name="mini_app_move_up">Move up</string>
+    <string name="mini_app_move_down">Move down</string>
+    <string name="mini_app_delete_title">Delete mini app?</string>
+    <string name="mini_app_delete_body">The mini app %1$s will be removed from the chat input sheet.</string>
+</resources>

@@ -117,6 +117,9 @@ val appModule = module {
     single { me.rerere.rikkahub.data.telegram.TelegramPollStallTracker() }
     single { NotificationListenerPreferences(get()) }
 
+    // Security audit log (rolling JSONL, no Room table — DB schema is frozen).
+    single { me.rerere.rikkahub.data.security.SecurityAuditRepository(get()) }
+
     // Phase 13: External Automation Intent API
     single { me.rerere.rikkahub.automation.ExternalAutomationConfig(get()) }
     single {
@@ -129,6 +132,7 @@ val appModule = module {
             appScope = get(),
             // Phase 24 — unified AgentRun ledger writer.
             agentRunRepo = get(),
+            securityAudit = get(),
         )
     }
 
@@ -774,13 +778,16 @@ val appModule = module {
     }
     single<me.rerere.rikkahub.data.ai.execution.ToolRuntime> {
         val pluginHooks = get<me.rerere.rikkahub.plugin.PluginHookBridge>()
+        val auditObserver = me.rerere.rikkahub.data.security.SecurityAuditToolObserver(
+            get<me.rerere.rikkahub.data.security.SecurityAuditRepository>(),
+        )
         me.rerere.rikkahub.data.ai.execution.DefaultToolRuntime(
             policyResolver = get(),
             securityDescriptorResolver = get(),
             criticalSink = get(),
             trackingHealth = get(),
             interceptors = listOf(pluginHooks),
-            observers = listOf(pluginHooks),
+            observers = listOf(pluginHooks, auditObserver),
         )
     }
     single<me.rerere.rikkahub.execution.ManagedExecutionCoordinator> {

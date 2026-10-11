@@ -106,6 +106,8 @@ import me.rerere.rikkahub.ui.pages.favorite.FavoritePage
 import me.rerere.rikkahub.ui.pages.history.HistoryPage
 import me.rerere.rikkahub.ui.pages.imggen.ImageGenPage
 import me.rerere.rikkahub.ui.pages.log.LogPage
+import me.rerere.rikkahub.ui.pages.miniapp.MiniAppEditPage
+import me.rerere.rikkahub.ui.pages.miniapp.MiniAppManagerPage
 import me.rerere.rikkahub.ui.pages.search.SearchPage
 import me.rerere.rikkahub.ui.pages.setting.SettingAboutPage
 import me.rerere.rikkahub.ui.pages.setting.SettingAccessibilityPage
@@ -129,6 +131,7 @@ import me.rerere.rikkahub.ui.pages.setting.SettingModelPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSubAgentsPage
 import me.rerere.rikkahub.ui.pages.setting.AlarmSettingsPage
 import me.rerere.rikkahub.ui.pages.setting.SettingPage
+import me.rerere.rikkahub.ui.pages.security.SecurityAuditPage
 import me.rerere.rikkahub.ui.pages.setting.SettingProviderDetailPage
 import me.rerere.rikkahub.ui.pages.setting.SettingProviderPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSearchDetailPage
@@ -663,6 +666,18 @@ class RouteActivity : ComponentActivity() {
                                 me.rerere.rikkahub.ui.pages.setting.SettingToolApprovalsPage()
                             }
 
+                            entry<Screen.SettingSecurityAudit> {
+                                SecurityAuditPage()
+                            }
+
+                            entry<Screen.MiniApps> {
+                                MiniAppManagerPage()
+                            }
+
+                            entry<Screen.MiniAppEdit> { key ->
+                                MiniAppEditPage(key.id)
+                            }
+
                             entry<Screen.SettingAccessibility> {
                                 SettingAccessibilityPage()
                             }
@@ -971,6 +986,15 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingToolApprovals : Screen
+
+    @Serializable
+    data object SettingSecurityAudit : Screen
+
+    @Serializable
+    data object MiniApps : Screen
+
+    @Serializable
+    data class MiniAppEdit(val id: String? = null) : Screen
 
     @Serializable
     data object SettingAccessibility : Screen

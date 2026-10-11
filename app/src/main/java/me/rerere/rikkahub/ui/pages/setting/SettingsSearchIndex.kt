@@ -45,6 +45,12 @@ fun settingsSearchIndex(developerMode: Boolean): List<SettingsSearchEntry> {
             groupRes = R.string.setting_page_general_settings,
             route = Screen.Extensions,
         ),
+        SettingsSearchEntry(
+            titleRes = R.string.mini_app_page_title,
+            descriptionRes = R.string.mini_app_page_desc,
+            groupRes = R.string.setting_page_general_settings,
+            route = Screen.MiniApps,
+        ),
 
         // Model and services
         SettingsSearchEntry(
@@ -212,6 +218,12 @@ fun settingsSearchIndex(developerMode: Boolean): List<SettingsSearchEntry> {
             descriptionRes = R.string.setting_page_request_logs_desc,
             groupRes = R.string.setting_page_about,
             route = Screen.Log,
+        ),
+        SettingsSearchEntry(
+            titleRes = R.string.security_audit_page_title,
+            descriptionRes = R.string.security_audit_page_desc,
+            groupRes = R.string.setting_page_about,
+            route = Screen.SettingSecurityAudit,
         ),
         SettingsSearchEntry(
             titleRes = R.string.setting_page_donate,

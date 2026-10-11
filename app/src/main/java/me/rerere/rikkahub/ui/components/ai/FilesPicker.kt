@@ -67,6 +67,7 @@ import me.rerere.hugeicons.stroke.Package01
 import me.rerere.hugeicons.stroke.Settings02
 import me.rerere.hugeicons.stroke.Video01
 import me.rerere.hugeicons.stroke.Voice
+import me.rerere.hugeicons.stroke.WebDesign01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.ai.mcp.McpManager
@@ -75,10 +76,12 @@ import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getChatModelForAssistant
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.data.model.MiniApp
 import me.rerere.rikkahub.data.repository.ConversationMetadataMutation
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.ui.components.ui.ExtensionSelector
+import me.rerere.rikkahub.ui.components.ui.MiniAppIcon
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionCamera
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionManager
 import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
@@ -154,6 +157,19 @@ internal fun FilesPicker(
 
         HorizontalDivider(
             modifier = Modifier.fillMaxWidth()
+        )
+
+        // Chat mini apps (Telegram-style user-added web pages) + manager entry.
+        MiniAppPickerSection(
+            miniApps = settings.miniApps.sortedBy { it.order },
+            onOpenApp = { app ->
+                onDismiss()
+                navController.navigate(Screen.WebView(url = app.url))
+            },
+            onManage = {
+                onDismiss()
+                navController.navigate(Screen.MiniApps)
+            },
         )
 
         if (workspaces.isNotEmpty()) {
@@ -573,5 +589,47 @@ private fun BigIconTextButtonPreview() {
         }, text = {
             Text(stringResource(R.string.photo))
         }) {}
+    }
+}
+
+@Composable
+private fun MiniAppPickerSection(
+    miniApps: List<MiniApp>,
+    onOpenApp: (MiniApp) -> Unit,
+    onManage: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            miniApps.forEach { app ->
+                BigIconTextButton(
+                    icon = {
+                        MiniAppIcon(
+                            app = app,
+                            modifier = Modifier.size(28.dp),
+                        )
+                    },
+                    text = {
+                        Text(app.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    },
+                    onClick = { onOpenApp(app) },
+                )
+            }
+            BigIconTextButton(
+                icon = {
+                    Icon(HugeIcons.WebDesign01, null)
+                },
+                text = {
+                    Text(stringResource(R.string.mini_app_manage))
+                },
+                onClick = onManage,
+            )
+        }
     }
 }

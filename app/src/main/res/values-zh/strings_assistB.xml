@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- strings_assistB：安全审计与聊天内小应用（炉4B）增量资源，独立于共享 strings.xml 以免冲突。 -->
+<resources>
+    <!-- 安全审计 -->
+    <string name="security_audit_page_title">安全审计</string>
+    <string name="security_audit_page_desc">工具执行、审批与自动化触发记录</string>
+    <string name="security_audit_empty">暂无审计记录</string>
+    <string name="security_audit_clear">清空日志</string>
+    <string name="security_audit_clear_confirm_title">清空审计日志？</string>
+    <string name="security_audit_clear_confirm_body">将删除全部安全审计记录，此操作不可恢复。</string>
+    <string name="security_audit_filter_all">全部</string>
+    <string name="security_audit_filter_tool">工具</string>
+    <string name="security_audit_filter_approval">审批</string>
+    <string name="security_audit_filter_automation">自动化</string>
+    <string name="security_audit_sensitive">敏感</string>
+
+    <!-- 聊天内小应用 -->
+    <string name="mini_app_page_title">小应用</string>
+    <string name="mini_app_page_desc">把网页添加为聊天内小应用</string>
+    <string name="mini_app_empty">还没有小应用</string>
+    <string name="mini_app_empty_hint">点击右下角添加网页，在聊天加号面板中直接打开</string>
+    <string name="mini_app_add">添加</string>
+    <string name="mini_app_add_title">添加小应用</string>
+    <string name="mini_app_edit_title">编辑小应用</string>
+    <string name="mini_app_edit">编辑</string>
+    <string name="mini_app_open">打开</string>
+    <string name="mini_app_manage">管理小应用</string>
+    <string name="mini_app_save">保存</string>
+    <string name="mini_app_name_label">名称</string>
+    <string name="mini_app_name_hint">例如：每日一言</string>
+    <string name="mini_app_url_label">网址</string>
+    <string name="mini_app_icon_label">图标地址（可选）</string>
+    <string name="mini_app_desc_label">描述（可选）</string>
+    <string name="mini_app_move_up">上移</string>
+    <string name="mini_app_move_down">下移</string>
+    <string name="mini_app_delete_title">删除小应用？</string>
+    <string name="mini_app_delete_body">小应用 %1$s 将从聊天加号面板中移除。</string>
+</resources>
