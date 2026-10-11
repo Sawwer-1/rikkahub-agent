@@ -143,11 +143,9 @@ internal fun parseCsv(csv: String, delimiter: Char = ','): List<List<String>> {
                     i++
                 }
             } else {
-                if (c == '' && i + 1 < csv.length && csv[i + 1] == '
-') {
+                if (c == '\r' && i + 1 < csv.length && csv[i + 1] == '\n') {
                     // CRLF inside a quoted field folds to LF (universal newline).
-                    currentField.append('
-')
+                    currentField.append('\n')
                     i += 2
                 } else {
                     currentField.append(c)
