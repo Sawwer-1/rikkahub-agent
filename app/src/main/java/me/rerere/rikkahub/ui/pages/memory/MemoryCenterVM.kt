@@ -74,7 +74,7 @@ import me.rerere.rikkahub.memory.dreaming.runtime.DreamDailyUsageQuery
 import me.rerere.rikkahub.memory.dreaming.runtime.DreamNetworkPolicy
 import me.rerere.rikkahub.memory.dreaming.runtime.dreamUtcDayWindowOrNull
 import me.rerere.rikkahub.memory.dreaming.runtime.DreamSynthesisCoordinator
-import me.rerere.rikkahub.memory.dreaming.runtime.DreamSynthesisScanReason
+import me.rerere.rikkahub.memory.dreaming.work.DreamSynthesisScanReason
 import me.rerere.rikkahub.memory.dreaming.runtime.DreamSynthesisScheduleDeferral
 import me.rerere.rikkahub.memory.dreaming.work.readDreamWorkerEnvironment
 import me.rerere.rikkahub.memory.dreaming.runtime.DreamingCostPolicy
