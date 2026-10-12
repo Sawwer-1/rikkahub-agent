@@ -345,7 +345,11 @@ object CapabilityCatalog {
         "generate_bug_report",
         "workspace_write_file",
         "workspace_edit_file",        "workspace_create_folder",
-
+        // Spreadsheet surface (2.5.4/215) — writes xlsx/csv files, so it shares the file
+        // mutation surface with the rest of the Files toggle group.
+        me.rerere.rikkahub.data.ai.tools.local.TOOL_NAME_EXCEL_WRITE,
+        me.rerere.rikkahub.data.ai.tools.local.TOOL_NAME_CSV_PARSE,
+        me.rerere.rikkahub.data.ai.tools.local.TOOL_NAME_CSV_WRITE,
     )
 
     private val dataEgressToolNames: Set<String> = setOf(

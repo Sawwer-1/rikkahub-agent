@@ -405,13 +405,10 @@ class DreamSynthesisOrchestrator(
             }.getOrElse { null }
         ) {
             DreamSynthesisStoreResult.Accepted -> Unit
-            else -> {
-                Log.w(
-                    DREAM_SYNTHESIS_LOG_TAG,
-                    "Dream pre-commit lease renewal rejected for run ${fence.runId}",
-                )
-                return DreamSynthesisRunResult.Retry(DreamSynthesisRetryReason.LEASE_CONFLICT)
-            }
+            // Rejection/exception means the lease is no longer commit-worthy (expired or
+            // lost); retry from a fresh begin. No android.util.Log here — the orchestrator
+            // runs in pure-JVM unit tests where Log is unmocked (historical rule).
+            else -> return DreamSynthesisRunResult.Retry(DreamSynthesisRetryReason.LEASE_CONFLICT)
         }
         val commitResult = try {
             store.commit(commitRequest)
@@ -428,13 +425,11 @@ class DreamSynthesisOrchestrator(
                 result.committedDreamRevision,
             )
             is DreamSynthesisCommitResult.Rejected -> {
-                // Forensics: keep the true commit rejection reason in the log — the run row's
-                // failure_code collapses several rejection kinds into STORE_FAILURE, and a
-                // lost terminalize race can relabel the row LEASE_EXPIRED.
-                Log.w(
-                    DREAM_SYNTHESIS_LOG_TAG,
-                    "Dream commit rejected for run ${fence.runId}: reason=${result.reason}",
-                )
+                // Forensics: the true rejection reason is logged by the store inside
+                // terminalizeConflict (the run row's failure_code collapses several rejection
+                // kinds into STORE_FAILURE, and a lost terminalize race can relabel the row
+                // LEASE_EXPIRED). Logging lives store-side because this orchestrator path runs
+                // in pure-JVM unit tests where android.util.Log is unmocked.
                 try {
                     store.terminalizeConflict(fence, result.reason, requireClockAtLeast(fence.frozenNowEpochMs))
                 } catch (cancelled: CancellationException) {

@@ -604,17 +604,29 @@ class RoomDreamSynthesisStore(
         fence: DreamSynthesisFence,
         reason: DreamSynthesisCommitRejection,
         nowMs: Long,
-    ): DreamSynthesisStoreResult = failOwnedRun(
-        fence = fence,
-        failureCode = when (reason) {
+    ): DreamSynthesisStoreResult {
+        val failureCode = when (reason) {
             DreamSynthesisCommitRejection.MEMORY_EPOCH_CONFLICT ->
                 DreamRunFailureCode.MEMORY_EPOCH_CONFLICT
             DreamSynthesisCommitRejection.LEASE_EXPIRED -> DreamRunFailureCode.LEASE_EXPIRED
             DreamSynthesisCommitRejection.LEASE_OWNER_MISMATCH -> DreamRunFailureCode.OWNER_MISMATCH
             else -> DreamRunFailureCode.STORE_FAILURE
-        },
-        nowMs = nowMs,
-    )
+        }
+        // Forensics (2026-10-12 device evidence): the run row's failure_code collapses
+        // STORE_CORRUPTION / FENCE_CONFLICT / LEASE_MISSING into STORE_FAILURE, and a lost
+        // terminalize race can get the row relabelled LEASE_EXPIRED by failExpiredRunMirrors.
+        // Keep the true rejection reason in the log. Enum names and run id only — no model or
+        // user text. (This store only runs under instrumented tests; Log is safe here.)
+        Log.w(
+            DREAM_SYNTHESIS_STORE_LOG_TAG,
+            "Dream run ${fence.runId} terminalized: reason=$reason failureCode=$failureCode",
+        )
+        return failOwnedRun(
+            fence = fence,
+            failureCode = failureCode,
+            nowMs = nowMs,
+        )
+    }
 
     override suspend fun fail(
         fence: DreamSynthesisFence,
