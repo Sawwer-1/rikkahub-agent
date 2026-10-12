@@ -350,11 +350,42 @@ class MemoryFtsManager(
     override suspend fun search(
         request: MemoryIndexSearchRequest,
     ): List<MemorySearchCandidate> = withContext(Dispatchers.IO) {
+        val strict = queryIndex(request, request.query)
+        if (strict.isNotEmpty()) return@withContext strict
+        // Production FTS treats a whitespace-joined term list as an implicit AND, so a real
+        // chat message (dozens of terms + CJK bigrams) yields zero recall while the JVM
+        // evaluation index matches on ANY term — device evidence 2026-10-12: memory_count = 0
+        // with queryable data present (single keyword hits, multi-word empty). Widen once,
+        // bounded: one query per term, merged by best rank. Strictly additive — this only
+        // runs when the strict search returned nothing.
+        val fallbackTerms = memorySearchFallbackTerms(request.query)
+        if (fallbackTerms.size < 2) return@withContext strict
+        val merged = LinkedHashMap<Int, MemorySearchCandidate>()
+        fallbackTerms.forEach { term ->
+            queryIndex(request, term).forEach { candidate ->
+                merged.merge(candidate.id, candidate) { existing, incoming ->
+                    if (existing.ftsRank <= incoming.ftsRank) existing else incoming
+                }
+            }
+        }
+        merged.values
+            .sortedWith(
+                compareBy<MemorySearchCandidate> { it.ftsRank }
+                    .thenByDescending { it.updatedAtMs }
+                    .thenBy { it.id },
+            )
+            .take(request.limit.coerceIn(1, MAX_MEMORY_INDEX_CANDIDATES))
+    }
+
+    private fun queryIndex(
+        request: MemoryIndexSearchRequest,
+        matchQuery: String,
+    ): List<MemorySearchCandidate> {
         val results = arrayListOf<MemorySearchCandidate>()
         database.openHelper.readableDatabase.query(
             MEMORY_FTS_SEARCH_SQL,
             arrayOf<Any?>(
-                request.query,
+                matchQuery,
                 request.scopeId,
                 request.frozenNowMs,
                 request.limit.coerceIn(1, MAX_MEMORY_INDEX_CANDIDATES),
@@ -372,6 +403,23 @@ class MemoryFtsManager(
                 )
             }
         }
-        results
+        return results
     }
 }
+
+/**
+ * Bounded per-term widening plan for [MemoryFtsManager.search]. Terms arrive already normalized
+ * and space-joined from `composeMemoryQuery`; a single term means there is nothing to widen.
+ */
+internal fun memorySearchFallbackTerms(
+    query: String,
+    maxTerms: Int = MAX_MEMORY_SEARCH_FALLBACK_TERMS,
+): List<String> = query.split(' ')
+    .asSequence()
+    .map(String::trim)
+    .filter(String::isNotEmpty)
+    .distinct()
+    .take(maxTerms)
+    .toList()
+
+internal const val MAX_MEMORY_SEARCH_FALLBACK_TERMS = 6
