@@ -545,6 +545,19 @@ class MemoryCenterVM(
         val activeRun = recent.firstOrNull { it.status == "PENDING" || it.status == "RUNNING" }
         val lastTerminalRun = recent.firstOrNull { it.status != "PENDING" && it.status != "RUNNING" }
 
+        // 失败不占配额（2026-10-12 主公令）：单独报数，避免"次数少了却不知道去哪了"。
+        runCatching {
+            val window = dreamUtcDayWindowOrNull(System.currentTimeMillis()) ?: return@runCatching
+            val failedToday = recent.count { run ->
+                run.status == "FAILED" &&
+                    run.createdAtMs >= window.startInclusiveEpochMs &&
+                    run.createdAtMs < window.endExclusiveEpochMs
+            }
+            if (failedToday > 0) {
+                usageSummary = "$usageSummary · 失败 $failedToday 次（不计入）"
+            }
+        }
+
         var lastRunSummary = "从未做过梦（积压会在条件满足时自动整理）"
         if (lastTerminalRun != null) {
             val atMs = lastTerminalRun.finishedAtMs ?: lastTerminalRun.startedAtMs
@@ -665,6 +678,18 @@ class MemoryCenterVM(
         "MODEL_OUTPUT_VALIDATION_REJECTED" -> "失败·模型输出校验被拒"
         "SNAPSHOT_COMPILATION_FAILED" -> "失败·快照编译失败"
         "FEATURE_DISABLED" -> "已取消·功能被关闭"
+        // 2026-10-12: the remaining enum values used to fall through to the raw code
+        // ("失败·LEASE_EXPIRED"), which the user could not read. Plain language first,
+        // and what happens next.
+        "LEASE_EXPIRED" -> "失败·没跑完就被系统收回了，稍后会自动重试"
+        "MEMORY_EPOCH_CONFLICT" -> "失败·整理期间又有新内容进来，下次会重新整理"
+        "OBSERVER_CHECKPOINT_CONFLICT" -> "失败·进度对不上，下次会重新整理"
+        "JOURNAL_GAP" -> "失败·记录中间缺了一段，下次会重新整理"
+        "OWNER_MISMATCH" -> "失败·被另一次整理接管了"
+        "CANCELLED_BY_POLICY" -> "已取消"
+        "INPUT_REJECTED" -> "失败·这次要整理的内容不可用"
+        "STORE_FAILURE" -> "失败·写入没成功（已保留原始记录，可在诊断里查看）"
+        "INTERRUPTED" -> "已取消·中途被打断"
         else -> "失败·$code"
     }
 

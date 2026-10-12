@@ -3,4 +3,9 @@
   <!-- 会话记忆隔离文案（mem_ 前缀，与 values/strings_memory.xml 键集保持一致） -->
   <string name="mem_conversation_memory">会话记忆</string>
   <string name="mem_conversation_memory_desc">仅在当前聊天窗口中使用会话记忆，不同会话之间不会共享这部分记忆；管理记忆中的内容仍对该助手的所有会话通用。</string>
+  <string name="memory_v2_scope_private_hint">只给这位助手：其他助手看不到这些记忆</string>
+  <string name="memory_v2_scope_global_hint">所有助手共用：每个助手都能读到</string>
+  <string name="memory_v2_queue_explain">每聊一段，系统会挑出可能值得记的内容，判断要不要记住。你不用操作它，只要看待审核。</string>
+  <string name="memory_v2_queue_empty">都整理完了，暂时没有新的对话要处理。</string>
+  <string name="memory_v2_recall_hint">输入一句话，看看系统能不能从记忆里把它找出来</string>
 </resources>

@@ -393,13 +393,13 @@ private fun DreamStatusCard(projection: DreamReviewProjection?) {
                     AssistChip(onClick = {}, label = { Text(projection.usageMode.title()) })
                 }
                 Text(
+                    // Plain language by design: the internal epoch/debt counters used to read
+                    // "经历版本 570 · 已吸收 0 · Dream debt 100.15" and left the user guessing.
                     text = stringResource(
                         R.string.memory_dream_experience_summary,
-                        projection.fence.expectedMemoryEpoch,
+                        projection.pendingExperienceCount,
                         projection.fence.expectedLastAppliedMemoryEpoch,
                         projection.fence.expectedDreamRevision,
-                        projection.pendingExperienceCount,
-                        projection.experienceDebt,
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

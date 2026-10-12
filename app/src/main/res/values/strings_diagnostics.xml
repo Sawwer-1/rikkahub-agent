@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Doctor (diagnostics report): one crashed section no longer kills the whole report. -->
+  <string name="doctor_section_failed_label">Section failed: %1$s</string>
+</resources>

@@ -176,15 +176,23 @@ interface DreamDao {
     )
     suspend fun countPairRunningSynthesisRuns(): Long
 
+    // 2026-10-12 (user request): a FAILED/CONFLICT run must not consume the daily run quota and
+    // must not leave the scope stuck in USAGE_UNMEASURED, otherwise a deterministic failure
+    // burns the whole day's allowance and retries can never happen. Token sums below still count
+    // every dispatched run — that spend is real — and the dispatch-evidence predicate is
+    // unchanged (see DreamDailyUsageDispatchAccountingContractTest).
     @Query(
-        "SELECT COUNT(*) AS startedRunCount, " +
+        "SELECT COALESCE(SUM(CASE WHEN status IN ('FAILED', 'CONFLICT', 'CANCELLED', 'DISCARDED') " +
+            "THEN 0 ELSE 1 END), 0) AS startedRunCount, " +
             "COALESCE(SUM(CASE WHEN input_tokens IS NOT NULL THEN input_tokens ELSE 0 END), 0) " +
             "AS knownInputTokens, " +
             "COALESCE(SUM(CASE WHEN output_tokens IS NOT NULL THEN output_tokens ELSE 0 END), 0) " +
             "AS knownOutputTokens, " +
-            "COALESCE(SUM(CASE WHEN input_tokens IS NULL THEN 1 ELSE 0 END), 0) " +
+            "COALESCE(SUM(CASE WHEN input_tokens IS NULL " +
+            "AND status NOT IN ('FAILED', 'CONFLICT', 'CANCELLED', 'DISCARDED') THEN 1 ELSE 0 END), 0) " +
             "AS unmeasuredInputRunCount, " +
-            "COALESCE(SUM(CASE WHEN output_tokens IS NULL THEN 1 ELSE 0 END), 0) " +
+            "COALESCE(SUM(CASE WHEN output_tokens IS NULL " +
+            "AND status NOT IN ('FAILED', 'CONFLICT', 'CANCELLED', 'DISCARDED') THEN 1 ELSE 0 END), 0) " +
             "AS unmeasuredOutputRunCount " +
             "FROM dream_runs WHERE mode IN ('INCREMENTAL', 'FULL') " +
             "AND started_at_ms IS NOT NULL AND started_at_ms >= :startInclusiveEpochMs " +

@@ -97,6 +97,19 @@ fun MemoryScopeSummary(
                     label = { Text(stringResource(R.string.memory_v2_global_scope)) },
                 )
             }
+            // Plain-language explanation of the selected mode (the two internal scope names
+            // used to sit side by side with no hint of how they differ).
+            Text(
+                text = stringResource(
+                    if (viewGlobal) {
+                        R.string.memory_v2_scope_global_hint
+                    } else {
+                        R.string.memory_v2_scope_private_hint
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Text(
                 text = stringResource(
                     R.string.memory_v2_stats,
@@ -665,14 +678,30 @@ fun MemorySettingsTab(
 
         item {
             SettingsCard(title = stringResource(R.string.memory_v2_queue)) {
+                // What this list actually is, in one sentence — the user reported the raw
+                // counters ("17 待处理 · 45 无长期信号 · 23 已丢弃") as the single most
+                // confusing part of the page.
                 Text(
-                    stringResource(
-                        R.string.memory_v2_queue_active_counts,
-                        stats.pendingCaptures,
-                        stats.processingCaptures,
-                        stats.pausedCaptures,
-                        stats.failedCaptures,
-                    ),
+                    text = stringResource(R.string.memory_v2_queue_explain),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                val nothingLeftToOrganise = stats.pendingCaptures == 0 &&
+                    stats.processingCaptures == 0 &&
+                    stats.pausedCaptures == 0 &&
+                    stats.failedCaptures == 0
+                Text(
+                    if (nothingLeftToOrganise) {
+                        stringResource(R.string.memory_v2_queue_empty)
+                    } else {
+                        stringResource(
+                            R.string.memory_v2_queue_active_counts,
+                            stats.pendingCaptures,
+                            stats.processingCaptures,
+                            stats.pausedCaptures,
+                            stats.failedCaptures,
+                        )
+                    },
                 )
                 Text(
                     stringResource(
@@ -710,6 +739,11 @@ fun MemorySettingsTab(
 
         item {
             SettingsCard(title = stringResource(R.string.memory_v2_recall_test)) {
+                Text(
+                    text = stringResource(R.string.memory_v2_recall_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 OutlinedTextField(
                     value = recallQuery,
                     onValueChange = { recallQuery = it },

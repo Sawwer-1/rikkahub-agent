@@ -321,7 +321,14 @@ class ConversationSourceAuthorityWriter(
                 finalMessages[messageId] = existing
                 return@forEach
             }
-            requireNonRegressingTime(existing.updatedAtMs, snapshot.occurredAtMs)
+            if (!timeAdvances(existing.updatedAtMs, snapshot.occurredAtMs)) {
+                // Stale snapshot (clock rollback, or pre-migration timestamps): the existing
+                // head wins and this row is skipped rather than aborting the whole
+                // reconciliation — device evidence 2026-10-12 surfaced
+                // SOURCE_AUTHORITY_TIME_REGRESSION while operating the memory queue.
+                finalMessages[messageId] = existing
+                return@forEach
+            }
             val changeKind = when {
                 contentChanged -> ConversationSourceChangeKind.UPDATED
                 desiredState == ConversationSourceState.ACTIVE ->
@@ -351,7 +358,11 @@ class ConversationSourceAuthorityWriter(
                 finalMessages[existing.messageId] = existing
                 return@forEach
             }
-            requireNonRegressingTime(existing.updatedAtMs, snapshot.occurredAtMs)
+            if (!timeAdvances(existing.updatedAtMs, snapshot.occurredAtMs)) {
+                // Same stale-snapshot rule as above: keep the existing row instead of failing.
+                finalMessages[existing.messageId] = existing
+                return@forEach
+            }
             val next = existing.copy(
                 sourceRevision = nextRevision(existing.sourceRevision),
                 previousSourceRevision = existing.sourceRevision,
@@ -578,7 +589,11 @@ class ConversationSourceAuthorityWriter(
             existing.sourceState != desiredState
         if (!changed) return ConversationMutation(existing, previous = null, mutated = false)
 
-        requireNonRegressingTime(existing.updatedAtMs, snapshot.occurredAtMs)
+        if (!timeAdvances(existing.updatedAtMs, snapshot.occurredAtMs)) {
+            // A stale snapshot cannot advance the conversation head; keep the existing head
+            // (no-op) so the rest of the reconciliation still commits.
+            return ConversationMutation(existing, previous = null, mutated = false)
+        }
         val next = existing.copy(
             assistantIdSnapshot = snapshot.assistantIdSnapshot,
             sourceRevision = nextRevision(existing.sourceRevision),
@@ -613,11 +628,15 @@ class ConversationSourceAuthorityWriter(
         }
     }
 
-    private fun requireNonRegressingTime(existingUpdatedAtMs: Long, occurredAtMs: Long) {
-        if (occurredAtMs < existingUpdatedAtMs) {
-            throw ConversationSourceAuthorityConflictException("SOURCE_AUTHORITY_TIME_REGRESSION")
-        }
-    }
+    /**
+     * 2026-10-12: this used to throw `SOURCE_AUTHORITY_TIME_REGRESSION`. A stale snapshot
+     * (clock rollback, or old timestamps carried across a data migration) then failed every
+     * unrelated write and the code surfaced in the memory-queue UI. Callers now skip the stale
+     * write — the existing head wins — and the rest of the reconciliation still commits.
+     * Identity and CAS conflicts stay fail-closed.
+     */
+    private fun timeAdvances(existingUpdatedAtMs: Long, occurredAtMs: Long): Boolean =
+        occurredAtMs >= existingUpdatedAtMs
 
     private fun nextRevision(current: Long): Long = runCatching { Math.addExact(current, 1L) }
         .getOrElse {

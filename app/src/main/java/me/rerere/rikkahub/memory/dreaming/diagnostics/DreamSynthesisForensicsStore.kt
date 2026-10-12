@@ -22,6 +22,12 @@ data class DreamSynthesisForensicsEvent(
     @SerialName("failure_code") val failureCode: String? = null,
     @SerialName("exception_type") val exceptionType: String? = null,
     @SerialName("exception_message") val exceptionMessage: String? = null,
+    /**
+     * Top stack frames as `Class.method(File:line)`. 2026-10-12: the first device report only
+     * had "STORE_FAILURE", so the fix could not be pinned to a line; frames make the next
+     * failure self-locating.
+     */
+    @SerialName("exception_frames") val exceptionFrames: String? = null,
     @SerialName("mode") val mode: String? = null,
     @SerialName("plan_upsert_count") val planUpsertCount: Int? = null,
     @SerialName("plan_transition_count") val planTransitionCount: Int? = null,

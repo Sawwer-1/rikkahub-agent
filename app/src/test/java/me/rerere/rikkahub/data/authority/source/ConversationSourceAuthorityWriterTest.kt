@@ -243,19 +243,21 @@ class ConversationSourceAuthorityWriterTest {
     }
 
     @Test
-    fun `non monotonic source time and fenced CAS conflict are rejected`() = runBlocking {
+    fun `stale snapshot time is skipped while fenced CAS conflict is still rejected`() = runBlocking {
         val store = FakeConversationSourceAuthorityStore()
         val writer = ConversationSourceAuthorityWriter(store)
-        writer.reconcileInCurrentTransaction(snapshot(occurredAtMs = 20L))
+        val initial = writer.reconcileInCurrentTransaction(snapshot(occurredAtMs = 20L))
 
-        val timeError = assertThrows(ConversationSourceAuthorityConflictException::class.java) {
-            runBlocking {
-                writer.reconcileInCurrentTransaction(
-                    snapshot(assistantDigest = DIGEST_C, occurredAtMs = 19L),
-                )
-            }
-        }
-        assertEquals("SOURCE_AUTHORITY_TIME_REGRESSION", timeError.reasonCode)
+        // 2026-10-12: a non-monotonic (stale) snapshot no longer throws
+        // SOURCE_AUTHORITY_TIME_REGRESSION — the existing head wins and the row is skipped,
+        // so a clock rollback cannot fail every unrelated write.
+        val stale = writer.reconcileInCurrentTransaction(
+            snapshot(assistantDigest = DIGEST_C, occurredAtMs = 19L),
+        )
+        val head = stale.messagesById.getValue(ASSISTANT_MESSAGE_ID)
+        assertEquals(initial.messagesById.getValue(ASSISTANT_MESSAGE_ID).sourceRevision, head.sourceRevision)
+        assertTrue(stale.messageTransitions.isEmpty())
+        assertEquals(initial.conversation, stale.conversation)
 
         store.failNextMessageCas = true
         val casError = assertThrows(ConversationSourceAuthorityConflictException::class.java) {

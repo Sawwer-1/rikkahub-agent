@@ -39,6 +39,7 @@ import kotlinx.coroutines.launch
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.tools.local.PermissionHelper
 import me.rerere.rikkahub.data.ai.tools.local.TermuxIntegration
+import me.rerere.rikkahub.data.preferences.TermuxDefaults
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.context.LocalToaster
@@ -246,17 +247,40 @@ fun SettingTermuxPage(
                         )
                     },
                 )
+                // 2026-10-12: default is "no wall-clock cut". The switch turns an explicit cap
+                // on (sane 60 min default) and reveals the minutes field; turning it off stores
+                // the ceiling, which GenerationHandler reads as unlimited.
+                val turnBudgetCapped = config.turnBudgetMs < TermuxDefaults.MAX_TURN_BUDGET_MS
                 item(
                     headlineContent = { Text(stringResource(R.string.setting_termux_turn_budget)) },
                     supportingContent = { Text(stringResource(R.string.setting_termux_turn_budget_desc)) },
                     trailingContent = {
-                        TimeoutInput(
-                            currentValue = config.turnBudgetMs / 60_000L,
-                            unitLabel = stringResource(R.string.setting_termux_unit_minutes),
-                            onCommit = vm::setTurnBudgetMinutes,
+                        Switch(
+                            checked = turnBudgetCapped,
+                            onCheckedChange = { capped ->
+                                vm.setTurnBudgetMinutes(
+                                    if (capped) {
+                                        DEFAULT_CAPPED_TURN_BUDGET_MINUTES
+                                    } else {
+                                        TermuxDefaults.MAX_TURN_BUDGET_MS / 60_000L
+                                    },
+                                )
+                            },
                         )
                     },
                 )
+                if (turnBudgetCapped) {
+                    item(
+                        headlineContent = { Text(stringResource(R.string.setting_termux_turn_budget_limit)) },
+                        trailingContent = {
+                            TimeoutInput(
+                                currentValue = config.turnBudgetMs / 60_000L,
+                                unitLabel = stringResource(R.string.setting_termux_unit_minutes),
+                                onCommit = vm::setTurnBudgetMinutes,
+                            )
+                        },
+                    )
+                }
                 item(
                     headlineContent = { Text(stringResource(R.string.setting_termux_verify_timeout)) },
                     supportingContent = { Text(stringResource(R.string.setting_termux_verify_timeout_desc)) },
@@ -412,3 +436,5 @@ private fun WorkingDirInput(
             },
     )
 }
+/** Sane starting cap when the user turns the wall-clock limit on (off = unlimited, the default). */
+private const val DEFAULT_CAPPED_TURN_BUDGET_MINUTES = 60L

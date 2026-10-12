@@ -44,11 +44,18 @@ class TermuxDefaultsTest {
     // --- clampTurnBudgetMs ----------------------------------------------------------------
 
     @Test
-    fun turnBudget_belowFloor_snapsToMin() {
-        assertEquals(TermuxDefaults.MIN_TURN_BUDGET_MS,
+    fun turnBudget_zeroOrNegative_readsAsUnlimited() {
+        // 2026-10-12: 0 / negative means "no wall-clock cut" and clamps up to the ceiling.
+        assertEquals(TermuxDefaults.MAX_TURN_BUDGET_MS,
             TermuxDefaults.clampTurnBudgetMs(0L))
+        assertEquals(TermuxDefaults.MAX_TURN_BUDGET_MS,
+            TermuxDefaults.clampTurnBudgetMs(-1L))
+    }
+
+    @Test
+    fun turnBudget_belowOneMinuteButPositive_snapsToFloor() {
         assertEquals(TermuxDefaults.MIN_TURN_BUDGET_MS,
-            TermuxDefaults.clampTurnBudgetMs(TermuxDefaults.MIN_TURN_BUDGET_MS - 1L))
+            TermuxDefaults.clampTurnBudgetMs(1L))
     }
 
     @Test
@@ -159,10 +166,11 @@ class TermuxDefaultsTest {
     }
 
     @Test
-    fun turnBudget_defaultIs10Minutes() {
-        // Pin that the default matches the original GenerationHandler constant (10 min),
-        // not the spec's 5 min — per the task override instruction.
-        assertEquals(10L * 60L * 1_000L, TermuxDefaults.DEFAULT_TURN_BUDGET_MS)
+    fun turnBudget_defaultIsUnlimited() {
+        // 2026-10-12 user override: the default is "no wall-clock cut" (the 24 h ceiling reads
+        // as 不限) after a long turn was force-finalized and its running tool cancelled.
+        assertEquals(TermuxDefaults.MAX_TURN_BUDGET_MS, TermuxDefaults.DEFAULT_TURN_BUDGET_MS)
+        assertEquals(24L * 60L * 60L * 1_000L, TermuxDefaults.DEFAULT_TURN_BUDGET_MS)
     }
 
     @Test

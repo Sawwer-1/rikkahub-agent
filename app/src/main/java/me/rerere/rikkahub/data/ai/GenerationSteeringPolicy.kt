@@ -92,8 +92,12 @@ fun UIMessagePart.Tool.skippedDueToGuidance(): UIMessagePart.Tool {
     if (isExecuted) return this
     return copy(
         output = listOf(
+            // The `code` stays machine-stable; `message` is the plain-language explanation a
+            // user (and the model) can read: the plan was replaced by the new message, so this
+            // step never ran. 2026-10-12: was an English-only sentence that showed up as a
+            // silent, unexplained failure in the tool card.
             UIMessagePart.Text(
-                """{"ok":false,"code":"skipped_due_to_guidance","message":"The tool belonged to a superseded plan and was not executed."}"""
+                """{"ok":false,"code":"skipped_due_to_guidance","message":"你在我执行过程中发了新消息，这轮计划已被替换，这一步没有执行。需要的话我可以按新要求重来。"}"""
             )
         )
     )

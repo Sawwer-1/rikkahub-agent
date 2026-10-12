@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- 诊断报告：单组检查出错不再拖垮整份报告 -->
+  <string name="doctor_section_failed_label">这组检查出错了：%1$s</string>
+</resources>

@@ -4,4 +4,9 @@
        language files in sync. Apostrophes must be escaped for aapt2. -->
   <string name="mem_conversation_memory">Conversation Memory</string>
   <string name="mem_conversation_memory_desc">Keep memory isolated to the current chat window. It will not be read by other conversations of this assistant.</string>
+  <string name="memory_v2_scope_private_hint">Only this assistant: other assistants cannot see these memories</string>
+  <string name="memory_v2_scope_global_hint">Shared by all assistants: each one can read them</string>
+  <string name="memory_v2_queue_explain">After each chat the system picks out anything worth remembering and decides whether to keep it. You do not operate this list; just review what it proposes.</string>
+  <string name="memory_v2_queue_empty">All caught up - nothing new to organise.</string>
+  <string name="memory_v2_recall_hint">Type a sentence and see whether the system can find it among your memories</string>
 </resources>

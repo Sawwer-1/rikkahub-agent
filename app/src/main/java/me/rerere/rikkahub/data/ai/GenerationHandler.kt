@@ -106,6 +106,7 @@ import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.AssistantMemory
+import me.rerere.rikkahub.data.preferences.TermuxDefaults
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.security.resolveProviderBinding
 import me.rerere.rikkahub.data.repository.MemoryRepository
@@ -804,9 +805,15 @@ class GenerationHandler(
             // discovers many distinct tool calls (each within the loop guard) can still
             // run for hours.
             val elapsedMs = android.os.SystemClock.elapsedRealtime() - turnStartMs
+            // 2026-10-12: at the ceiling the budget reads as "unlimited" (the default after the
+            // user reported an in-flight workspace_shell being cancelled mid-turn). The explicit
+            // per-assistant / Termux caps still force finalization; maxToolSteps and the loop
+            // guard remain the runaway-loop bounds.
+            val wallClockBudgetEnforced = turnBudgetMs < TermuxDefaults.MAX_TURN_BUDGET_MS
             val finalizationThresholdMs =
                 (turnBudgetMs - FINAL_ANSWER_RESERVE_MS).coerceAtLeast(0L)
-            val wallClockNeedsFinalization = elapsedMs >= finalizationThresholdMs
+            val wallClockNeedsFinalization =
+                wallClockBudgetEnforced && elapsedMs >= finalizationThresholdMs
             // Repeated loop-guard trips mean the model is flailing: it bumps into the
             // guard, picks a different tool, that one also gets guarded, and so on. After
             // N trips we just stop — the model is not going to recover, and every extra
@@ -822,7 +829,9 @@ class GenerationHandler(
             val forceFinalization = finalizationStep.forceFinalization
             if (forceFinalization) {
                 if (wallClockNeedsFinalization) {
-                    processingStatus.value = "Time budget reached; generating final answer"
+                    // Plain-language, user-facing: say what happened and what was dropped.
+                    processingStatus.value =
+                        "这轮跑太久，先停下给你回复；未完成的步骤已取消"
                 }
                 Log.w(
                     TAG,
@@ -855,7 +864,15 @@ class GenerationHandler(
                                         UIMessagePart.Text(
                                             json.encodeToString(buildJsonObject {
                                                 put("error", JsonPrimitive("tool_skipped_for_finalization"))
+                                                // Stable machine code stays in `detail`; `message` is the
+                                                // plain-language explanation shown alongside it.
                                                 put("detail", JsonPrimitive(reason))
+                                                put(
+                                                    "message",
+                                                    JsonPrimitive(
+                                                        "这轮已进入收尾，这一步没有执行；需要的话可以让我接着做。",
+                                                    ),
+                                                )
                                             }),
                                         ),
                                     ),

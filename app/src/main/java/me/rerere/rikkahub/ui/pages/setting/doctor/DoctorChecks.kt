@@ -191,21 +191,55 @@ class DoctorChecks(
             settingsStore.settingsFlow.first().assistants.flatMap { it.localTools }.toSet()
         }.getOrDefault(emptySet())
 
+        // 2026-10-12 (device evidence): one crashing probe used to abort the whole run, so the
+        // exported report contained nothing but "Doctor itself errored — IllegalFormat
+        // ConversionException: d != java.lang.String" (ok/warn/info all zero). Each section is
+        // now guarded individually: its failure degrades to one warn row naming the section and
+        // the failing source frame, and every other section still reports.
+        val sections: List<Pair<String, suspend () -> List<DoctorCheck>>> = listOf(
+            "permissions" to { permissionChecks(enabled) },
+            "services" to { serviceChecks(enabled) },
+            "assistant" to { assistantChecks() },
+            "database" to { databaseChecks(enabled) },
+            "network" to { networkChecks() },
+            "termux" to { termuxChecks(enabled) },
+            "browser" to { browserChecks(enabled) },
+            "maintenance" to { maintenanceChecks() },
+            "diagnostics" to { diagnosticsChecks(enabled) },
+            "runtimeDiagnostics" to { runtimeDiagnosticsChecks() },
+            "linuxRuntime" to { linuxRuntimeStateChecks() },
+            "executionConsistency" to { executionConsistencyChecks() },
+            "pet" to { petChecks() },
+        )
         buildList {
-            addAll(permissionChecks(enabled))
-            addAll(serviceChecks(enabled))
-            addAll(assistantChecks())
-            addAll(databaseChecks(enabled))
-            addAll(networkChecks())
-            addAll(termuxChecks(enabled))
-            addAll(browserChecks(enabled))
-            addAll(maintenanceChecks())
-            addAll(diagnosticsChecks(enabled))
-            addAll(runtimeDiagnosticsChecks())
-            addAll(linuxRuntimeStateChecks())
-            addAll(executionConsistencyChecks())
-            addAll(petChecks())
+            sections.forEach { (section, produce) ->
+                val produced = runCatching { produce() }
+                    .getOrElse { error -> listOf(sectionFailure(section, error)) }
+                addAll(produced)
+            }
         }
+    }
+
+    /** A crashed section degrades to one warn row instead of killing the whole report. */
+    private fun sectionFailure(section: String, error: Throwable): DoctorCheck {
+        val frame = error.stackTrace.firstOrNull()
+        return DoctorCheck(
+            id = "doctor.section.$section.failed",
+            category = DoctorCategory.Diagnostics,
+            label = context.getString(R.string.doctor_section_failed_label, section),
+            detail = buildString {
+                append(error::class.java.name)
+                append(": ")
+                append(error.message ?: context.getString(R.string.ui2_doctor_no_message))
+                if (frame != null) {
+                    append(" @ ")
+                    append(frame.fileName ?: "?")
+                    append(':')
+                    append(frame.lineNumber)
+                }
+            },
+            severity = Severity.WARN,
+        )
     }
 
     private suspend fun petChecks(): List<DoctorCheck> {

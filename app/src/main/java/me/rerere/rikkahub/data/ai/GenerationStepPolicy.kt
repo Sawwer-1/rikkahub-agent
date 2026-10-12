@@ -4,7 +4,9 @@ const val ORDINARY_GENERATION_MAX_STEPS = 32
 const val SECOND_USER_GENERATION_MAX_STEPS = 64
 const val MAX_CONFIGURABLE_GENERATION_STEPS = 256
 const val SECOND_USER_GENERATION_TURN_BUDGET_MINUTES = 60
-const val MAX_CONFIGURABLE_GENERATION_TURN_BUDGET_MINUTES = 60
+
+/** 2026-10-12: raised 60 → 1440 (24 h) so an explicit per-assistant cap can be long as well. */
+const val MAX_CONFIGURABLE_GENERATION_TURN_BUDGET_MINUTES = 1440
 
 /** Resolves an interactive turn budget without changing sub-agent-specific limits. */
 fun resolveInteractiveGenerationMaxSteps(

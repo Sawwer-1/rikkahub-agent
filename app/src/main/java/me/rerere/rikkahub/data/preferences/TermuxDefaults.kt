@@ -16,11 +16,18 @@ object TermuxDefaults {
     const val MAX_COMMAND_TIMEOUT_MS     = 600_000L  // 10 min
 
     // --- Per-turn wall-clock budget (app-wide) ---------------------------------------------
-    // Default is 10 min matching the constant that was in GenerationHandler.kt.
-    /** Default per-turn wall-clock budget in ms. */
-    const val DEFAULT_TURN_BUDGET_MS = 10L * 60L * 1_000L  // 10 min
-    const val MIN_TURN_BUDGET_MS     =  1L * 60L * 1_000L  //  1 min
-    const val MAX_TURN_BUDGET_MS     = 60L * 60L * 1_000L  // 60 min
+    // 2026-10-12: the default became UNLIMITED at the user's explicit request. A long
+    // self-check turn was force-finalized mid-flight and its running workspace_shell was
+    // cancelled ("Time budget reached; generating final answer" + tool_cancelled_wall_clock),
+    // which silently dropped unfinished work. The knob stays configurable — any positive
+    // value (1 min .. 24 h) restores a hard cap — but the out-of-box behavior never cuts a
+    // turn. maxToolSteps remains the runaway-loop guard.
+    /** At this ceiling the wall-clock budget is treated as "unlimited" (no forced finalization). */
+    const val MAX_TURN_BUDGET_MS     = 24L * 60L * 60L * 1_000L  // 24 h (reads as 不限)
+    /** Default per-turn wall-clock budget in ms: unlimited. */
+    const val DEFAULT_TURN_BUDGET_MS = MAX_TURN_BUDGET_MS
+    /** 0 (or anything <= 0) is clamped up to the ceiling — i.e. "unlimited". */
+    const val MIN_TURN_BUDGET_MS     =  1L * 60L * 1_000L  //  1 min when explicitly capped
 
     // --- Verify smoke-test timeout ---------------------------------------------------------
     const val DEFAULT_VERIFY_TIMEOUT_MS =  8_000L   //  8 s
@@ -52,8 +59,9 @@ object TermuxDefaults {
     fun clampCommandTimeoutMs(ms: Long): Long =
         ms.coerceIn(MIN_COMMAND_TIMEOUT_MS, MAX_COMMAND_TIMEOUT_MS)
 
+    /** 0 or negative means "unlimited" and clamps up to the 24 h ceiling; otherwise 1 min..24 h. */
     fun clampTurnBudgetMs(ms: Long): Long =
-        ms.coerceIn(MIN_TURN_BUDGET_MS, MAX_TURN_BUDGET_MS)
+        if (ms <= 0L) MAX_TURN_BUDGET_MS else ms.coerceIn(MIN_TURN_BUDGET_MS, MAX_TURN_BUDGET_MS)
 
     fun clampVerifyTimeoutMs(ms: Long): Long =
         ms.coerceIn(MIN_VERIFY_TIMEOUT_MS, MAX_VERIFY_TIMEOUT_MS)

@@ -629,6 +629,12 @@ class RoomDreamSynthesisStore(
                 failureCode = null,
                 exceptionType = error?.let { it::class.java.name },
                 exceptionMessage = error?.message?.take(300),
+                exceptionFrames = error?.stackTrace
+                    ?.take(4)
+                    ?.joinToString(" | ") { frame ->
+                        "${frame.className}.${frame.methodName}(${frame.fileName}:${frame.lineNumber})"
+                    }
+                    ?.take(400),
                 mode = fence.mode.name,
                 planUpsertCount = request.plan.upserts.size,
                 planTransitionCount = request.plan.transitions.size,

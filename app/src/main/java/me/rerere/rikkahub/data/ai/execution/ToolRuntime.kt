@@ -162,8 +162,9 @@ sealed interface ToolExecutionPlanResult {
         val executionId: String?,
         val trackingState: ToolTrackingState = ToolTrackingState.TRACKED,
         override val output: ToolResult = errorResult(
+            // Code stays machine-stable; the detail is the plain-language explanation.
             "tool_cancelled_wall_clock",
-            "Tool execution exceeded the shared turn budget.",
+            "这轮已达到时间上限，这一步被取消了；需要的话可以让我接着做。",
         ),
     ) : ToolExecutionPlanResult
 
