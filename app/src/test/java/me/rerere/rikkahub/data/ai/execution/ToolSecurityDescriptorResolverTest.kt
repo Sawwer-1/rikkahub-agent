@@ -1,7 +1,9 @@
 package me.rerere.rikkahub.data.ai.execution
 
 import me.rerere.rikkahub.data.ai.ToolCallOrigin
+import me.rerere.rikkahub.data.ai.tools.LocalToolOption
 import me.rerere.rikkahub.data.ai.tools.ToolExecutionContext
+import me.rerere.rikkahub.data.ai.tools.local.SPREADSHEET_TOOL_NAMES
 import me.rerere.rikkahub.data.capability.CapabilityCatalog
 import me.rerere.rikkahub.data.capability.ImplementationState
 import me.rerere.rikkahub.privilege.PRIVILEGED_SHELL_TOOL_NAME
@@ -69,6 +71,21 @@ class ToolSecurityDescriptorResolverTest {
         }
 
         assertEquals(emptyList<String>(), missing)
+    }
+
+    @Test
+    fun `every spreadsheet manifest tool has a security descriptor and is catalogued under Files`() {
+        // Regression: 2.5.4/215 injected excel_write/csv_parse/csv_write into the manifest but
+        // never registered them here, so every call was rejected with
+        // tool_security_descriptor_missing. LocalTools itself needs an Android Context and
+        // cannot be built on the JVM, so both sides are pinned to the shared name constants.
+        val missingDescriptor = SPREADSHEET_TOOL_NAMES.filter { resolver.resolve(it, context) == null }
+        assertEquals(emptyList<String>(), missingDescriptor)
+
+        val notCataloguedUnderFiles = SPREADSHEET_TOOL_NAMES.filter {
+            CapabilityCatalog.byToolName(it)?.localToolOption != LocalToolOption.Files
+        }
+        assertEquals(emptyList<String>(), notCataloguedUnderFiles)
     }
 
     @Test

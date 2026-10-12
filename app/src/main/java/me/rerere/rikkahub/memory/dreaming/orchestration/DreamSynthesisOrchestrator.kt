@@ -9,7 +9,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.memory.dreaming.input.DreamInputBuilder
 import me.rerere.rikkahub.memory.dreaming.input.DreamInputBundle
 import me.rerere.rikkahub.memory.dreaming.input.DreamModelInput
@@ -125,6 +127,25 @@ class DreamSynthesisOrchestrator(
                 return DreamSynthesisRunResult.Retry(begin.reason.toRetryReason())
             }
         }
+        try {
+            return runOwningLease(fence, request, firstProviderAttempt, terminalizeRetryableModelFailure)
+        } catch (cancelled: CancellationException) {
+            // WorkManager stop / system reclaim used to leave the run row RUNNING until lease
+            // recovery (up to 15 minutes), blocking the whole scope and getting relabelled
+            // LEASE_EXPIRED by failExpiredRunMirrors. Terminalize now, while the lease is
+            // typically still valid; lease recovery remains the backstop if this cannot be
+            // persisted. CancellationException is rethrown either way to honor cancellation.
+            terminalizeInterruptedRun(fence)
+            throw cancelled
+        }
+    }
+
+    private suspend fun runOwningLease(
+        fence: me.rerere.rikkahub.memory.dreaming.model.DreamSynthesisFence,
+        request: BeginDreamSynthesisRequest,
+        firstProviderAttempt: Boolean,
+        terminalizeRetryableModelFailure: Boolean,
+    ): DreamSynthesisRunResult {
         if (
             fence.scopeId != request.scopeId || fence.runId != request.runId ||
             fence.leaseOwner != request.leaseOwner || !fence.mode.isValidPromotionFrom(request.mode, fence.baseLastAppliedMemoryEpoch) ||
@@ -369,6 +390,29 @@ class DreamSynthesisOrchestrator(
             outputOperationCount = parsed.operations.size,
             committedAtEpochMs = maxOf(fence.frozenNowEpochMs, requireClock()),
         )
+        // The synthesis heartbeat scope has already exited, and the remaining lease window may
+        // be short after a long provider call. Renew once more so the (potentially large,
+        // FULL-mode) commit transaction cannot outrun the lease: device evidence 2026-10-12
+        // showed slow FULL commits landing as LEASE_EXPIRED / STORE_FAILURE. Any renewal
+        // rejection means the lease is no longer commit-worthy; retry from a fresh begin.
+        when (
+            runCatching {
+                store.heartbeat(
+                    fence = fence,
+                    nowMs = requireClockAtLeast(fence.frozenNowEpochMs),
+                    leaseDurationMs = config.leaseDurationMs,
+                )
+            }.getOrElse { null }
+        ) {
+            DreamSynthesisStoreResult.Accepted -> Unit
+            else -> {
+                Log.w(
+                    DREAM_SYNTHESIS_LOG_TAG,
+                    "Dream pre-commit lease renewal rejected for run ${fence.runId}",
+                )
+                return DreamSynthesisRunResult.Retry(DreamSynthesisRetryReason.LEASE_CONFLICT)
+            }
+        }
         val commitResult = try {
             store.commit(commitRequest)
         } catch (cancelled: CancellationException) {
@@ -384,6 +428,13 @@ class DreamSynthesisOrchestrator(
                 result.committedDreamRevision,
             )
             is DreamSynthesisCommitResult.Rejected -> {
+                // Forensics: keep the true commit rejection reason in the log — the run row's
+                // failure_code collapses several rejection kinds into STORE_FAILURE, and a
+                // lost terminalize race can relabel the row LEASE_EXPIRED.
+                Log.w(
+                    DREAM_SYNTHESIS_LOG_TAG,
+                    "Dream commit rejected for run ${fence.runId}: reason=${result.reason}",
+                )
                 try {
                     store.terminalizeConflict(fence, result.reason, requireClockAtLeast(fence.frozenNowEpochMs))
                 } catch (cancelled: CancellationException) {
@@ -504,6 +555,25 @@ class DreamSynthesisOrchestrator(
             // Returning a terminal Worker failure without a matching durable run transition
             // strands the active scope until lease recovery. Keep Work retryable instead.
             DreamSynthesisRunResult.Retry(DreamSynthesisRetryReason.STORE_TEMPORARY_FAILURE)
+        }
+    }
+
+    private suspend fun terminalizeInterruptedRun(
+        fence: me.rerere.rikkahub.memory.dreaming.model.DreamSynthesisFence,
+    ) {
+        try {
+            withContext(NonCancellable) {
+                store.fail(
+                    fence = fence,
+                    failure = DreamSynthesisFailure.INTERRUPTED,
+                    nowMs = requireClockAtLeast(fence.frozenNowEpochMs),
+                )
+            }
+        } catch (cancelled: java.util.concurrent.CancellationException) {
+            // The NonCancellable context shields the store call itself; reaching here means the
+            // store blew up for another reason. Lease recovery remains the backstop.
+            Log.w(DREAM_SYNTHESIS_LOG_TAG, "Dream interrupted-run terminalize failed", cancelled)
+        } catch (_: Exception) {
         }
     }
 

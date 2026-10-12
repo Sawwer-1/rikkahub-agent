@@ -198,6 +198,9 @@ enum class DreamSynthesisFailure {
     MODEL_OUTPUT_VALIDATION_REJECTED,
     SNAPSHOT_COMPILATION_FAILED,
     STORE_FAILURE,
+
+    /** Worker/process interruption (WorkManager stop, system reclaim) while the run owned the lease. */
+    INTERRUPTED,
 }
 
 /** Stable, allow-listed diagnostic mapping. No model or user text is ever persisted as a code. */
@@ -217,6 +220,7 @@ fun DreamSynthesisFailure.toRunFailureCode(): DreamRunFailureCode = when (this) 
         DreamRunFailureCode.MODEL_OUTPUT_VALIDATION_REJECTED
     DreamSynthesisFailure.SNAPSHOT_COMPILATION_FAILED -> DreamRunFailureCode.SNAPSHOT_COMPILATION_FAILED
     DreamSynthesisFailure.STORE_FAILURE -> DreamRunFailureCode.STORE_FAILURE
+    DreamSynthesisFailure.INTERRUPTED -> DreamRunFailureCode.CANCELLED_BY_POLICY
 }
 
 /**

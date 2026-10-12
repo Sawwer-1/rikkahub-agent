@@ -28,6 +28,7 @@ class DreamSynthesisFailureMappingTest {
             DreamSynthesisFailure.SNAPSHOT_COMPILATION_FAILED to
                 DreamRunFailureCode.SNAPSHOT_COMPILATION_FAILED,
             DreamSynthesisFailure.STORE_FAILURE to DreamRunFailureCode.STORE_FAILURE,
+            DreamSynthesisFailure.INTERRUPTED to DreamRunFailureCode.CANCELLED_BY_POLICY,
         )
 
         assertEquals(DreamSynthesisFailure.entries.toSet(), expected.keys)

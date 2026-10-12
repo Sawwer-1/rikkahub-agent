@@ -27,6 +27,14 @@ import java.nio.charset.CodingErrorAction
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
+// Single source of truth for the three spreadsheet tool names. LocalTools injects these into
+// the manifest and CapabilityCatalog registers them under LocalToolOption.Files; the resolver
+// regression test pins both sides to these constants so a future re-registration cannot drift.
+const val TOOL_NAME_EXCEL_WRITE = "excel_write"
+const val TOOL_NAME_CSV_PARSE = "csv_parse"
+const val TOOL_NAME_CSV_WRITE = "csv_write"
+val SPREADSHEET_TOOL_NAMES = setOf(TOOL_NAME_EXCEL_WRITE, TOOL_NAME_CSV_PARSE, TOOL_NAME_CSV_WRITE)
+
 /**
  * Spreadsheet tools (ported from orangechat CsvParser / ExcelGenerator, adapted to the fork's
  * Tool architecture). Three tools, all path-sandboxed the same way as the file-manager
@@ -467,7 +475,7 @@ private fun writeZipEntry(zipOut: ZipOutputStream, name: String, xml: String) {
 // ---------- tool: excel_write ----------
 
 fun excelWriteTool(context: Context): Tool = Tool(
-    name = "excel_write",
+    name = TOOL_NAME_EXCEL_WRITE,
     description = """
         Write table data to an Excel .xlsx file. path accepts ~/ workspace paths, absolute
         paths and content:// URIs (SAF grant). sheets is an array of {name?, rows} where rows
@@ -569,7 +577,7 @@ fun excelWriteTool(context: Context): Tool = Tool(
 // ---------- tool: csv_parse ----------
 
 fun csvParseTool(context: Context): Tool = Tool(
-    name = "csv_parse",
+    name = TOOL_NAME_CSV_PARSE,
     description = """
         Parse a CSV file into structured data. Provide either path (~/ workspace, absolute
         or content:// URI) or csv (inline CSV text). delimiter defaults to a single comma;
@@ -676,7 +684,7 @@ fun csvParseTool(context: Context): Tool = Tool(
 // ---------- tool: csv_write ----------
 
 fun csvWriteTool(context: Context): Tool = Tool(
-    name = "csv_write",
+    name = TOOL_NAME_CSV_WRITE,
     description = """
         Write rows to an Excel-compatible CSV file (UTF-8 with BOM, CRLF line endings,
         RFC4180 quoting) so double-clicking it in Excel keeps non-ASCII text intact. path

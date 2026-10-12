@@ -15,6 +15,7 @@ import me.rerere.rikkahub.memory.dreaming.store.BeginDreamSynthesisRequest
 import me.rerere.rikkahub.memory.dreaming.store.BeginDreamSynthesisResult
 import me.rerere.rikkahub.memory.dreaming.store.DreamSynthesisCommitRejection
 import me.rerere.rikkahub.memory.dreaming.store.DreamSynthesisCommitResult
+import me.rerere.rikkahub.memory.dreaming.store.DreamSynthesisFailure
 import me.rerere.rikkahub.memory.dreaming.store.DreamSynthesisStoreRejection
 import me.rerere.rikkahub.memory.dreaming.store.DreamSynthesisStoreResult
 import me.rerere.rikkahub.memory.dreaming.store.FakeDreamSynthesisStore
@@ -32,6 +33,7 @@ import me.rerere.rikkahub.memory.dreaming.runtime.DreamingCostPolicySource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class DreamSynthesisOrchestratorTest {
@@ -139,6 +141,47 @@ class DreamSynthesisOrchestratorTest {
 
         assertEquals(DreamSynthesisRetryReason.COMMIT_CONFLICT, (result as DreamSynthesisRunResult.Retry).reason)
         assertEquals(listOf(DreamSynthesisCommitRejection.MEMORY_EPOCH_CONFLICT), fixture.store.conflicts)
+        assertFalse(fixture.store.transactionOpen)
+    }
+
+    @Test
+    fun `pre-commit lease renewal failure skips commit and reports lease conflict`() = runBlocking {
+        val fixture = fixture()
+        // The instant synthesizer completes before the synthesis heartbeat fires, so the first
+        // heartbeat call IS the pre-commit renewal; it must gate the commit transaction.
+        fixture.store.heartbeatRejectionAtCount = 1
+
+        val result = fixture.orchestrator(
+            DreamSynthesizer { DreamSynthesizeResult.Success(noOpJson(), audit()) },
+        ).run(beginRequest())
+
+        assertEquals(DreamSynthesisRetryReason.LEASE_CONFLICT, (result as DreamSynthesisRunResult.Retry).reason)
+        assertTrue(fixture.store.commits.isEmpty())
+        assertTrue(fixture.store.conflicts.isEmpty())
+        assertFalse(fixture.store.transactionOpen)
+    }
+
+    @Test
+    fun `cancellation terminalizes the interrupted run before rethrowing`() = runBlocking {
+        val fixture = fixture()
+        val orchestrator = fixture.orchestrator(
+            DreamSynthesizer {
+                throw java.util.concurrent.CancellationException("work stopped by system")
+            },
+        )
+
+        try {
+            orchestrator.run(beginRequest())
+            fail("expected the interruption cancellation to propagate")
+        } catch (expected: java.util.concurrent.CancellationException) {
+            // expected: cancellation must be honored
+        }
+
+        assertEquals(
+            listOf(me.rerere.rikkahub.memory.dreaming.store.DreamSynthesisFailure.INTERRUPTED),
+            fixture.store.failures,
+        )
+        assertTrue(fixture.store.commits.isEmpty())
         assertFalse(fixture.store.transactionOpen)
     }
 

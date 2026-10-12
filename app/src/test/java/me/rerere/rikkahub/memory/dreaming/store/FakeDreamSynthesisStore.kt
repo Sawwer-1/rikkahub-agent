@@ -18,6 +18,8 @@ internal class FakeDreamSynthesisStore(
     var beginOverride: BeginDreamSynthesisResult? = null
     var readRejection: DreamSynthesisStoreRejection? = null
     var heartbeatResult: DreamSynthesisStoreResult = DreamSynthesisStoreResult.Accepted
+    /** Rejects the Nth heartbeat call (1-based) regardless of [heartbeatResult]. */
+    var heartbeatRejectionAtCount: Int? = null
     var failResult: DreamSynthesisStoreResult = DreamSynthesisStoreResult.Accepted
     var dispatchResult: DreamSynthesisStoreResult = DreamSynthesisStoreResult.Accepted
     val commits = mutableListOf<DreamSynthesisCommitRequest>()
@@ -47,7 +49,10 @@ internal class FakeDreamSynthesisStore(
         leaseDurationMs: Long,
     ): DreamSynthesisStoreResult = transaction {
         heartbeatCount++
-        if (fence == this.fence && nowMs >= 0L && leaseDurationMs > 0L) {
+        val rejectedAtCount = heartbeatRejectionAtCount
+        if (rejectedAtCount != null && heartbeatCount >= rejectedAtCount) {
+            DreamSynthesisStoreResult.Rejected(DreamSynthesisStoreRejection.LEASE_EXPIRED)
+        } else if (fence == this.fence && nowMs >= 0L && leaseDurationMs > 0L) {
             heartbeatResult
         } else {
             DreamSynthesisStoreResult.Rejected(DreamSynthesisStoreRejection.FENCE_CONFLICT)

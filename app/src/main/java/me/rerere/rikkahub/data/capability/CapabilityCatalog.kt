@@ -132,6 +132,13 @@ object CapabilityCatalog {
             "list_files", "read_file", "write_binary_file", "delete_file", "move_file",
             "copy_file", "create_directory", "file_info", "find_files", "show_image",
             "open_file", "batch_copy", "batch_move", "batch_delete",
+            // Spreadsheet surface (2.5.4/215) — excel_write/csv_parse/csv_write were
+            // injected into the manifest but missing here, so runtime resolution
+            // rejected every call with tool_security_descriptor_missing (same defect
+            // class as the 10-10 moments/question-box batch). Registered 2026-10-12.
+            me.rerere.rikkahub.data.ai.tools.local.TOOL_NAME_EXCEL_WRITE,
+            me.rerere.rikkahub.data.ai.tools.local.TOOL_NAME_CSV_PARSE,
+            me.rerere.rikkahub.data.ai.tools.local.TOOL_NAME_CSV_WRITE,
         ),
         LocalToolOption.ExternalStorage to setOf(
             "list_storage_volumes", "list_granted_directories", "grant_directory_access",

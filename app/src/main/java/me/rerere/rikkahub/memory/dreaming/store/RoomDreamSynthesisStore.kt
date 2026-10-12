@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.memory.dreaming.store
 
+import android.util.Log
 import androidx.room.withTransaction
 import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
@@ -585,7 +586,16 @@ class RoomDreamSynthesisStore(
             DreamSynthesisCommitResult.Rejected(abort.reason)
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            // Forensics (2026-10-12 device evidence: 7×STORE_FAILURE with the original
+            // exception swallowed, leaving only the failure code). Enum names and the run id
+            // only — no model or user text is ever logged here.
+            Log.w(
+                DREAM_SYNTHESIS_STORE_LOG_TAG,
+                "Dream synthesis commit failed for run ${request.fence.runId} " +
+                    "scope=${request.fence.scopeId.value}",
+                error,
+            )
             DreamSynthesisCommitResult.Rejected(DreamSynthesisCommitRejection.STORE_CORRUPTION)
         }
     }
@@ -1552,6 +1562,7 @@ private class PairLeaseAbort : RuntimeException()
 private fun abort(reason: DreamSynthesisCommitRejection): Nothing = throw CommitAbort(reason)
 
 private const val DREAM_SYNTHESIS_INITIAL_LEASE_MS = 15L * 60_000L
+private const val DREAM_SYNTHESIS_STORE_LOG_TAG = "DreamSynthesisStore"
 private const val MAX_DREAM_INPUT_CANDIDATES = 8_192
 private const val MAX_PAIR_DREAM_INPUT_CANDIDATE_SCAN = 512
 private const val MAX_DREAM_CLAIMS = 10_000
