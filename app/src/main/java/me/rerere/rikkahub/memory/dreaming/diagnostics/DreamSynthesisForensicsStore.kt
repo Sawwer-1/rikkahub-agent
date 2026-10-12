@@ -32,6 +32,12 @@ data class DreamSynthesisForensicsEvent(
     @SerialName("input_memory_count") val inputMemoryCount: Int? = null,
 )
 
+// File-top constants: the private snapshot data class below cannot see the store's companion.
+private const val DREAM_SYNTHESIS_FORENSICS_SCHEMA_VERSION = 1
+private const val DREAM_SYNTHESIS_FORENSICS_PRIVACY_NOTE =
+    "Only counters, enum names, opaque run ids and exception summaries are stored; " +
+        "no model or user text is persisted."
+
 @Serializable
 private data class DreamSynthesisForensicsSnapshot(
     @SerialName("schema_version") val schemaVersion: Int = DREAM_SYNTHESIS_FORENSICS_SCHEMA_VERSION,
@@ -97,10 +103,6 @@ class DreamSynthesisForensicsStore(
 
     companion object {
         const val MAX_DREAM_SYNTHESIS_FORENSICS_ENTRIES = 50
-        const val DREAM_SYNTHESIS_FORENSICS_SCHEMA_VERSION = 1
-        const val DREAM_SYNTHESIS_FORENSICS_PRIVACY_NOTE =
-            "Only counters, enum names, opaque run ids and exception summaries are stored; " +
-                "no model or user text is persisted."
 
         fun outputFile(filesDir: File): File =
             File(File(filesDir, "diagnostics"), "dream_synthesis_forensics.json")
