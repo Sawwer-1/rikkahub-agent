@@ -122,28 +122,37 @@ class ConversationSourceAuthorityWriterTest {
     }
 
     @Test
-    fun `deletion leaves a tombstone and later restore fails closed`() = runBlocking {
-        val store = FakeConversationSourceAuthorityStore()
-        val writer = ConversationSourceAuthorityWriter(store)
-        writer.reconcileInCurrentTransaction(snapshot())
+    fun `deletion leaves a tombstone and stale snapshots skip revival without mutating`() =
+        runBlocking {
+            val store = FakeConversationSourceAuthorityStore()
+            val writer = ConversationSourceAuthorityWriter(store)
+            writer.reconcileInCurrentTransaction(snapshot())
 
-        val deleted = writer.reconcileInCurrentTransaction(
-            snapshot(
-                messages = listOf(message(USER_MESSAGE_ID, "USER", DIGEST_A)),
-                selected = listOf(USER_MESSAGE_ID),
-                occurredAtMs = 20L,
-            ),
-        )
-        val tombstone = deleted.messagesById.getValue(ASSISTANT_MESSAGE_ID)
-        assertEquals(ConversationSourceState.TOMBSTONED, tombstone.sourceState)
-        assertEquals(2L, tombstone.sourceRevision)
-        assertEquals(null, tombstone.payloadIntegritySha256)
+            val deleted = writer.reconcileInCurrentTransaction(
+                snapshot(
+                    messages = listOf(message(USER_MESSAGE_ID, "USER", DIGEST_A)),
+                    selected = listOf(USER_MESSAGE_ID),
+                    occurredAtMs = 20L,
+                ),
+            )
+            val tombstone = deleted.messagesById.getValue(ASSISTANT_MESSAGE_ID)
+            assertEquals(ConversationSourceState.TOMBSTONED, tombstone.sourceState)
+            assertEquals(2L, tombstone.sourceRevision)
+            assertEquals(null, tombstone.payloadIntegritySha256)
 
-        val error = assertThrows(ConversationSourceAuthorityConflictException::class.java) {
-            runBlocking { writer.reconcileInCurrentTransaction(snapshot(occurredAtMs = 30L)) }
+            // A stale snapshot still carrying the deleted id (regenerate/branch-switch
+            // tombstones + continuation snapshots) must not kill the whole reconciliation,
+            // and must never revive the tombstone: the head stays untouched, the surviving
+            // message keeps reconciling, and no revision advances for the tombstoned id.
+            val stale = writer.reconcileInCurrentTransaction(snapshot(occurredAtMs = 30L))
+            val stillTombstoned = stale.messagesById.getValue(ASSISTANT_MESSAGE_ID)
+            assertEquals(ConversationSourceState.TOMBSTONED, stillTombstoned.sourceState)
+            assertEquals(2L, stillTombstoned.sourceRevision)
+            assertEquals(null, stillTombstoned.payloadIntegritySha256)
+            assertTrue(stale.messageTransitions.none { it.current.messageId == ASSISTANT_MESSAGE_ID })
+            val survivor = stale.messagesById.getValue(USER_MESSAGE_ID)
+            assertEquals(1L, survivor.sourceRevision)
         }
-        assertEquals("SOURCE_MESSAGE_TOMBSTONE_REVIVAL", error.reasonCode)
-    }
 
     @Test
     fun `conversation deletion tombstones every source and cannot be undone`() = runBlocking {

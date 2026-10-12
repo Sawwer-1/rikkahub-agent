@@ -505,6 +505,9 @@ val dataSourceModule = module {
             observerStore = get(),
             featureFlags = get(),
             json = get(),
+            forensics = me.rerere.rikkahub.memory.dreaming.diagnostics.DreamSynthesisForensicsStore(
+                filesDir = get<Context>().filesDir,
+            ),
         )
     }
     single {

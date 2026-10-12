@@ -304,7 +304,15 @@ class ConversationSourceAuthorityWriter(
             }
             requireSameMessageIdentity(existing, snapshot, messageId)
             if (existing.sourceState == ConversationSourceState.TOMBSTONED) {
-                throw ConversationSourceAuthorityConflictException("SOURCE_MESSAGE_TOMBSTONE_REVIVAL")
+                // Tombstone wins: a deleted source never revives. But a stale snapshot that
+                // still carries the id — regenerate/branch-switch tombstones plus continuation
+                // snapshots referencing old sources — must not kill the whole reconciliation:
+                // device evidence 2026-10-12 surfaced SOURCE_MESSAGE_TOMBSTONE_REVIVAL on
+                // every generation after a deletion. Conversation-level revival already
+                // no-ops the same way; keep the tombstoned head untouched and let the
+                // remaining messages reconcile.
+                finalMessages[messageId] = existing
+                return@forEach
             }
             val contentChanged = existing.messageRole != incoming.messageRole ||
                 existing.payloadIntegritySha256 != incoming.payloadIntegritySha256

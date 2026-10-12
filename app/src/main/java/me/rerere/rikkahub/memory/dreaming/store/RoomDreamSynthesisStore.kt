@@ -59,6 +59,8 @@ import me.rerere.rikkahub.memory.dreaming.model.DreamValidatedClaimVersion
 import me.rerere.rikkahub.memory.dreaming.runtime.DreamingFeatureFlagSource
 import me.rerere.rikkahub.memory.dreaming.runtime.allowsSynthesisGeneration
 import me.rerere.rikkahub.memory.dreaming.source.DreamSourceLocator
+import me.rerere.rikkahub.memory.dreaming.diagnostics.DreamSynthesisForensicsEvent
+import me.rerere.rikkahub.memory.dreaming.diagnostics.DreamSynthesisForensicsStore
 import me.rerere.rikkahub.memory.dreaming.temporal.TemporalState
 
 /** Room implementation with no provider dependency; every public method is one short transaction. */
@@ -73,6 +75,8 @@ class RoomDreamSynthesisStore(
     private val featureFlags: DreamingFeatureFlagSource,
     private val json: Json,
     private val idGenerator: () -> String = { Uuid.random().toString() },
+    /** Optional durable forensics sidecar; null keeps legacy (test/contract) construction sites unchanged. */
+    private val forensics: DreamSynthesisForensicsStore? = null,
 ) : DreamSynthesisStore {
     override suspend fun begin(request: BeginDreamSynthesisRequest): BeginDreamSynthesisResult {
         if (!generationEnabled(request.scopeId)) {
@@ -583,6 +587,7 @@ class RoomDreamSynthesisStore(
         return try {
             database.withTransaction { commitOrAbort(request) }
         } catch (abort: CommitAbort) {
+            recordCommitForensics(request, stage = "COMMIT_REJECTED", reason = abort.reason)
             DreamSynthesisCommitResult.Rejected(abort.reason)
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -596,8 +601,44 @@ class RoomDreamSynthesisStore(
                     "scope=${request.fence.scopeId.value}",
                 error,
             )
+            recordCommitForensics(request, stage = "COMMIT_EXCEPTION", error = error)
             DreamSynthesisCommitResult.Rejected(DreamSynthesisCommitRejection.STORE_CORRUPTION)
         }
+    }
+
+    /**
+     * Durable forensics sidecar for commit failures. Enum names, counts, opaque ids and
+     * exception summaries only — no model or user text. Never throws; a forensics failure
+     * must not change the commit outcome.
+     */
+    private fun recordCommitForensics(
+        request: DreamSynthesisCommitRequest,
+        stage: String,
+        reason: DreamSynthesisCommitRejection? = null,
+        error: Exception? = null,
+    ) {
+        val sidecar = forensics ?: return
+        val fence = request.fence
+        sidecar.record(
+            DreamSynthesisForensicsEvent(
+                recordedAtEpochMs = maxOf(request.committedAtEpochMs, System.currentTimeMillis()),
+                runId = fence.runId,
+                pairScope = DreamPairScopeId.parseOrNull(fence.scopeId.value) != null,
+                stage = stage,
+                reason = reason?.name,
+                failureCode = null,
+                exceptionType = error?.let { it::class.java.name },
+                exceptionMessage = error?.message?.take(300),
+                mode = fence.mode.name,
+                planUpsertCount = request.plan.upserts.size,
+                planTransitionCount = request.plan.transitions.size,
+                planClaimCount = request.plan.resultingClaims.size,
+                baseExperienceEpoch = fence.baseExperienceEpoch,
+                baseAppliedExperienceEpoch = fence.baseAppliedExperienceEpoch,
+                baseDreamRevision = fence.baseDreamRevision,
+                inputMemoryCount = request.inputMemoryCount,
+            ),
+        )
     }
 
     override suspend fun terminalizeConflict(
@@ -620,6 +661,20 @@ class RoomDreamSynthesisStore(
         Log.w(
             DREAM_SYNTHESIS_STORE_LOG_TAG,
             "Dream run ${fence.runId} terminalized: reason=$reason failureCode=$failureCode",
+        )
+        forensics?.record(
+            DreamSynthesisForensicsEvent(
+                recordedAtEpochMs = maxOf(nowMs, System.currentTimeMillis()),
+                runId = fence.runId,
+                pairScope = DreamPairScopeId.parseOrNull(fence.scopeId.value) != null,
+                stage = "TERMINALIZED",
+                reason = reason.name,
+                failureCode = failureCode.name,
+                mode = fence.mode.name,
+                baseExperienceEpoch = fence.baseExperienceEpoch,
+                baseAppliedExperienceEpoch = fence.baseAppliedExperienceEpoch,
+                baseDreamRevision = fence.baseDreamRevision,
+            ),
         )
         return failOwnedRun(
             fence = fence,
