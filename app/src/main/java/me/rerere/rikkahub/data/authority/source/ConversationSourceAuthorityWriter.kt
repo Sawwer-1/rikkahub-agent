@@ -378,10 +378,23 @@ class ConversationSourceAuthorityWriter(
             snapshot.branchHeadMessageId?.let { id ->
                 val head = finalMessages[id]
                     ?: throw ConversationSourceAuthorityConflictException("SOURCE_BRANCH_HEAD_MISSING")
-                if (head.sourceState != ConversationSourceState.ACTIVE) {
-                    throw ConversationSourceAuthorityConflictException("SOURCE_BRANCH_HEAD_NOT_ACTIVE")
+                if (head.sourceState == ConversationSourceState.ACTIVE) {
+                    head
+                } else {
+                    // The stale snapshot named a tombstoned message as the branch head
+                    // (regenerate/branch-switch tombstones + continuation snapshots
+                    // referencing old sources). The tombstone wins; fall back to the
+                    // existing conversation head when it is still ACTIVE so the whole
+                    // reconciliation degrades gracefully instead of failing (device
+                    // evidence 2026-10-12). A head id we have never seen stays fail-closed.
+                    val fallback = existingConversation?.branchHeadMessageId
+                        ?.let(finalMessages::get)
+                    if (fallback != null && fallback.sourceState == ConversationSourceState.ACTIVE) {
+                        fallback
+                    } else {
+                        throw ConversationSourceAuthorityConflictException("SOURCE_BRANCH_HEAD_NOT_ACTIVE")
+                    }
                 }
-                head
             }
         }
         val conversationMutation = reconcileConversationHead(

@@ -143,7 +143,8 @@ class ConversationSourceAuthorityWriterTest {
             // A stale snapshot still carrying the deleted id (regenerate/branch-switch
             // tombstones + continuation snapshots) must not kill the whole reconciliation,
             // and must never revive the tombstone: the head stays untouched, the surviving
-            // message keeps reconciling, and no revision advances for the tombstoned id.
+            // message keeps reconciling, no revision advances for the tombstoned id, and
+            // the conversation falls back to its existing ACTIVE branch head (USER).
             val stale = writer.reconcileInCurrentTransaction(snapshot(occurredAtMs = 30L))
             val stillTombstoned = stale.messagesById.getValue(ASSISTANT_MESSAGE_ID)
             assertEquals(ConversationSourceState.TOMBSTONED, stillTombstoned.sourceState)
@@ -152,6 +153,7 @@ class ConversationSourceAuthorityWriterTest {
             assertTrue(stale.messageTransitions.none { it.current.messageId == ASSISTANT_MESSAGE_ID })
             val survivor = stale.messagesById.getValue(USER_MESSAGE_ID)
             assertEquals(1L, survivor.sourceRevision)
+            assertEquals(USER_MESSAGE_ID, stale.conversation.branchHeadMessageId)
         }
 
     @Test

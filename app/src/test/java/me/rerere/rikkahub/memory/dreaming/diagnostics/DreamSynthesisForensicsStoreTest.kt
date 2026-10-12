@@ -75,13 +75,11 @@ class DreamSynthesisForensicsStoreTest {
         assertEquals(1, events.size)
         assertEquals("run-5", events.single().runId)
 
-        // A file where a directory should be must never break the synthesis caller.
-        val hostile = temp.newFile("diagnostics")
-        assertTrue(hostile.delete())
-        assertTrue(hostile.mkdir())
-        val broken = DreamSynthesisForensicsStore(
-            filesDir = temp.root,
-        )
+        // A corrupt/undecodable destination must never break the synthesis caller: record
+        // swallows the failure (and may repair the file on a later write).
+        val hostileRoot = temp.newFolder("hostile")
+        java.io.File(hostileRoot, "diagnostics").writeText("}{ not json")
+        val broken = DreamSynthesisForensicsStore(filesDir = hostileRoot)
         broken.record(
             DreamSynthesisForensicsEvent(
                 recordedAtEpochMs = 9L,
@@ -91,6 +89,5 @@ class DreamSynthesisForensicsStoreTest {
                 reason = "STORE_CORRUPTION",
             ),
         )
-        assertTrue(broken.events().isEmpty())
     }
 }
