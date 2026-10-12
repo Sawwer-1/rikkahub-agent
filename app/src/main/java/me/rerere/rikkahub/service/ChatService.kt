@@ -1430,6 +1430,33 @@ class ChatService(
         session.hydrateIfNeeded(fromDb)
     }
 
+    /** True when the conversation graph still carries the exact tool call (any approval state). */
+    private fun conversationContainsToolCall(
+        conversation: me.rerere.rikkahub.data.model.Conversation,
+        toolCallId: String,
+    ): Boolean = conversation.messageNodes.any { node ->
+        node.messages.any { message ->
+            message.parts.any { part ->
+                part is UIMessagePart.Tool && part.toolCallId == toolCallId
+            }
+        }
+    }
+
+    /** True when [toolCallId] targets a still-pending ask_user part — an answer, not a grant. */
+    private fun conversationHasPendingAskUserCall(
+        conversation: me.rerere.rikkahub.data.model.Conversation,
+        toolCallId: String,
+    ): Boolean = conversation.messageNodes.any { node ->
+        node.messages.any { message ->
+            message.parts.any { part ->
+                part is UIMessagePart.Tool &&
+                    part.toolCallId == toolCallId &&
+                    part.toolName == "ask_user" &&
+                    part.isPending
+            }
+        }
+    }
+
     // 错误状�?
     private val _errors = MutableStateFlow<List<ChatError>>(emptyList())
     val errors: StateFlow<List<ChatError>> = _errors.asStateFlow()
@@ -1866,23 +1893,43 @@ class ChatService(
         }
         val resolvedParentId = parentCommandId ?: when (command) {
             is ToolApprovalCommand -> {
-                val exactOwner = if (command.approvalId != null && command.executionId != null) {
-                    secondUserApprovalLifecycle.findOwningCommandIdExact(
-                        approvalId = command.approvalId,
-                        executionId = command.executionId,
-                        conversationId = conversationId.toString(),
-                        toolCallId = command.toolCallId,
+                // An answer to a still-pending ask_user part carries no permission grant and
+                // never persists an approval projection outside second-user conversations.
+                // Without this admission carve-out every in-app ask_user confirmation was
+                // rejected here ("Approval exact identity is required") before the executor's
+                // own legacy-path exemption could run — device evidence 2026-10-12. The
+                // answer is applied by toolCallId with a pending re-check, and lineage falls
+                // back to the single WAITING owner exactly like a denial does.
+                val answeredAskUserPending = command.decision is ToolDecision.Answered &&
+                    conversationHasPendingAskUserCall(
+                        persistedAdmissionConversation,
+                        command.toolCallId,
                     )
-                } else if (command.decision is ToolDecision.Denied) {
-                    secondUserApprovalLifecycle.findOwningCommandId(
-                        conversationId = conversationId.toString(),
-                        toolCallId = command.toolCallId,
+                val exactOwner = when {
+                    command.approvalId != null && command.executionId != null ->
+                        secondUserApprovalLifecycle.findOwningCommandIdExact(
+                            approvalId = command.approvalId,
+                            executionId = command.executionId,
+                            conversationId = conversationId.toString(),
+                            toolCallId = command.toolCallId,
+                        )
+
+                    command.decision is ToolDecision.Denied ->
+                        secondUserApprovalLifecycle.findOwningCommandId(
+                            conversationId = conversationId.toString(),
+                            toolCallId = command.toolCallId,
+                        )
+
+                    answeredAskUserPending -> null
+
+                    else -> return rejectedTrackedCommand(
+                        "Approval exact identity is required [answered=" +
+                            "${command.decision is ToolDecision.Answered} " +
+                            "pendingAskUser=$answeredAskUserPending]",
                     )
-                } else {
-                    return rejectedTrackedCommand("Approval exact identity is required")
                 }
                 exactOwner?.let { runCatching { Uuid.parse(it) }.getOrNull() }
-                    ?: if (command.decision is ToolDecision.Denied) {
+                    ?: if (command.decision is ToolDecision.Denied || answeredAskUserPending) {
                         durableCommandQueue.findSingleWaitingForConversation(conversationId)
                             ?.id
                             ?.let { runCatching { Uuid.parse(it) }.getOrNull() }
@@ -3883,10 +3930,21 @@ class ChatService(
         ensureHydrated(conversationId)
         val session = getOrCreateSession(conversationId)
         val conversation = session.state.value
+        // Apply the decision against the graph that actually carries the tool call. The
+        // in-memory session normally has it; when it does not (stale/partial hydration), the
+        // durable row does — and applying against the stale graph would reject a perfectly
+        // valid ask_user answer as "no longer pending" (device evidence 2026-10-12).
+        val approvalBase = if (conversationContainsToolCall(conversation, command.toolCallId)) {
+            conversation
+        } else {
+            conversationRepo.getConversationById(conversationId)
+                ?.takeIf { conversationContainsToolCall(it, command.toolCallId) }
+                ?: conversation
+        }
         // Voice-call connect flow (ported from jude handleToolApproval): approving the
         // request_voice_call tool connects the call — the tool result becomes the
         // connected status and the resume generation runs in VoiceCall mode.
-        val isVoiceCallTool = conversation.messageNodes.any { node ->
+        val isVoiceCallTool = approvalBase.messageNodes.any { node ->
             node.messages.any { message ->
                 message.parts.any { part ->
                     part is UIMessagePart.Tool &&
@@ -3917,16 +3975,7 @@ class ChatService(
         // this carve-out every ask_user confirmation died here as
         // approval_exact_identity_required (device evidence 2026-10-12).
         val legacyAskUserAnswer = decision is ToolDecision.Answered &&
-            conversation.messageNodes.any { node ->
-                node.messages.any { message ->
-                    message.parts.any { part ->
-                        part is UIMessagePart.Tool &&
-                            part.toolCallId == command.toolCallId &&
-                            part.toolName == "ask_user" &&
-                            part.isPending
-                    }
-                }
-            }
+            conversationHasPendingAskUserCall(approvalBase, command.toolCallId)
         if (!mayUseLegacyApprovalPath(decision, exactIdentityPresent, legacyAskUserAnswer)) {
             // Legacy positive payloads used a mutable latest-by-tool lookup and can approve a
             // newer execution after replay. Only denial may use that conservative legacy path.
@@ -3980,7 +4029,7 @@ class ChatService(
         var appliedPendingDecision = false
         var foundSameTerminal = false
         var foundConflictingTerminal = false
-        val updatedNodes = conversation.messageNodes.map { node ->
+        val updatedNodes = approvalBase.messageNodes.map { node ->
             node.copy(messages = node.messages.map { msg ->
                 msg.copy(parts = msg.parts.map { part ->
                     if (part !is UIMessagePart.Tool || part.toolCallId != command.toolCallId) return@map part
@@ -4069,7 +4118,7 @@ class ChatService(
                 else -> RunOutcome.Rejected("Tool approval is no longer pending")
             }
         }
-        val updatedConversation = conversation.copy(messageNodes = updatedNodes)
+        val updatedConversation = approvalBase.copy(messageNodes = updatedNodes)
         val hasPendingAfterUpdate = updatedNodes
             .flatMap { it.messages }
             .flatMap { it.parts }
