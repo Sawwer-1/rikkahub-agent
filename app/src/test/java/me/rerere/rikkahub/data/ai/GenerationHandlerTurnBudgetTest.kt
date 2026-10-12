@@ -31,10 +31,12 @@ class GenerationHandlerTurnBudgetTest {
     fun restore() { ToolRuntimeLimits.turnBudgetMs = prevBudget }
 
     @Test
-    fun defaultBudget_is10Minutes() {
-        // The original hardcoded const in GenerationHandler.kt was 10 min.
-        // The task override spec says: "Turn-budget default = 10 minutes, NOT the spec's 5."
-        assertEquals(10L * 60L * 1_000L, TermuxDefaults.DEFAULT_TURN_BUDGET_MS)
+    fun defaultBudget_isUnlimited() {
+        // 2026-10-12 user override: the default no longer cuts a turn by wall clock. The 24 h
+        // ceiling reads as 不限 in the UI and GenerationHandler skips wall-clock finalization
+        // while the frozen budget sits at the ceiling.
+        assertEquals(TermuxDefaults.MAX_TURN_BUDGET_MS, TermuxDefaults.DEFAULT_TURN_BUDGET_MS)
+        assertEquals(24L * 60L * 60L * 1_000L, TermuxDefaults.DEFAULT_TURN_BUDGET_MS)
     }
 
     @Test
@@ -56,7 +58,9 @@ class GenerationHandlerTurnBudgetTest {
     fun turnBudget_clampedValueFitsInHolder() {
         // Verify that a clamped value from TermuxDefaults survives a round-trip through
         // the holder without loss (no cast / truncation hazard).
-        val clamped = TermuxDefaults.clampTurnBudgetMs(3_700_000L) // over max → should snap
+        val clamped = TermuxDefaults.clampTurnBudgetMs(
+            TermuxDefaults.MAX_TURN_BUDGET_MS + 1L, // over max → should snap
+        )
         ToolRuntimeLimits.turnBudgetMs = clamped
         assertEquals(clamped, ToolRuntimeLimits.turnBudgetMs)
         assertEquals(TermuxDefaults.MAX_TURN_BUDGET_MS, ToolRuntimeLimits.turnBudgetMs)

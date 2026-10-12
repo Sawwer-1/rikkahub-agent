@@ -49,6 +49,12 @@ class GenerationStepPolicyTest {
             resolveInteractiveGenerationTurnBudgetMs(null, false, 10L * 60_000L),
         )
         assertEquals(1L * 60_000L, resolveInteractiveGenerationTurnBudgetMs(-8, true, 1L))
-        assertEquals(60L * 60_000L, resolveInteractiveGenerationTurnBudgetMs(500, false, 1L))
+        // 2026-10-12: the configurable ceiling rose 60 → 1440 min (24 h), so a 500-minute
+        // choice passes through and only values above the ceiling are bounded.
+        assertEquals(500L * 60_000L, resolveInteractiveGenerationTurnBudgetMs(500, false, 1L))
+        assertEquals(
+            MAX_CONFIGURABLE_GENERATION_TURN_BUDGET_MINUTES * 60_000L,
+            resolveInteractiveGenerationTurnBudgetMs(2_000, false, 1L),
+        )
     }
 }

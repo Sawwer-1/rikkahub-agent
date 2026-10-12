@@ -13,7 +13,7 @@ class DreamDailyUsageDispatchAccountingContractTest {
                 "app/src/main/java/me/rerere/rikkahub/data/db/dao/DreamDao.kt",
             ),
         )
-        val query = source.substringAfter("AS knownOutputTokens")
+        val query = source.substringAfter("AS unmeasuredOutputRunCount")
             .substringBefore("suspend fun readGlobalDreamDailyUsage")
 
         assertTrue(query.contains("prompt_contract_version IS NOT NULL"))
@@ -25,8 +25,12 @@ class DreamDailyUsageDispatchAccountingContractTest {
         assertTrue(query.contains("MODEL_SAFETY_REJECTION"))
         assertTrue(query.contains("MODEL_INVALID_CONFIGURATION"))
         // 2026-10-12 (user request): a failed run must not consume the daily run quota, so the
-        // count expression excludes terminal-failure rows.
-        assertTrue(query.contains("status IN ('FAILED', 'CONFLICT', 'CANCELLED', 'DISCARDED')"))
+        // count / unmeasured expressions exclude terminal-failure rows (they sit before the
+        // anchored region, hence asserted against the whole source).
+        assertTrue(source.contains("status IN ('FAILED', 'CONFLICT', 'CANCELLED', 'DISCARDED')"))
+        assertTrue(
+            source.contains("SUM(CASE WHEN status IN ('FAILED', 'CONFLICT', 'CANCELLED', 'DISCARDED')"),
+        )
     }
 
     private fun projectRoot(): Path = generateSequence(Path.of("").toAbsolutePath()) { it.parent }
