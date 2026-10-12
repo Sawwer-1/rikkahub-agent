@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="chat_message_tool_ask_custom_hint">Custom answer (optional)</string>
+</resources>

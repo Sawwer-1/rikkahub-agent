@@ -420,6 +420,9 @@ private fun ChainOfThoughtScope.AskUserToolStep(
     val answers = remember { mutableStateMapOf<String, String>() }
     // Track selected options for multi questions
     val multiAnswers = remember { mutableStateMapOf<String, Set<String>>() }
+    // Free-text companion for multi questions (combo: selections + custom answer, or a
+    // pure free answer when the model sent multi with no options)
+    val multiCustom = remember { mutableStateMapOf<String, String>() }
 
     val firstQuestion = questions.firstOrNull()?.question ?: "..."
 
@@ -471,30 +474,11 @@ private fun ChainOfThoughtScope.AskUserToolStep(
 
                         if (isPending && onToolAnswer != null) {
                             when (q.selectionType) {
-                                "single" -> {
-                                    // Single select: chips only, no text input
-                                    if (q.options.isNotEmpty()) {
-                                        FlowRow(
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                                        ) {
-                                            q.options.forEach { option ->
-                                                FilterChip(
-                                                    selected = answers[q.id] == option,
-                                                    onClick = { answers[q.id] = option },
-                                                    label = {
-                                                        Text(
-                                                            text = option,
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                        )
-                                                    },
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
                                 "multi" -> {
-                                    // Multi select: chips only, multiple can be selected
+                                    // Multi select: chips + a free-text companion. The user can
+                                    // append a custom answer (combo) or answer purely freely when
+                                    // the model sent multi with no options — previously an empty
+                                    // option list rendered nothing and the submit stayed disabled.
                                     if (q.options.isNotEmpty()) {
                                         FlowRow(
                                             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -520,9 +504,27 @@ private fun ChainOfThoughtScope.AskUserToolStep(
                                             }
                                         }
                                     }
+                                    OutlinedTextField(
+                                        value = multiCustom[q.id] ?: "",
+                                        onValueChange = { multiCustom[q.id] = it },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        textStyle = MaterialTheme.typography.bodySmall,
+                                        singleLine = false,
+                                        minLines = 1,
+                                        maxLines = 3,
+                                        placeholder = {
+                                            Text(
+                                                text = stringResource(R.string.chat_message_tool_ask_custom_hint),
+                                                style = MaterialTheme.typography.labelSmall,
+                                            )
+                                        },
+                                    )
                                 }
                                 else -> {
-                                    // Text (default): optional option chips + free text input
+                                    // Text & single (default): preset chips fill an editable field,
+                                    // so the user can edit a selected option, combine presets with
+                                    // free text, or answer freely. Single used to render chips only
+                                    // with no way to type (user-reported 2026-10-12).
                                     if (q.options.isNotEmpty()) {
                                         FlowRow(
                                             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -543,7 +545,7 @@ private fun ChainOfThoughtScope.AskUserToolStep(
                                         }
                                     }
 
-                                    // Free text input
+                                    // Editable answer field (free input / option editing)
                                     OutlinedTextField(
                                         value = answers[q.id] ?: "",
                                         onValueChange = { answers[q.id] = it },
@@ -581,7 +583,14 @@ private fun ChainOfThoughtScope.AskUserToolStep(
                                 put("answers", buildJsonObject {
                                     questions.forEach { q ->
                                         when (q.selectionType) {
-                                            "multi" -> put(q.id, JsonPrimitive(multiAnswers[q.id]?.joinToString(", ") ?: ""))
+                                            "multi" -> {
+                                                val selections = multiAnswers[q.id].orEmpty() +
+                                                    listOfNotNull(
+                                                        multiCustom[q.id]?.trim()
+                                                            ?.takeIf { it.isNotBlank() },
+                                                    )
+                                                put(q.id, JsonPrimitive(selections.joinToString(", ")))
+                                            }
                                             else -> put(q.id, JsonPrimitive(answers[q.id] ?: ""))
                                         }
                                     }
@@ -591,7 +600,8 @@ private fun ChainOfThoughtScope.AskUserToolStep(
                         },
                         enabled = questions.all { q ->
                             when (q.selectionType) {
-                                "multi" -> !multiAnswers[q.id].isNullOrEmpty()
+                                "multi" -> !multiAnswers[q.id].isNullOrEmpty() ||
+                                    !multiCustom[q.id].isNullOrBlank()
                                 else -> !answers[q.id].isNullOrBlank()
                             }
                         },

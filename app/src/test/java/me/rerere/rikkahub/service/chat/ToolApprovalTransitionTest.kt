@@ -55,4 +55,55 @@ class ToolApprovalTransitionTest {
         assertEquals(false, shouldResumeAfterApproval(appliedPendingDecision = false, hasPendingAfterUpdate = false))
         assertEquals(false, shouldResumeAfterApproval(appliedPendingDecision = true, hasPendingAfterUpdate = true))
     }
+
+    @Test
+    fun `positive approvals still require exact identity`() {
+        // Regression guard for the ask_user answer fix (2026-10-12): the carve-out must stay
+        // scoped to answers — plain approvals keep requiring the exact projection identity.
+        assertEquals(
+            false,
+            mayUseLegacyApprovalPath(
+                decision = ToolDecision.Approved,
+                exactIdentityPresent = false,
+                legacyAskUserAnswer = false,
+            ),
+        )
+        assertEquals(
+            true,
+            mayUseLegacyApprovalPath(
+                decision = ToolDecision.Approved,
+                exactIdentityPresent = true,
+                legacyAskUserAnswer = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `denials and ask_user answers may use the legacy path`() {
+        assertEquals(
+            true,
+            mayUseLegacyApprovalPath(
+                decision = ToolDecision.Denied("no"),
+                exactIdentityPresent = false,
+                legacyAskUserAnswer = false,
+            ),
+        )
+        assertEquals(
+            true,
+            mayUseLegacyApprovalPath(
+                decision = ToolDecision.Answered("""{"answers":{"q1":"ok"}}"""),
+                exactIdentityPresent = false,
+                legacyAskUserAnswer = true,
+            ),
+        )
+        // An answer without the legacy ask_user context is still gated.
+        assertEquals(
+            false,
+            mayUseLegacyApprovalPath(
+                decision = ToolDecision.Answered("""{"answers":{"q1":"ok"}}"""),
+                exactIdentityPresent = false,
+                legacyAskUserAnswer = false,
+            ),
+        )
+    }
 }

@@ -177,6 +177,7 @@ import me.rerere.rikkahub.service.chat.StableCommandException
 import me.rerere.rikkahub.service.chat.SubmitResult
 import me.rerere.rikkahub.service.chat.ToolApprovalCommand
 import me.rerere.rikkahub.service.chat.ToolDecision
+import me.rerere.rikkahub.service.chat.mayUseLegacyApprovalPath
 import me.rerere.rikkahub.service.chat.NormalCommand
 import me.rerere.rikkahub.service.chat.RegenerateCommand
 import me.rerere.rikkahub.memory.MemorySourceVersion
@@ -3695,9 +3696,9 @@ class ChatService(
                 conversationId = conversationId.toString(),
                 toolCallId = toolCallId,
             )
-            submitCommand(
-                conversationId,
-                ToolApprovalCommand(
+            val tracked = submitCommandTracked(
+                conversationId = conversationId,
+                command = ToolApprovalCommand(
                     toolCallId = toolCallId,
                     decision = decision,
                     toolName = toolName,
@@ -3707,9 +3708,45 @@ class ChatService(
                     expectedStateVersion = projection?.stateVersion,
                     resolutionRequestId = Uuid.random().toString(),
                 ),
-                origin,
-                timingSubmission,
+                origin = origin,
+                dedupeKey = null,
+                expiresAt = null,
+                dependencies = emptyList(),
+                agentTimingSubmission = timingSubmission,
             )
+            // Never silent: a rejected approval/answer used to leave the question card pending
+            // forever with zero feedback (device evidence 2026-10-12, ask_user confirmations).
+            val submissionFailure = when (val submission = tracked.submission) {
+                is SubmitResult.Accepted -> null
+                is SubmitResult.QueueFull -> "Conversation queue is full (${submission.limit})"
+                is SubmitResult.Rejected -> submission.reason
+                is SubmitResult.RuntimeUnavailable -> submission.reason
+            }
+            if (submissionFailure != null) {
+                addError(
+                    IllegalStateException(submissionFailure),
+                    conversationId,
+                    title = context.getString(R.string.error_title_tool_approval),
+                )
+                return@launch
+            }
+            val terminalFailure = when (val outcome = tracked.outcome.await()) {
+                is CommandOutcome.Conflict -> outcome.reason
+                is CommandOutcome.Rejected -> outcome.reason
+                is CommandOutcome.NotApplied -> outcome.reason
+                is CommandOutcome.Failed ->
+                    outcome.error.message ?: outcome.error.toString()
+                is CommandOutcome.SkippedDependencyFailed ->
+                    "Required command failed: ${outcome.dependencyId}"
+                else -> null
+            }
+            terminalFailure?.let { reason ->
+                addError(
+                    IllegalStateException(reason),
+                    conversationId,
+                    title = context.getString(R.string.error_title_tool_approval),
+                )
+            }
         }
     }
 
@@ -3874,7 +3911,23 @@ class ChatService(
         }
         val exactIdentityPresent = command.approvalId != null && command.executionId != null &&
             command.expectedStateVersion != null
-        if (decision !is ToolDecision.Denied && !exactIdentityPresent) {
+        // ask_user answers may use the legacy path: an answer grants no permission and the
+        // pending re-check further down rejects stale/mutated toolCallIds. Normal
+        // (LOCAL_ASSISTANT) conversations never persist an approval projection, so without
+        // this carve-out every ask_user confirmation died here as
+        // approval_exact_identity_required (device evidence 2026-10-12).
+        val legacyAskUserAnswer = decision is ToolDecision.Answered &&
+            conversation.messageNodes.any { node ->
+                node.messages.any { message ->
+                    message.parts.any { part ->
+                        part is UIMessagePart.Tool &&
+                            part.toolCallId == command.toolCallId &&
+                            part.toolName == "ask_user" &&
+                            part.isPending
+                    }
+                }
+            }
+        if (!mayUseLegacyApprovalPath(decision, exactIdentityPresent, legacyAskUserAnswer)) {
             // Legacy positive payloads used a mutable latest-by-tool lookup and can approve a
             // newer execution after replay. Only denial may use that conservative legacy path.
             return RunOutcome.Rejected("approval_exact_identity_required")
