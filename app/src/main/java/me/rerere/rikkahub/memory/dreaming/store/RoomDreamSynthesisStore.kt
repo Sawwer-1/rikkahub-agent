@@ -584,8 +584,17 @@ class RoomDreamSynthesisStore(
                         ) {
                             DreamSynthesisStoreResult.Accepted
                         } else {
-                            // Names the exact mismatch so a replay divergence stops surfacing as a
-                            // bare STORE_FAILURE on the run row (2026-10-13).
+                            // 2026-10-13 device evidence (2.5.15/226): the run rebuilt its input
+                            // between WorkManager attempts — an Experience was discarded or its
+                            // signal weights moved inside the ~150s provider window — and the
+                            // strict replay compare turned that into DISPATCH_REPLAY_MISMATCH →
+                            // STORE_FAILURE on a run that had not produced a single claim (24 in,
+                            // 0 out, applied stuck at 0 since 2.5.11). Dispatch happens BEFORE any
+                            // provider call, and this attempt would call the model either way, so
+                            // continuing with the latest input is safe and is the whole point of
+                            // WorkManager retry. Accept and keep the first recorded values (the
+                            // commit-time audit write uses unconditional SETs). Refusing here
+                            // deadlocked the run forever: every retry re-derived the same drift.
                             val mismatch = buildString {
                                 if (run.promptContractVersion != request.promptContractVersion) append("prompt ")
                                 if (run.validatorVersion != request.validatorVersion) append("validator ")
@@ -595,10 +604,11 @@ class RoomDreamSynthesisStore(
                             recordSeedForensics(
                                 fence.runId,
                                 fence.scopeId,
-                                "DISPATCH_REPLAY_MISMATCH",
-                                mismatch,
+                                "DISPATCH_REPLAY_REBASED",
+                                "$mismatch stored=" + (run.inputManifestHash ?: "-").take(8) +
+                                    " incoming=" + request.inputManifestHash.value.take(8),
                             )
-                            DreamSynthesisStoreResult.Rejected(DreamSynthesisStoreRejection.STORE_CORRUPTION)
+                            DreamSynthesisStoreResult.Accepted
                         }
                     }
                 }
