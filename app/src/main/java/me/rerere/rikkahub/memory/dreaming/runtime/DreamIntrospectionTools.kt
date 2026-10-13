@@ -54,7 +54,7 @@ class DreamIntrospectionToolProvider(
                 "claims" -> claims(scopeId)
                 "recent" -> recent(scopeId)
                 "sources" -> sources(scopeId, input["claim_id"]?.jsonPrimitive?.contentOrNull)
-                "failures" -> failures()
+                "failures" -> failures(scopeId)
                 else -> error("DREAM_VIEW_INVALID_VIEW")
             }
             response(payload)
@@ -177,16 +177,18 @@ class DreamIntrospectionToolProvider(
     }
 
     /**
-     * Recent synthesis commit forensics, newest first (2026-10-13). The run row's failure_code
-     * already names the failing check; this view adds the abort stage and the exception
-     * type/message/frames for the cases where one code is not enough (for example two different
-     * aborts that both surface as STORE_CORRUPTION). Enum names, opaque run ids, counters and
-     * exception summaries only — the sidecar never stores model or user text.
+     * Recent synthesis failures, newest first. Two merged sources: the durable forensics sidecar
+     * (abort stage + exception summary, written since 2.5.12/223) and the run rows themselves
+     * (added 2026-10-13) — the rows are exactly what dream_view(recent) already shows, so this
+     * view can no longer return an empty list while FAILED runs exist on the device (device
+     * report 2026-10-13: view returned [] while nine FAILED runs were listed by recent).
+     *
+     * Enum names, opaque run ids, counters and exception summaries only — never model or user
+     * text.
      */
-    private fun failures(): kotlinx.serialization.json.JsonObject = buildJsonObject {
-        val store = forensics ?: return@buildJsonObject
+    private suspend fun failures(scopeId: String) = buildJsonObject {
         put("events", buildJsonArray {
-            store.events().take(MAX_FORENSICS_EVENTS).forEach { event ->
+            forensics?.events().orEmpty().take(MAX_FORENSICS_EVENTS).forEach { event ->
                 add(buildJsonObject {
                     put("recorded_at_ms", event.recordedAtEpochMs)
                     put("run_id", event.runId)
@@ -205,6 +207,22 @@ class DreamIntrospectionToolProvider(
                     event.inputMemoryCount?.let { value -> put("input_memory_count", value) }
                 })
             }
+        })
+        put("run_failures", buildJsonArray {
+            dreamDao.listRecentRuns(scopeId, MAX_FAILED_RUNS)
+                .filter { it.status == "FAILED" }
+                .forEach { run ->
+                    add(buildJsonObject {
+                        put("run_id", run.runId)
+                        put("mode", run.mode)
+                        put("failure_code", run.failureCode ?: "")
+                        put("created_at_ms", run.createdAtMs)
+                        put("started_at_ms", run.startedAtMs ?: 0L)
+                        put("finished_at_ms", run.finishedAtMs ?: 0L)
+                        put("input_experience_count", run.inputMemoryCount ?: 0)
+                        put("output_claim_count", run.outputClaimCount ?: 0)
+                    })
+                }
         })
     }
 
@@ -234,5 +252,6 @@ class DreamIntrospectionToolProvider(
         const val MAX_TOOL_CLAIMS = 256
         const val MAX_RECENT_EXPERIENCES = 20
         const val MAX_FORENSICS_EVENTS = 10
+        const val MAX_FAILED_RUNS = 10
     }
 }

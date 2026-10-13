@@ -317,7 +317,7 @@ class RoomDreamSynthesisStore(
                 )
             }
             if (DreamPairScopeId.parseOrNull(fence.scopeId.value) != null) {
-                val allClaims = loadClaims(fence.scopeId)
+                val allClaims = loadClaims(fence.scopeId, fence.runId)
                     ?: return@withTransaction ReadDreamInputSeedResult.Rejected(
                         DreamSynthesisStoreRejection.STORE_CORRUPTION,
                     )
@@ -386,15 +386,18 @@ class RoomDreamSynthesisStore(
                             fence.baseMemoryEpoch,
                         )
                     ) {
-                        return@withTransaction ReadDreamInputSeedResult.Rejected(
-                            DreamSynthesisStoreRejection.STORE_CORRUPTION,
+                        return@withTransaction rejectSeedCorruption(
+                            fence.runId,
+                            fence.scopeId,
+                            "SEED_JOURNAL_GAP",
+                            "${fence.baseLastAppliedMemoryEpoch}:${fence.baseMemoryEpoch}:${journal.size}",
                         )
                     }
                 }
             } else {
                 emptyList()
             }
-            val allClaims = loadClaims(fence.scopeId)
+            val allClaims = loadClaims(fence.scopeId, fence.runId)
                 ?: return@withTransaction ReadDreamInputSeedResult.Rejected(
                     DreamSynthesisStoreRejection.STORE_CORRUPTION,
                 )
@@ -413,8 +416,11 @@ class RoomDreamSynthesisStore(
                         .sorted()
                         .toList()
                     if (ids.size > MAX_DREAM_INPUT_CANDIDATES) {
-                        return@withTransaction ReadDreamInputSeedResult.Rejected(
-                            DreamSynthesisStoreRejection.STORE_CORRUPTION,
+                        return@withTransaction rejectSeedCorruption(
+                            fence.runId,
+                            fence.scopeId,
+                            "SEED_CHANGE_ID_OVERFLOW",
+                            ids.size.toString(),
                         )
                     }
                     val loaded = mutableListOf<MemoryEntity>()
@@ -425,14 +431,20 @@ class RoomDreamSynthesisStore(
                 }
             }.sortedBy(MemoryEntity::id)
             if (memories.size > MAX_DREAM_INPUT_CANDIDATES) {
-                return@withTransaction ReadDreamInputSeedResult.Rejected(
-                    DreamSynthesisStoreRejection.STORE_CORRUPTION,
+                return@withTransaction rejectSeedCorruption(
+                    fence.runId,
+                    fence.scopeId,
+                    "SEED_MEMORY_OVERFLOW",
+                    memories.size.toString(),
                 )
             }
             val candidates = memories.map { memory ->
                 val authority = memory.toDreamAuthority(fence.scopeId)
-                    ?: return@withTransaction ReadDreamInputSeedResult.Rejected(
-                        DreamSynthesisStoreRejection.STORE_CORRUPTION,
+                    ?: return@withTransaction rejectSeedCorruption(
+                        fence.runId,
+                        fence.scopeId,
+                        "SEED_MEMORY_AUTHORITY",
+                        memory.id.toString(),
                     )
                 val pin = authority.toPin()
                 DreamInputCandidate(
@@ -572,6 +584,20 @@ class RoomDreamSynthesisStore(
                         ) {
                             DreamSynthesisStoreResult.Accepted
                         } else {
+                            // Names the exact mismatch so a replay divergence stops surfacing as a
+                            // bare STORE_FAILURE on the run row (2026-10-13).
+                            val mismatch = buildString {
+                                if (run.promptContractVersion != request.promptContractVersion) append("prompt ")
+                                if (run.validatorVersion != request.validatorVersion) append("validator ")
+                                if (run.inputMemoryCount != request.inputMemoryCount) append("memory_count ")
+                                if (run.inputManifestHash != request.inputManifestHash.value) append("manifest ")
+                            }.trim().ifEmpty { "unknown" }
+                            recordSeedForensics(
+                                fence.runId,
+                                fence.scopeId,
+                                "DISPATCH_REPLAY_MISMATCH",
+                                mismatch,
+                            )
                             DreamSynthesisStoreResult.Rejected(DreamSynthesisStoreRejection.STORE_CORRUPTION)
                         }
                     }
@@ -697,15 +723,36 @@ class RoomDreamSynthesisStore(
         fence: DreamSynthesisFence,
         failure: DreamSynthesisFailure,
         nowMs: Long,
-    ): DreamSynthesisStoreResult = failOwnedRun(
-        fence = fence,
-        failureCode = if (!generationEnabled(fence.scopeId)) {
+    ): DreamSynthesisStoreResult {
+        val failureCode = if (!generationEnabled(fence.scopeId)) {
             DreamRunFailureCode.FEATURE_DISABLED
         } else {
             failure.toRunFailureCode()
-        },
-        nowMs = nowMs,
-    )
+        }
+        // Terminal runs written through this path (orchestrator failOrRetry, interrupted-run
+        // terminalization) used to leave no forensics at all — on device that is exactly where
+        // the opaque STORE_FAILURE rows came from. One record per terminal transition; enum
+        // names and opaque ids only, never model or user text.
+        forensics?.record(
+            DreamSynthesisForensicsEvent(
+                recordedAtEpochMs = maxOf(nowMs, System.currentTimeMillis()),
+                runId = fence.runId,
+                pairScope = DreamPairScopeId.parseOrNull(fence.scopeId.value) != null,
+                stage = "RUN_FAILED",
+                reason = failure.name,
+                failureCode = failureCode.name,
+                mode = fence.mode.name,
+                baseExperienceEpoch = fence.baseExperienceEpoch,
+                baseAppliedExperienceEpoch = fence.baseAppliedExperienceEpoch,
+                baseDreamRevision = fence.baseDreamRevision,
+            ),
+        )
+        return failOwnedRun(
+            fence = fence,
+            failureCode = failureCode,
+            nowMs = nowMs,
+        )
+    }
 
     private suspend fun commitOrAbort(
         request: DreamSynthesisCommitRequest,
@@ -1181,35 +1228,36 @@ class RoomDreamSynthesisStore(
         }
     }
 
-    private suspend fun loadClaims(scopeId: DreamScopeId): List<DreamClaimHead>? {
+    private suspend fun loadClaims(scopeId: DreamScopeId, forensicsRunId: String? = null): List<DreamClaimHead>? {
         val entities = synthesisDao.listClaims(scopeId.value, MAX_DREAM_CLAIMS + 1)
-        if (entities.size > MAX_DREAM_CLAIMS) return null
-        return entities.map { entity -> entity.toModel(scopeId) ?: return null }
-            .sortedWith(compareBy({ it.claimKey }, { it.claimId }, { it.revision }))
+        if (entities.size > MAX_DREAM_CLAIMS) {
+            recordSeedForensics(forensicsRunId, scopeId, "SEED_CLAIM_COUNT_OVERFLOW", entities.size.toString())
+            return null
+        }
+        val claims = ArrayList<DreamClaimHead>(entities.size)
+        for (entity in entities) {
+            val model = entity.toModel(scopeId, lenientSources = true, forensicsRunId = forensicsRunId)
+            if (model == null) {
+                // Still fatal (genuine corruption), but now the next device failure names the claim.
+                recordSeedForensics(forensicsRunId, scopeId, "SEED_CLAIM_UNPROJECTABLE", entity.claimId)
+                return null
+            }
+            claims += model
+        }
+        return claims.sortedWith(compareBy({ it.claimKey }, { it.claimId }, { it.revision }))
     }
 
-    private suspend fun DreamClaimEntity.toModel(scopeId: DreamScopeId): DreamClaimHead? {
+    private suspend fun DreamClaimEntity.toModel(
+        scopeId: DreamScopeId,
+        lenientSources: Boolean = false,
+        forensicsRunId: String? = null,
+    ): DreamClaimHead? {
         val state = enumOrNull<DreamClaimState>(state) ?: return null
         val sources = if (state == DreamClaimState.TOMBSTONED) {
             emptyList()
         } else if (DreamPairScopeId.parseOrNull(scopeId.value) != null) {
             synthesisDao.listClaimExperienceSources(claimId, claimRevision).map { source ->
-                val experience = experienceDao.getExperience(source.experienceId, scopeId.value)
-                    ?: return null
-                if (experience.experienceEpoch != source.experienceEpoch ||
-                    experience.contentDigest != source.contentDigest
-                ) return null
-                val candidate = experience.toDreamInputCandidate(
-                    scopeId = scopeId,
-                    origin = DreamInputCandidateOrigin.AUTHORITY_CHANGE,
-                    json = json,
-                ) ?: return null
-                if (candidate.pin.expectedSourceManifestHash.value != source.sourceManifestHash) return null
-                DreamClaimSourcePin(
-                    authority = candidate.pin,
-                    supportType = enumOrNull<DreamSupportType>(source.supportType) ?: return null,
-                    directAuthority = true,
-                )
+                projectPairClaimSource(scopeId, claimId, source, lenientSources, forensicsRunId) ?: return null
             }
         } else {
             synthesisDao.listClaimVersionSources(claimId, claimRevision).map { source ->
@@ -1260,6 +1308,89 @@ class RoomDreamSynthesisStore(
         } catch (_: Exception) {
             null
         }
+    }
+
+    /**
+     * Projects one persisted pair-claim provenance row back into a source pin.
+     *
+     * Strict mode (default; the commit path) keeps the historical contract: any drift in the
+     * referenced Experience fails the projection. Lenient mode (the seed/loadClaims path, since
+     * 2026-10-13) rebuilds the pin from the recorded provenance row instead, so
+     * `deterministicInvalidations()` can classify the drift (SOURCE_MISSING / SOURCE_TOMBSTONED /
+     * SOURCE_REVISION_CHANGED / SOURCE_HASH_CHANGED) and synthesis can repair the claim.
+     *
+     * Why: device evidence (2.5.11-2.5.13) showed every later run ending in a bare STORE_FAILURE.
+     * One drifted source made `loadClaims` return null, turning the whole seed into
+     * STORE_CORRUPTION before the invalidation path could ever run — a deterministic deadlock no
+     * retry could clear (lag only grew, 570 → 597). Genuine corruption (bad enum, malformed
+     * digest, non-positive epoch) stays fatal in either mode.
+     */
+    private suspend fun projectPairClaimSource(
+        scopeId: DreamScopeId,
+        claimId: String,
+        source: me.rerere.rikkahub.data.db.entity.DreamClaimExperienceSourceEntity,
+        lenient: Boolean,
+        forensicsRunId: String?,
+    ): DreamClaimSourcePin? {
+        val supportType = enumOrNull<DreamSupportType>(source.supportType) ?: return null
+        val experience = experienceDao.getExperience(source.experienceId, scopeId.value)
+        if (experience != null &&
+            experience.status != "DISCARDED" &&
+            experience.experienceEpoch == source.experienceEpoch &&
+            experience.contentDigest == source.contentDigest
+        ) {
+            val candidate = experience.toDreamInputCandidate(
+                scopeId = scopeId,
+                origin = DreamInputCandidateOrigin.AUTHORITY_CHANGE,
+                json = json,
+            )
+            if (candidate != null && candidate.pin.expectedSourceManifestHash.value == source.sourceManifestHash) {
+                return DreamClaimSourcePin(
+                    authority = candidate.pin,
+                    supportType = supportType,
+                    directAuthority = true,
+                )
+            }
+        }
+        if (!lenient) return null
+        val rebuilt = rebuildRecordedSourcePin(scopeId, source) ?: return null
+        recordSeedForensics(
+            runId = forensicsRunId,
+            scopeId = scopeId,
+            stage = "SEED_SOURCE_DEGRADED",
+            detail = "$claimId:${source.experienceId}",
+        )
+        return DreamClaimSourcePin(authority = rebuilt, supportType = supportType, directAuthority = true)
+    }
+
+    /** Error-path-only forensics; enum names, opaque ids and counters only, never user text. */
+    private fun recordSeedForensics(
+        runId: String?,
+        scopeId: DreamScopeId,
+        stage: String,
+        detail: String? = null,
+    ) {
+        val sidecar = forensics ?: return
+        sidecar.record(
+            DreamSynthesisForensicsEvent(
+                recordedAtEpochMs = System.currentTimeMillis(),
+                runId = runId ?: "unattributed",
+                pairScope = DreamPairScopeId.parseOrNull(scopeId.value) != null,
+                stage = stage,
+                reason = detail,
+            ),
+        )
+    }
+
+    /** Seed rejection that names its exact check, so the next device failure is self-locating. */
+    private fun rejectSeedCorruption(
+        runId: String?,
+        scopeId: DreamScopeId,
+        stage: String,
+        detail: String? = null,
+    ): ReadDreamInputSeedResult.Rejected {
+        recordSeedForensics(runId, scopeId, stage, detail)
+        return ReadDreamInputSeedResult.Rejected(DreamSynthesisStoreRejection.STORE_CORRUPTION)
     }
 
     private suspend fun deterministicInvalidations(
@@ -1629,6 +1760,27 @@ private fun hasCompleteEpochs(values: List<Long>, fromExclusive: Long, throughIn
 
 private inline fun <reified T : Enum<T>> enumOrNull(raw: String): T? =
     enumValues<T>().firstOrNull { it.name == raw }
+
+/**
+ * Rebuilds the authority pin recorded for one pair-claim provenance row. Used by the lenient
+ * seed path so a drifted Experience degrades into a deterministic invalidation instead of
+ * failing the whole seed; returns null only when the row itself is malformed (bad digest format,
+ * non-positive epoch).
+ */
+internal fun rebuildRecordedSourcePin(
+    scopeId: DreamScopeId,
+    source: me.rerere.rikkahub.data.db.entity.DreamClaimExperienceSourceEntity,
+): DreamAuthorityPin? = try {
+    DreamAuthorityPin(
+        scopeId = scopeId,
+        memoryId = source.experienceId,
+        expectedRevision = source.experienceEpoch,
+        expectedAuthorityFingerprint = DreamSha256(source.contentDigest),
+        expectedSourceManifestHash = DreamSha256(source.sourceManifestHash),
+    )
+} catch (_: Exception) {
+    null
+}
 
 private fun Long.toIntExactOrAbort(): Int {
     if (this !in 1L..Int.MAX_VALUE.toLong()) abort(DreamSynthesisCommitRejection.STORE_CORRUPTION)
