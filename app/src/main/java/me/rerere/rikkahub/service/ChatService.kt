@@ -315,11 +315,22 @@ internal fun messageEditSubmissionResult(
 }
 
 /**
- * 空文本 preset 条目（手写空行、酒馆卡空 first_mes）在新会话物化成一条只剩操作行的
- * 空消息。出生点统一过滤：空条目不入会话，非空 preset 原样保留。
+ * 出生点物化助手 preset。
+ *
+ * 过滤：空文本 preset 条目（手写空行、酒馆卡空 first_mes）会在新会话物化成一条只剩操作行的
+ * 空消息，故空条目不入会话。
+ *
+ * 换 id：`UIMessage.id` 是序列化字段且 `JsonInstant` 是 encodeDefaults = true，preset 的 id 会
+ * 随助手设置长期保留，同一助手的每个新会话都会物化同一份 preset。若沿用原 id，同一助手的多个
+ * 会话就共用了同一个 message id；而 `learning_message_source_authority` 的主键只有
+ * (scope_kind, scope_id, message_id)，scope 是助手级——新会话对账时会命中旧会话（含已删除会话
+ * 残留的 tombstone 行）并抛 SOURCE_MESSAGE_IDENTITY_MISMATCH 崩进程（2026-10-13 识之律者闪退，
+ * 其预设开场白 id 恒定）。分叉会话同样重新生成消息 id，此处保持同一口径。
  */
 internal fun effectivePresetMessages(presetMessages: List<UIMessage>): List<UIMessage> =
-    presetMessages.filterNot { it.parts.isEmptyUIMessage() }
+    presetMessages
+        .filterNot { it.parts.isEmptyUIMessage() }
+        .map { it.copy(id = Uuid.random()) }
 
 internal fun splitMessagesForCompression(
     messages: List<UIMessage>,

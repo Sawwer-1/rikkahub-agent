@@ -3,6 +3,7 @@ package me.rerere.rikkahub.data.authority.source
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -321,6 +322,80 @@ class ConversationSourceAuthorityWriterTest {
             }
         }
 
+    @Test
+    fun `message id owned by another live conversation is skipped instead of failing`() = runBlocking {
+        val store = FakeConversationSourceAuthorityStore()
+        val writer = ConversationSourceAuthorityWriter(store)
+        writer.reconcileInCurrentTransaction(snapshot())
+
+        // 同一助手 scope 下的第二个会话复用了第一个会话的 message id（助手 preset 的 id 是常量）：
+        // 权威表主键只有 (scope_kind, scope_id, message_id)，第二个会话取不到自己的行。
+        val foreign = snapshot(
+            messages = listOf(
+                message(USER_MESSAGE_ID, "USER", DIGEST_A),
+                message(ASSISTANT_MESSAGE_ID, "ASSISTANT", DIGEST_B),
+                message(OWNED_MESSAGE_ID, "ASSISTANT", DIGEST_C),
+            ),
+            selected = listOf(OWNED_MESSAGE_ID, ASSISTANT_MESSAGE_ID),
+            conversationId = OTHER_CONVERSATION_ID,
+        )
+
+        // 2026-10-13 识之律者闪退：这里以前抛 SOURCE_MESSAGE_IDENTITY_MISMATCH 崩进程。
+        val commit = writer.reconcileInCurrentTransaction(foreign)
+
+        // 只有未被占用的那条登记成功；被占用的两条跳过，且不篡改占用者的行。
+        assertEquals(1, store.countMessagesForConversation(SCOPE, OTHER_CONVERSATION_ID))
+        assertTrue(commit.messagesById.containsKey(OWNED_MESSAGE_ID))
+        assertFalse(commit.messagesById.containsKey(USER_MESSAGE_ID))
+        assertFalse(commit.messagesById.containsKey(ASSISTANT_MESSAGE_ID))
+        assertEquals(CONVERSATION_ID, store.findMessage(SCOPE, USER_MESSAGE_ID)?.conversationId)
+        assertEquals(CONVERSATION_ID, store.findMessage(SCOPE, ASSISTANT_MESSAGE_ID)?.conversationId)
+
+        // 分支头落在被占用的消息上：本次不登记分支头，而不是整批对账失败。
+        assertNull(commit.conversation.branchHeadMessageId)
+        assertNull(commit.conversation.branchHeadMessageRevision)
+
+        val replay = writer.reconcileInCurrentTransaction(foreign)
+        assertFalse(replay.didMutate)
+        assertEquals(1, store.countMessagesForConversation(SCOPE, OTHER_CONVERSATION_ID))
+    }
+
+    @Test
+    fun `residual row of a deleted conversation does not block the next conversation`() = runBlocking {
+        val store = FakeConversationSourceAuthorityStore()
+        val writer = ConversationSourceAuthorityWriter(store)
+        writer.reconcileInCurrentTransaction(snapshot())
+
+        // 删除旧会话：消息行被打成 TOMBSTONED，但行本身留着，conversation_id 仍是旧会话。
+        writer.tombstoneAllScopesInCurrentTransaction(CONVERSATION_ID, occurredAtMs = 20L)
+        val residual = store.findMessage(SCOPE, ASSISTANT_MESSAGE_ID)
+        assertEquals(CONVERSATION_ID, residual?.conversationId)
+        assertEquals(ConversationSourceState.TOMBSTONED, residual?.sourceState)
+
+        // 新会话复用了同一个 message id（助手 preset 的开场白 id 恒定）。
+        val next = snapshot(
+            messages = listOf(
+                message(ASSISTANT_MESSAGE_ID, "ASSISTANT", DIGEST_B),
+                message(OWNED_MESSAGE_ID, "USER", DIGEST_C),
+            ),
+            selected = listOf(ASSISTANT_MESSAGE_ID, OWNED_MESSAGE_ID),
+            conversationId = OTHER_CONVERSATION_ID,
+            occurredAtMs = 30L,
+        )
+
+        val commit = writer.reconcileInCurrentTransaction(next)
+
+        assertTrue(commit.messagesById.containsKey(OWNED_MESSAGE_ID))
+        assertFalse(commit.messagesById.containsKey(ASSISTANT_MESSAGE_ID))
+        assertEquals(1, commit.insertedInitialMessageCount)
+        // 残行保持原样：不复活、不改写归属。
+        assertEquals(CONVERSATION_ID, store.findMessage(SCOPE, ASSISTANT_MESSAGE_ID)?.conversationId)
+        assertEquals(
+            ConversationSourceState.TOMBSTONED,
+            store.findMessage(SCOPE, ASSISTANT_MESSAGE_ID)?.sourceState,
+        )
+    }
+
     private fun snapshot(
         messages: List<MessageSourceSnapshot> = listOf(
             message(USER_MESSAGE_ID, "USER", DIGEST_A),
@@ -330,6 +405,7 @@ class ConversationSourceAuthorityWriterTest {
         assistantDigest: String = DIGEST_B,
         occurredAtMs: Long = 10L,
         conversationDeleted: Boolean = false,
+        conversationId: String = CONVERSATION_ID,
     ): ConversationSourceSnapshot {
         val adjustedMessages = messages.map { message ->
             if (message.messageId == ASSISTANT_MESSAGE_ID) {
@@ -340,7 +416,7 @@ class ConversationSourceAuthorityWriterTest {
         }
         return ConversationSourceSnapshot(
             scope = SCOPE,
-            conversationId = CONVERSATION_ID,
+            conversationId = conversationId,
             assistantIdSnapshot = ASSISTANT_ID,
             messages = adjustedMessages,
             selectedBranchMessageIds = selected,
@@ -396,6 +472,8 @@ class ConversationSourceAuthorityWriterTest {
         const val ASSISTANT_ID = "00000000-0000-0000-0000-000000000001"
         const val USER_MESSAGE_ID = "00000000-0000-0000-0000-000000000003"
         const val ASSISTANT_MESSAGE_ID = "00000000-0000-0000-0000-000000000004"
+        const val OTHER_CONVERSATION_ID = "00000000-0000-0000-0000-000000000005"
+        const val OWNED_MESSAGE_ID = "00000000-0000-0000-0000-000000000006"
         val DIGEST_A = "a".repeat(64)
         val DIGEST_B = "b".repeat(64)
         val DIGEST_C = "c".repeat(64)

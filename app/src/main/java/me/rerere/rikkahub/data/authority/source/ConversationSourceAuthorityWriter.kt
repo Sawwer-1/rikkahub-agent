@@ -265,6 +265,7 @@ class ConversationSourceAuthorityWriter(
             maxOf(existingMessages.size, incomingById.size),
         )
         val transitions = ArrayList<MessageSourceRevisionTransition>()
+        val foreignOwnedMessageIds = HashSet<String>()
         var insertedInitialMessages = 0
 
         incomingById.toSortedMap().forEach { (messageId, incoming) ->
@@ -290,6 +291,12 @@ class ConversationSourceAuthorityWriter(
                 )
                 if (!store.insertMessageInitial(initial)) {
                     val raced = store.findMessage(snapshot.scope, messageId)
+                    if (raced != null && raced.conversationId != snapshot.conversationId) {
+                        // 主键被同一助手 scope 下的另一个会话占用（并发写入或历史脏数据）。
+                        // 本次不为这条消息登记权威头，其余消息照常对账。
+                        foreignOwnedMessageIds += messageId
+                        return@forEach
+                    }
                     if (raced != initial) {
                         throw ConversationSourceAuthorityConflictException(
                             "SOURCE_MESSAGE_INITIAL_INSERT_CONFLICT",
@@ -300,6 +307,16 @@ class ConversationSourceAuthorityWriter(
                     insertedInitialMessages++
                     finalMessages[messageId] = initial
                 }
+                return@forEach
+            }
+            if (existing.conversationId != snapshot.conversationId) {
+                // 同一助手 scope 下的另一个会话已经登记了这个 message id。scope 是助手级，
+                // learning_message_source_authority 的主键只有 (scope_kind, scope_id, message_id)，
+                // 因此两个会话无法共存同一个 message id。
+                // 2026-10-13 识之律者闪退：沿用旧 preset id 的新会话命中旧会话的行，对账直接抛
+                // SOURCE_MESSAGE_IDENTITY_MISMATCH 崩进程。这里保留占用者的行、跳过这条消息，
+                // 其余消息继续对账（与 2026-10-12 的 TOMBSTONE_REVIVAL / TIME_REGRESSION 同口径）。
+                foreignOwnedMessageIds += messageId
                 return@forEach
             }
             requireSameMessageIdentity(existing, snapshot, messageId)
@@ -388,8 +405,15 @@ class ConversationSourceAuthorityWriter(
         } else {
             snapshot.branchHeadMessageId?.let { id ->
                 val head = finalMessages[id]
-                    ?: throw ConversationSourceAuthorityConflictException("SOURCE_BRANCH_HEAD_MISSING")
-                if (head.sourceState == ConversationSourceState.ACTIVE) {
+                if (head == null && id in foreignOwnedMessageIds) {
+                    // 分支头消息的 id 落在另一个会话名下：沿用既有分支头；没有可用分支头时
+                    // 本次先不登记分支头，避免整批对账失败。
+                    existingConversation?.branchHeadMessageId
+                        ?.let(finalMessages::get)
+                        ?.takeIf { it.sourceState == ConversationSourceState.ACTIVE }
+                } else if (head == null) {
+                    throw ConversationSourceAuthorityConflictException("SOURCE_BRANCH_HEAD_MISSING")
+                } else if (head.sourceState == ConversationSourceState.ACTIVE) {
                     head
                 } else {
                     // The stale snapshot named a tombstoned message as the branch head
