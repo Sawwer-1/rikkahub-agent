@@ -21,8 +21,10 @@ import org.junit.Test
  * corruption must stay fatal in either projection mode.
  */
 class RecordedSourcePinRebuildTest {
-    private val scopeId = DreamScopeId(
-        DreamPairScopeId.forAssistant(Uuid.parse("11111111-2222-3333-4444-555555555555")).value,
+    private val scopeId = requireNotNull(
+        DreamScopeId.parseOrNull(
+            DreamPairScopeId.forAssistant(Uuid.parse("11111111-2222-3333-4444-555555555555")).value,
+        ),
     )
 
     private fun source(
