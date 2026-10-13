@@ -22,6 +22,7 @@ import me.rerere.rikkahub.plugin.PluginReviewStatus
 import me.rerere.rikkahub.privilege.PRIVILEGED_SHELL_TOOL_NAME
 import me.rerere.rikkahub.privilege.STRUCTURED_PRIVILEGED_TOOL_NAMES
 import me.rerere.rikkahub.privilege.STRUCTURED_PRIVILEGED_V2_TOOL_NAMES
+import me.rerere.rikkahub.toolcatalog.ToolSurfaceBuilder
 
 /**
  * Aggregates P0 runtime diagnostics without retaining observations, task inputs, or plugin code.
@@ -226,11 +227,12 @@ private fun hasSecurityAndPolicyCoverage(
 }
 
 private fun fixedSecurityToolNames(): Set<String> = buildSet {
-    CapabilityCatalog.allCapabilities().forEach { descriptor -> addAll(descriptor.toolNames) }
-    addAll(InternalToolSecurityCatalog.ALL)
+    // Derived from the single static registry so this denominator can never drift from
+    // ToolSurfaceBuilder again. The previous hand-written copy added PRIVILEGED_SHELL_TOOL_NAME
+    // and a raw string literal of the same tool, plus the phantom "privileged_run_command"
+    // (no implementation anywhere) — 2026-10-13 registry audit.
+    addAll(ToolSurfaceBuilder.staticToolNames())
     add(PRIVILEGED_SHELL_TOOL_NAME)
-    add("privileged_run_command")
-    add("external_bridge_run_command")
     addAll(STRUCTURED_PRIVILEGED_TOOL_NAMES)
     addAll(STRUCTURED_PRIVILEGED_V2_TOOL_NAMES)
 }

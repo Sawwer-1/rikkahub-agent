@@ -43,6 +43,13 @@ object InternalToolSecurityCatalog {
         // P2 vault access is intentionally metadata-only. The secret value has no model tool.
         "secret_vault_list",
         "secret_vault_test_binding",
+        // Voice-call second-pass tagging (jude port). ChatService injects this tool directly
+        // into a dedicated GenerationHandler.generateText(tools = …) run instead of LocalTools,
+        // so the registry audit almost missed it: without this entry every tagging call was
+        // rejected by ToolRuntime.assess as tool_security_descriptor_missing and the feature
+        // silently fell back to plain text (4th occurrence of that defect class, found by the
+        // 2026-10-13 registry audit). Read-only: it validates indices and returns a selection.
+        me.rerere.rikkahub.data.voice.VOICE_CALL_AUDIO_TAG_SELECTION_TOOL_NAME,
     )
 
     val MUTATING: Set<String> = setOf(
@@ -76,6 +83,12 @@ object InternalToolSecurityCatalog {
         "pet_diary_restore",
         "secret_vault_create_slot",
         "secret_vault_set_binding",
+        // Heartbeat scheduling (jude port) writes the assistant-private wake plan. LocalTools
+        // injects it whenever the heartbeat master switch is on; without this registration the
+        // runtime rejected every call with tool_security_descriptor_missing (3rd occurrence of
+        // that defect class, found by the 2026-10-13 registry audit). Approval stays
+        // CALL_DEFINED — the tool itself declares needsApproval={false} by design.
+        me.rerere.rikkahub.personal.heartbeat.HeartbeatScheduleTool.NAME,
     ) + OwnerToolFamily.entries.mapTo(linkedSetOf()) { it.toolName }
 
     val ARGUMENT_DEPENDENT: Set<String> = setOf("memory_tool")

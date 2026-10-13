@@ -4,6 +4,8 @@ import android.util.Log
 import me.rerere.rikkahub.data.capability.ApprovalPolicy
 import me.rerere.rikkahub.data.capability.CapabilityCatalog
 import me.rerere.rikkahub.data.capability.ImplementationState
+import me.rerere.rikkahub.browser.BrowserToolDefaults
+import me.rerere.rikkahub.data.ai.tools.local.SPREADSHEET_TOOL_NAMES
 import me.rerere.rikkahub.data.ai.tools.local.VERIFIED_ACCESSIBILITY_TOOL_NAMES
 import me.rerere.rikkahub.privilege.PRIVILEGED_SHELL_TOOL_NAME
 import me.rerere.rikkahub.privilege.STRUCTURED_PRIVILEGED_TOOL_NAMES
@@ -138,10 +140,8 @@ object ToolApprovalDefaults {
 
         // Spreadsheet tools (assist A, ported from orangechat) — excel_write / csv_write land
         // files on disk; csv_parse reads an arbitrary file into model context, the same trust
-        // footprint as read_file.
-        "excel_write",
-        "csv_parse",
-        "csv_write",
+        // footprint as read_file. Derived from SPREADSHEET_TOOL_NAMES below so the three names
+        // cannot drift (2026-10-13 registry audit).
 
         // Telegram outbound — the bot can DM other chats / change its own config
         "telegram_send_message",
@@ -226,18 +226,9 @@ object ToolApprovalDefaults {
         // tools (open, current_url, screenshot, get_text, get_dom, get_links, back, forward,
         // wait_for) are NOT in this set — reading text out of a page is the same trust level
         // as taking a screenshot or reading any other LLM context. browser_done is the
-        // loop-control sentinel and never side-effects.
-        "browser_click",
-        "browser_type",
-        "browser_scroll",
-        "browser_submit",
-        "browser_select",
-        "browser_press_key",
-        "browser_eval_js",
-        // Composite click+read added in the token-cost optimisation pass — its click
-        // side carries the same trust footprint as plain browser_click, so it
-        // inherits the same approval gate.
-        "browser_click_and_read",
+        // loop-control sentinel and never side-effects. Derived from the browser authority
+        // (BrowserToolDefaults.WRITE_TOOLS) so a new write tool cannot silently skip the gate
+        // (2026-10-13 registry audit).
 
         // web_fetch (item 1.2) — network egress. A bare HTTP GET/POST can exfiltrate
         // anything the LLM puts in the URL / body / headers, so it gets the same
@@ -288,7 +279,11 @@ object ToolApprovalDefaults {
         STRUCTURED_PRIVILEGED_TOOL_NAMES +
         STRUCTURED_PRIVILEGED_V2_TOOL_NAMES +
         VERIFIED_ACCESSIBILITY_TOOL_NAMES +
-        PRIVILEGED_SHELL_TOOL_NAME
+        PRIVILEGED_SHELL_TOOL_NAME +
+        // Derived from their domain authorities (2026-10-13 registry audit): a new browser
+        // write tool or spreadsheet tool joins the approval gate automatically.
+        BrowserToolDefaults.WRITE_TOOLS +
+        SPREADSHEET_TOOL_NAMES
 
     /**
      * Tools whose approval prompt MUST drop the "Always Allow" button so the user has to

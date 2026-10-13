@@ -6,6 +6,7 @@ import me.rerere.rikkahub.data.ai.tools.ToolExecutionContext
 import me.rerere.rikkahub.data.ai.tools.local.SPREADSHEET_TOOL_NAMES
 import me.rerere.rikkahub.data.capability.CapabilityCatalog
 import me.rerere.rikkahub.data.capability.ImplementationState
+import me.rerere.rikkahub.data.voice.VOICE_CALL_AUDIO_TAG_SELECTION_TOOL_NAME
 import me.rerere.rikkahub.privilege.PRIVILEGED_SHELL_TOOL_NAME
 import me.rerere.rikkahub.owner.OwnerToolFamily
 import org.junit.Assert.assertEquals
@@ -86,6 +87,21 @@ class ToolSecurityDescriptorResolverTest {
             CapabilityCatalog.byToolName(it)?.localToolOption != LocalToolOption.Files
         }
         assertEquals(emptyList<String>(), notCataloguedUnderFiles)
+    }
+
+    @Test
+    fun `voice-call second-pass selection tool resolves descriptor and policy`() {
+        // Regression (2026-10-13 registry audit): the tool is injected only by ChatService's
+        // second-pass tagging run, not by LocalTools, so its registration drifted. Assert both
+        // surfaces directly so a future re-check catches the drift without a device.
+        assertNotNull(resolver.resolve(VOICE_CALL_AUDIO_TAG_SELECTION_TOOL_NAME, context))
+        assertFalse(
+            DefaultToolExecutionPolicyResolver().resolve(
+                VOICE_CALL_AUDIO_TAG_SELECTION_TOOL_NAME,
+                kotlinx.serialization.json.buildJsonObject {},
+                context,
+            ) == ToolExecutionPolicy.UNKNOWN,
+        )
     }
 
     @Test

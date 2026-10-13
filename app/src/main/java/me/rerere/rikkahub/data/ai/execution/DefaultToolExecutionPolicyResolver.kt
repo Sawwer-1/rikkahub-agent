@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import me.rerere.rikkahub.browser.BrowserToolDefaults
 import me.rerere.rikkahub.data.ai.tools.ToolExecutionContext
 import me.rerere.rikkahub.data.capability.CapabilityCatalog
 import me.rerere.rikkahub.data.capability.ToolInvocationSurface
@@ -313,10 +314,11 @@ class DefaultToolExecutionPolicyResolver : ToolExecutionPolicyResolver {
             "workspace_process_start", "workspace_process_stop", "workspace_process_restart",
             "external_bridge_run_command", "privileged_run_command", "execution_stop",
         )
-        private val BROWSER_READ_TOOLS = setOf(
-            "browser_read_page", "browser_get_page_info", "browser_screenshot",
-            "browser_snapshot", "browser_page_list", "browser_dialog_state",
-        )
+        // Derived from the browser authority. The previous hand-written list named five tools
+        // that do not exist anywhere while missing every real read tool (browser_open/get_text/
+        // get_dom/get_links/back/forward/wait_for/current_url), so every browser read was
+        // serialized as a BROWSER_WRITE (2026-10-13 registry audit).
+        private val BROWSER_READ_TOOLS = BrowserToolDefaults.READ_TOOLS
         private val DISPLAY_READ_TOOLS = setOf(
             "read_window_tree", "find_node", "take_screenshot", "ui_wait_for_window",
             "ui_wait_for_node",

@@ -272,7 +272,6 @@ val dataSourceModule = module {
             commandStateTransaction = get(),
         )
     }
-    single { get<AppDatabase>().learningOutboxDao() }
     single { get<AppDatabase>().learningSourceAuthorityDao() }
     single { get<AppDatabase>().policyNoteDao() }
     single {

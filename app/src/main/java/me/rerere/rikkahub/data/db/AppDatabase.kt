@@ -32,8 +32,6 @@ import me.rerere.rikkahub.data.db.dao.MemoryV2Dao
 import me.rerere.rikkahub.data.db.dao.MessageNodeDAO
 import me.rerere.rikkahub.data.db.dao.MomentDAO
 import me.rerere.rikkahub.data.db.dao.AnonymousQuestionDAO
-import me.rerere.rikkahub.data.db.dao.LearningOutboxDao
-import me.rerere.rikkahub.data.db.dao.LearningReconciliationAuthorityDao
 import me.rerere.rikkahub.data.db.dao.LearningSourceAuthorityDao
 import me.rerere.rikkahub.data.db.dao.LearningPolicyGrantDao
 import me.rerere.rikkahub.data.db.dao.PendingChatCommandDao
@@ -292,10 +290,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun hostOperationDao(): HostOperationDao
 
     abstract fun hostLocalServiceDao(): HostLocalServiceDao
-
-    abstract fun learningOutboxDao(): LearningOutboxDao
-
-    abstract fun learningReconciliationAuthorityDao(): LearningReconciliationAuthorityDao
 
     abstract fun learningSourceAuthorityDao(): LearningSourceAuthorityDao
 
