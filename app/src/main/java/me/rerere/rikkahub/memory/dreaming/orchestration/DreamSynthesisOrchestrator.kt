@@ -426,10 +426,10 @@ class DreamSynthesisOrchestrator(
             )
             is DreamSynthesisCommitResult.Rejected -> {
                 // Forensics: the true rejection reason is logged by the store inside
-                // terminalizeConflict (the run row's failure_code collapses several rejection
-                // kinds into STORE_FAILURE, and a lost terminalize race can relabel the row
-                // LEASE_EXPIRED). Logging lives store-side because this orchestrator path runs
-                // in pure-JVM unit tests where android.util.Log is unmocked.
+                // terminalizeConflict, and since 2026-10-13 the run row's failure_code names that
+                // rejection directly (no more STORE_FAILURE collapse). A lost terminalize race can
+                // still relabel the row LEASE_EXPIRED. Logging lives store-side because this
+                // orchestrator path runs in pure-JVM unit tests where android.util.Log is unmocked.
                 try {
                     store.terminalizeConflict(fence, result.reason, requireClockAtLeast(fence.frozenNowEpochMs))
                 } catch (cancelled: CancellationException) {

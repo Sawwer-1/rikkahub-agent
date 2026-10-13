@@ -57,12 +57,16 @@ private data class DreamSynthesisForensicsSnapshot(
  * `filesDir/diagnostics/dream_synthesis_forensics.json` — the same directory the on-device
  * self-check already reads (memory_retrieval_history.json etc.).
  *
- * Why: the run row's failure_code collapses STORE_CORRUPTION / FENCE_CONFLICT / LEASE_MISSING
- * into STORE_FAILURE, and a terminalize race can relabel the row LEASE_EXPIRED. Device
- * evidence 2026-10-12: 16+ consecutive STORE_FAILURE runs with no recoverable root cause,
+ * Why: on 2026-10-12 the run row's failure_code collapsed STORE_CORRUPTION / FENCE_CONFLICT /
+ * LEASE_MISSING into STORE_FAILURE, and a terminalize race could relabel the row LEASE_EXPIRED.
+ * Device evidence then showed 16+ consecutive STORE_FAILURE runs with no recoverable root cause,
  * because the only forensics channel was logcat. Upstream (AAAelina/rikkahub-agent up244.x)
- * also collapses to failure codes; this store extends that design with durable, on-device
- * distinguishable reasons so the next failure names itself.
+ * collapses the same way; this store extends that design with durable, on-device distinguishable
+ * reasons so the next failure names itself.
+ *
+ * 2026-10-13: the run row now names each rejection directly (no more collapse), so the sidecar's
+ * remaining job is to add the abort stage and the exception summary where one code is not enough.
+ * It is also readable through the `dream_view` tool's `failures` view.
  *
  * [record] never throws and never blocks the caller beyond a small atomic file write:
  * forensics is a sidecar and must not alter synthesis behavior.

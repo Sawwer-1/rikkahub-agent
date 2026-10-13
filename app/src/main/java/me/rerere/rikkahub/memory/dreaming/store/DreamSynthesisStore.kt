@@ -224,6 +224,37 @@ fun DreamSynthesisFailure.toRunFailureCode(): DreamRunFailureCode = when (this) 
 }
 
 /**
+ * Commit rejection → run failure code, one code per rejection (2026-10-13).
+ *
+ * [DreamSynthesisCommitRejection] has fifteen members; before this mapping only three of them
+ * reached the run row verbatim and everything else collapsed into `STORE_FAILURE`. On device that
+ * turned seven consecutive failed runs into one unreadable code, hiding whether the failing check
+ * was a fence conflict, a missing lease, a superseded snapshot or real corruption. This mapping is
+ * exhaustive (no fallback arm), so adding a rejection forces a deliberate decision here.
+ */
+fun DreamSynthesisCommitRejection.toRunFailureCode(): DreamRunFailureCode = when (this) {
+    DreamSynthesisCommitRejection.FENCE_CONFLICT -> DreamRunFailureCode.FENCE_CONFLICT
+    DreamSynthesisCommitRejection.MEMORY_EPOCH_CONFLICT -> DreamRunFailureCode.MEMORY_EPOCH_CONFLICT
+    DreamSynthesisCommitRejection.DREAM_REVISION_CONFLICT -> DreamRunFailureCode.DREAM_REVISION_CONFLICT
+    DreamSynthesisCommitRejection.ACTIVE_SNAPSHOT_CONFLICT ->
+        DreamRunFailureCode.ACTIVE_SNAPSHOT_CONFLICT
+    DreamSynthesisCommitRejection.CLAIM_REVISION_CONFLICT -> DreamRunFailureCode.CLAIM_REVISION_CONFLICT
+    DreamSynthesisCommitRejection.LEASE_MISSING -> DreamRunFailureCode.LEASE_MISSING
+    DreamSynthesisCommitRejection.LEASE_OWNER_MISMATCH -> DreamRunFailureCode.OWNER_MISMATCH
+    DreamSynthesisCommitRejection.LEASE_EXPIRED -> DreamRunFailureCode.LEASE_EXPIRED
+    DreamSynthesisCommitRejection.RUN_NOT_RUNNING -> DreamRunFailureCode.RUN_NOT_RUNNING
+    DreamSynthesisCommitRejection.EVIDENCE_SCOPE_MISMATCH -> DreamRunFailureCode.EVIDENCE_SCOPE_MISMATCH
+    DreamSynthesisCommitRejection.EVIDENCE_REVISION_MISMATCH ->
+        DreamRunFailureCode.EVIDENCE_REVISION_MISMATCH
+    DreamSynthesisCommitRejection.EVIDENCE_FINGERPRINT_MISMATCH ->
+        DreamRunFailureCode.EVIDENCE_FINGERPRINT_MISMATCH
+    DreamSynthesisCommitRejection.EVIDENCE_SOURCE_MANIFEST_MISMATCH ->
+        DreamRunFailureCode.EVIDENCE_SOURCE_MANIFEST_MISMATCH
+    DreamSynthesisCommitRejection.EVIDENCE_TOMBSTONED -> DreamRunFailureCode.EVIDENCE_TOMBSTONED
+    DreamSynthesisCommitRejection.STORE_CORRUPTION -> DreamRunFailureCode.STORE_CORRUPTION
+}
+
+/**
  * Every method is a complete short transaction boundary. Implementations must never retain a Room
  * transaction after returning [ReadDreamInputSeedResult.Ready]. The model is therefore necessarily
  * invoked outside all DB transactions.

@@ -13,6 +13,7 @@ import me.rerere.rikkahub.data.ai.tools.ToolInvocationContext
 import me.rerere.rikkahub.data.db.dao.DreamDao
 import me.rerere.rikkahub.data.db.dao.DreamExperienceDao
 import me.rerere.rikkahub.data.db.dao.DreamSynthesisDao
+import me.rerere.rikkahub.memory.dreaming.diagnostics.DreamSynthesisForensicsStore
 import me.rerere.rikkahub.memory.dreaming.model.DreamPairScopeId
 import kotlin.uuid.Uuid
 
@@ -21,6 +22,11 @@ class DreamIntrospectionToolProvider(
     private val experienceDao: DreamExperienceDao,
     private val synthesisDao: DreamSynthesisDao,
     private val dreamDao: DreamDao,
+    /**
+     * Optional shared forensics sidecar (the same instance the synthesis store writes to).
+     * Null keeps plain constructions — tests, previews — valid and simply omits the view.
+     */
+    private val forensics: DreamSynthesisForensicsStore? = null,
 ) {
     fun tools(context: ToolInvocationContext): List<Tool> {
         val assistantId = context.callerAssistantId
@@ -31,11 +37,11 @@ class DreamIntrospectionToolProvider(
 
     private fun dreamViewTool(scopeId: String) = Tool(
         name = "dream_view",
-        description = "Read your own current Dream portrait, Dream claims, recent Dream runs, or the experiences supporting one claim. Read-only and automatically scoped to the calling assistant.",
+        description = "Read your own current Dream portrait, Dream claims, recent Dream runs, the experiences supporting one claim, or the failure details of recent Dream runs. Read-only and automatically scoped to the calling assistant.",
         parameters = {
             InputSchema.Obj(
                 properties = buildJsonObject {
-                    put("view", type("string", "summary | claims | recent | sources. Defaults to summary."))
+                    put("view", type("string", "summary | claims | recent | sources | failures. Defaults to summary."))
                     put("claim_id", type("string", "Required only for sources; use an ID returned by claims."))
                 },
             )
@@ -48,6 +54,7 @@ class DreamIntrospectionToolProvider(
                 "claims" -> claims(scopeId)
                 "recent" -> recent(scopeId)
                 "sources" -> sources(scopeId, input["claim_id"]?.jsonPrimitive?.contentOrNull)
+                "failures" -> failures()
                 else -> error("DREAM_VIEW_INVALID_VIEW")
             }
             response(payload)
@@ -169,6 +176,38 @@ class DreamIntrospectionToolProvider(
         })
     }
 
+    /**
+     * Recent synthesis commit forensics, newest first (2026-10-13). The run row's failure_code
+     * already names the failing check; this view adds the abort stage and the exception
+     * type/message/frames for the cases where one code is not enough (for example two different
+     * aborts that both surface as STORE_CORRUPTION). Enum names, opaque run ids, counters and
+     * exception summaries only — the sidecar never stores model or user text.
+     */
+    private fun failures(): kotlinx.serialization.json.JsonObject = buildJsonObject {
+        val store = forensics ?: return@buildJsonObject
+        put("events", buildJsonArray {
+            store.events().take(MAX_FORENSICS_EVENTS).forEach { event ->
+                add(buildJsonObject {
+                    put("recorded_at_ms", event.recordedAtEpochMs)
+                    put("run_id", event.runId)
+                    put("stage", event.stage)
+                    event.reason?.let { value -> put("reason", value) }
+                    event.failureCode?.let { value -> put("failure_code", value) }
+                    event.exceptionType?.let { value -> put("exception_type", value) }
+                    event.exceptionMessage?.let { value -> put("exception_message", value) }
+                    event.exceptionFrames?.let { value -> put("exception_frames", value) }
+                    event.mode?.let { value -> put("mode", value) }
+                    event.baseExperienceEpoch?.let { value -> put("base_experience_epoch", value) }
+                    event.baseAppliedExperienceEpoch?.let { value ->
+                        put("base_applied_experience_epoch", value)
+                    }
+                    event.baseDreamRevision?.let { value -> put("base_dream_revision", value) }
+                    event.inputMemoryCount?.let { value -> put("input_memory_count", value) }
+                })
+            }
+        })
+    }
+
     private fun portraitClaims(
         claims: List<me.rerere.rikkahub.data.db.entity.DreamClaimEntity>,
         subject: String,
@@ -194,5 +233,6 @@ class DreamIntrospectionToolProvider(
     private companion object {
         const val MAX_TOOL_CLAIMS = 256
         const val MAX_RECENT_EXPERIENCES = 20
+        const val MAX_FORENSICS_EVENTS = 10
     }
 }

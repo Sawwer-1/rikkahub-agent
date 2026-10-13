@@ -114,6 +114,23 @@ enum class DreamRunFailureCode {
     MODEL_OUTPUT_VALIDATION_REJECTED,
     SNAPSHOT_COMPILATION_FAILED,
     STORE_FAILURE,
+    // 2026-10-13: commit-stage rejections used to collapse into STORE_FAILURE (only
+    // MEMORY_EPOCH_CONFLICT / LEASE_EXPIRED / LEASE_OWNER_MISMATCH had their own code), so a
+    // device run list showed the same opaque code for a fence conflict, a lost lease, a
+    // superseded snapshot, a rejected evidence pin and real corruption alike. One code per
+    // rejection makes the exact failing check nameable without a logcat.
+    FENCE_CONFLICT,
+    DREAM_REVISION_CONFLICT,
+    ACTIVE_SNAPSHOT_CONFLICT,
+    CLAIM_REVISION_CONFLICT,
+    LEASE_MISSING,
+    RUN_NOT_RUNNING,
+    EVIDENCE_SCOPE_MISMATCH,
+    EVIDENCE_REVISION_MISMATCH,
+    EVIDENCE_FINGERPRINT_MISMATCH,
+    EVIDENCE_SOURCE_MANIFEST_MISMATCH,
+    EVIDENCE_TOMBSTONED,
+    STORE_CORRUPTION,
 }
 
 /**

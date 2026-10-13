@@ -690,6 +690,20 @@ class MemoryCenterVM(
         "INPUT_REJECTED" -> "失败·这次要整理的内容不可用"
         "STORE_FAILURE" -> "失败·写入没成功（已保留原始记录，可在诊断里查看）"
         "INTERRUPTED" -> "已取消·中途被打断"
+        // 2026-10-13: commit-stage codes are no longer collapsed into STORE_FAILURE. Each one
+        // says which check failed and, for the recoverable conflicts, that a retry is coming.
+        "FENCE_CONFLICT" -> "失败·整理基准已被改动，下次会重新整理"
+        "DREAM_REVISION_CONFLICT" -> "失败·画像刚被更新过，下次会重新整理"
+        "ACTIVE_SNAPSHOT_CONFLICT" -> "失败·生效画像刚被替换，下次会重新整理"
+        "CLAIM_REVISION_CONFLICT" -> "失败·画像条目刚被改动，下次会重新整理"
+        "LEASE_MISSING" -> "失败·整理任务身份对不上，下次会重新整理"
+        "RUN_NOT_RUNNING" -> "失败·任务状态已改变"
+        "EVIDENCE_SCOPE_MISMATCH" -> "失败·证据来源不匹配，下次会重新整理"
+        "EVIDENCE_REVISION_MISMATCH" -> "失败·证据内容已被改动，下次会重新整理"
+        "EVIDENCE_FINGERPRINT_MISMATCH" -> "失败·证据指纹已变化，下次会重新整理"
+        "EVIDENCE_SOURCE_MANIFEST_MISMATCH" -> "失败·证据清单已变化，下次会重新整理"
+        "EVIDENCE_TOMBSTONED" -> "失败·证据已被删除，下次会重新整理"
+        "STORE_CORRUPTION" -> "失败·写入校验未通过（已保留原始记录，可在诊断里查看）"
         else -> "失败·$code"
     }
 

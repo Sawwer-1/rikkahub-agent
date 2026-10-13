@@ -172,6 +172,24 @@ class DreamObserverRuntime(
             DreamRunStatus.FAILED -> when (run.failureCode) {
                 DreamRunFailureCode.LEASE_EXPIRED,
                 DreamRunFailureCode.STORE_FAILURE,
+                // 2026-10-13: commit-stage rejections no longer collapse into STORE_FAILURE, so
+                // every code that used to arrive here as STORE_FAILURE is listed explicitly to
+                // keep the retry policy identical — a state conflict still rescans, it never
+                // blocks the scope. (STORE_CORRUPTION is included on purpose: it is what a
+                // non-conflict commit exception has always been reported as, and that path
+                // rescanned before this change.)
+                DreamRunFailureCode.FENCE_CONFLICT,
+                DreamRunFailureCode.DREAM_REVISION_CONFLICT,
+                DreamRunFailureCode.ACTIVE_SNAPSHOT_CONFLICT,
+                DreamRunFailureCode.CLAIM_REVISION_CONFLICT,
+                DreamRunFailureCode.LEASE_MISSING,
+                DreamRunFailureCode.RUN_NOT_RUNNING,
+                DreamRunFailureCode.EVIDENCE_SCOPE_MISMATCH,
+                DreamRunFailureCode.EVIDENCE_REVISION_MISMATCH,
+                DreamRunFailureCode.EVIDENCE_FINGERPRINT_MISMATCH,
+                DreamRunFailureCode.EVIDENCE_SOURCE_MANIFEST_MISMATCH,
+                DreamRunFailureCode.EVIDENCE_TOMBSTONED,
+                DreamRunFailureCode.STORE_CORRUPTION,
                 -> DreamObserverWorkerDirective.RESCAN
 
                 else -> DreamObserverWorkerDirective.BLOCKED

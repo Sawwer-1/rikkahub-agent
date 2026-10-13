@@ -415,6 +415,9 @@ val dataSourceModule = module {
             experienceDao = get(),
             synthesisDao = get(),
             dreamDao = get(),
+            // Same shared instance the synthesis store writes to, so dream_view can show the last
+            // commit forensics without the user pulling files off the device.
+            forensics = get(),
         )
     }
 
@@ -493,6 +496,14 @@ val dataSourceModule = module {
             json = get(),
         )
     }
+    // One shared instance: the store serialises writes with an instance-level lock and appends to
+    // a single file, so two instances would race on the same path. Shared by the synthesis store
+    // (writer) and the dream_view introspection tool (reader).
+    single {
+        me.rerere.rikkahub.memory.dreaming.diagnostics.DreamSynthesisForensicsStore(
+            filesDir = get<Context>().filesDir,
+        )
+    }
     single<DreamSynthesisStore> {
         RoomDreamSynthesisStore(
             database = get(),
@@ -504,9 +515,7 @@ val dataSourceModule = module {
             observerStore = get(),
             featureFlags = get(),
             json = get(),
-            forensics = me.rerere.rikkahub.memory.dreaming.diagnostics.DreamSynthesisForensicsStore(
-                filesDir = get<Context>().filesDir,
-            ),
+            forensics = get(),
         )
     }
     single {

@@ -587,13 +587,20 @@ class RoomDreamSynthesisStore(
         return try {
             database.withTransaction { commitOrAbort(request) }
         } catch (abort: CommitAbort) {
-            recordCommitForensics(request, stage = "COMMIT_REJECTED", reason = abort.reason)
+            // 2026-10-13: the stage names the exact check that aborted, so the sidecar can tell
+            // apart aborts that share a rejection code (and the seven identical device failures
+            // stop being one opaque STORE_FAILURE).
+            recordCommitForensics(
+                request,
+                stage = "COMMIT_REJECTED:" + abort.stage,
+                reason = abort.reason,
+            )
             DreamSynthesisCommitResult.Rejected(abort.reason)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
-            // Forensics (2026-10-12 device evidence: 7×STORE_FAILURE with the original
-            // exception swallowed, leaving only the failure code). Enum names and the run id
+            // Forensics (2026-10-12 device evidence: repeated identical failures whose original
+            // exception was swallowed, leaving only the failure code). Enum names and the run id
             // only — no model or user text is ever logged here.
             Log.w(
                 DREAM_SYNTHESIS_STORE_LOG_TAG,
@@ -652,18 +659,15 @@ class RoomDreamSynthesisStore(
         reason: DreamSynthesisCommitRejection,
         nowMs: Long,
     ): DreamSynthesisStoreResult {
-        val failureCode = when (reason) {
-            DreamSynthesisCommitRejection.MEMORY_EPOCH_CONFLICT ->
-                DreamRunFailureCode.MEMORY_EPOCH_CONFLICT
-            DreamSynthesisCommitRejection.LEASE_EXPIRED -> DreamRunFailureCode.LEASE_EXPIRED
-            DreamSynthesisCommitRejection.LEASE_OWNER_MISMATCH -> DreamRunFailureCode.OWNER_MISMATCH
-            else -> DreamRunFailureCode.STORE_FAILURE
-        }
-        // Forensics (2026-10-12 device evidence): the run row's failure_code collapses
-        // STORE_CORRUPTION / FENCE_CONFLICT / LEASE_MISSING into STORE_FAILURE, and a lost
-        // terminalize race can get the row relabelled LEASE_EXPIRED by failExpiredRunMirrors.
-        // Keep the true rejection reason in the log. Enum names and run id only — no model or
-        // user text. (This store only runs under instrumented tests; Log is safe here.)
+        // 2026-10-13: no more collapse. Every rejection now names its own run failure code
+        // (see DreamSynthesisCommitRejection.toRunFailureCode), so the device run list — which is
+        // the only field the user can actually read — distinguishes a fence conflict from a
+        // missing lease, a superseded snapshot, a rejected evidence pin or real corruption.
+        // A lost terminalize race can still get the row relabelled LEASE_EXPIRED by
+        // failExpiredRunMirrors; that path stays as the recovery backstop.
+        val failureCode = reason.toRunFailureCode()
+        // Keep the same facts in the log/sidecar as before: enum names and run id only — no model
+        // or user text. (This store only runs under instrumented tests; Log is safe here.)
         Log.w(
             DREAM_SYNTHESIS_STORE_LOG_TAG,
             "Dream run ${fence.runId} terminalized: reason=$reason failureCode=$failureCode",
@@ -711,7 +715,9 @@ class RoomDreamSynthesisStore(
             is OwnedContextResult.Ready -> context.run
             is OwnedContextResult.Rejected -> abort(context.commitReason)
         }
-        if (run.checkpointEpoch != fence.baseMemoryEpoch) abort(DreamSynthesisCommitRejection.STORE_CORRUPTION)
+        if (run.checkpointEpoch != fence.baseMemoryEpoch) {
+            abort(DreamSynthesisCommitRejection.STORE_CORRUPTION, stage = "RUN_CHECKPOINT")
+        }
         request.liveAuthorityPins.forEach { pin -> validatePin(pin, request.committedAtEpochMs) }
         request.historicalTransitionPins.forEach { pin -> validateHistoricalPin(pin, fence.scopeId) }
         val versions = (request.plan.upserts + request.plan.transitions.map { it.nextVersion })
@@ -730,7 +736,7 @@ class RoomDreamSynthesisStore(
         try {
             me.rerere.rikkahub.memory.dreaming.model.requireDreamStableId(snapshotId)
         } catch (_: Exception) {
-            abort(DreamSynthesisCommitRejection.STORE_CORRUPTION)
+            abort(DreamSynthesisCommitRejection.STORE_CORRUPTION, stage = "SNAPSHOT_ID")
         }
         synthesisDao.insertSnapshot(
             DreamSnapshotEntity(
@@ -753,7 +759,7 @@ class RoomDreamSynthesisStore(
         )
         fence.expectedActiveSnapshotId?.let { oldId ->
             if (synthesisDao.supersedeActiveSnapshot(oldId, fence.scopeId.value) != 1) {
-                abort(DreamSynthesisCommitRejection.ACTIVE_SNAPSHOT_CONFLICT)
+                abort(DreamSynthesisCommitRejection.ACTIVE_SNAPSHOT_CONFLICT, stage = "SUPERSEDE")
             }
         }
         if (synthesisDao.recordRunSynthesisAudit(
@@ -773,7 +779,7 @@ class RoomDreamSynthesisStore(
                 nowMs = request.committedAtEpochMs,
             ) != 1
         ) {
-            abort(DreamSynthesisCommitRejection.LEASE_MISSING)
+            abort(DreamSynthesisCommitRejection.LEASE_MISSING, stage = "AUDIT_INSERT")
         }
         if (DreamPairScopeId.parseOrNull(fence.scopeId.value) != null) {
             if (experienceDao.advanceApplied(
@@ -786,11 +792,11 @@ class RoomDreamSynthesisStore(
                 activeSnapshotId = snapshotId,
                 remainingDebt = 0.0,
                 nowMs = request.committedAtEpochMs,
-            ) != 1
-            ) {
-                abort(classifyCommitCas(fence, request.committedAtEpochMs))
-            }
-        } else {
+                ) != 1
+                ) {
+                abort(classifyCommitCas(fence, request.committedAtEpochMs), stage = "APPLIED_CAS")
+                }
+                } else {
             if (synthesisDao.commitActiveSnapshotCas(
                     scopeId = fence.scopeId.value,
                     runId = fence.runId,
@@ -807,7 +813,7 @@ class RoomDreamSynthesisStore(
                     nowMs = request.committedAtEpochMs,
                 ) != 1
             ) {
-                abort(classifyCommitCas(fence, request.committedAtEpochMs))
+                abort(classifyCommitCas(fence, request.committedAtEpochMs), stage = "SNAPSHOT_CAS")
             }
         }
         finishCommittedSynthesisRun(fence, request.committedAtEpochMs)
@@ -822,13 +828,13 @@ class RoomDreamSynthesisStore(
     private suspend fun finishCommittedSynthesisRun(fence: DreamSynthesisFence, nowMs: Long) {
         if (DreamPairScopeId.parseOrNull(fence.scopeId.value) != null) {
             val run = dreamDao.getRunById(fence.runId)
-                ?: abort(DreamSynthesisCommitRejection.STORE_CORRUPTION)
+                ?: abort(DreamSynthesisCommitRejection.STORE_CORRUPTION, stage = "FINISH_RUN_LOOKUP")
             if (run.scopeId != fence.scopeId.value || run.mode != fence.mode.toRunMode().name ||
                 run.baseMemoryEpoch != fence.baseExperienceEpoch ||
                 run.baseDreamRevision != fence.baseDreamRevision ||
                 run.checkpointEpoch != fence.baseExperienceEpoch
             ) {
-                abort(DreamSynthesisCommitRejection.STORE_CORRUPTION)
+                abort(DreamSynthesisCommitRejection.STORE_CORRUPTION, stage = "FINISH_RUN_STATE")
             }
             if (experienceDao.finishRunMirror(
                     runId = fence.runId,
@@ -848,7 +854,7 @@ class RoomDreamSynthesisStore(
                     reasonCode = AuthorityChangeReason.RUN_FINISHED.name,
                 ) != 1
             ) {
-                abort(DreamSynthesisCommitRejection.STORE_CORRUPTION)
+                abort(DreamSynthesisCommitRejection.STORE_CORRUPTION, stage = "FINISH_LEASE")
             }
             return
         }
@@ -865,7 +871,7 @@ class RoomDreamSynthesisStore(
             if (finished !is FinishDreamRunResult.Finished ||
                 finished.run.status != DreamRunStatus.SUCCEEDED
             ) {
-                abort(DreamSynthesisCommitRejection.STORE_CORRUPTION)
+                abort(DreamSynthesisCommitRejection.STORE_CORRUPTION, stage = "FINISH_OBSERVER")
             }
             return
         }
@@ -877,7 +883,7 @@ class RoomDreamSynthesisStore(
             run.baseDreamRevision != fence.baseDreamRevision ||
             run.checkpointEpoch != fence.baseMemoryEpoch
         ) {
-            abort(DreamSynthesisCommitRejection.STORE_CORRUPTION)
+            abort(DreamSynthesisCommitRejection.STORE_CORRUPTION, stage = "FULL_RUN_STATE")
         }
         if (dreamDao.finishRunMirror(
                 runId = fence.runId,
@@ -888,7 +894,7 @@ class RoomDreamSynthesisStore(
                 nowMs = nowMs,
             ) != 1
         ) {
-            abort(DreamSynthesisCommitRejection.STORE_CORRUPTION)
+            abort(DreamSynthesisCommitRejection.STORE_CORRUPTION, stage = "FULL_RUN_MIRROR")
         }
         if (dreamDao.advanceObserverCheckpoint(
                 scopeId = fence.scopeId.value,
@@ -900,7 +906,7 @@ class RoomDreamSynthesisStore(
                 nowMs = nowMs,
             ) != 1
         ) {
-            abort(DreamSynthesisCommitRejection.STORE_CORRUPTION)
+            abort(DreamSynthesisCommitRejection.STORE_CORRUPTION, stage = "OBSERVER_CHECKPOINT")
         }
         if (dreamDao.releaseScopeLease(
                 scopeId = fence.scopeId.value,
@@ -909,7 +915,7 @@ class RoomDreamSynthesisStore(
                 nowMs = nowMs,
             ) != 1
         ) {
-            abort(DreamSynthesisCommitRejection.STORE_CORRUPTION)
+            abort(DreamSynthesisCommitRejection.STORE_CORRUPTION, stage = "FULL_LEASE")
         }
     }
 
@@ -920,7 +926,7 @@ class RoomDreamSynthesisStore(
         val current = synthesisDao.getClaim(claim.claimId, request.fence.scopeId.value)
             ?: abort(DreamSynthesisCommitRejection.CLAIM_REVISION_CONFLICT)
         val persisted = current.toModel(request.fence.scopeId)
-            ?: abort(DreamSynthesisCommitRejection.STORE_CORRUPTION)
+            ?: abort(DreamSynthesisCommitRejection.STORE_CORRUPTION, stage = "CLAIM_TOUCH")
         // An unchanged head is immutable at this revision, including its complete provenance.
         // Rechecking only the head hash would permit a caller to substitute a different live pin
         // without writing a new ClaimVersion/source history row.
@@ -1629,10 +1635,24 @@ private fun Long.toIntExactOrAbort(): Int {
     return toInt()
 }
 
-private class CommitAbort(val reason: DreamSynthesisCommitRejection) : RuntimeException()
+private class CommitAbort(
+    val reason: DreamSynthesisCommitRejection,
+    /** Allow-listed check name; distinguishes two aborts that share one rejection code. */
+    val stage: String,
+) : RuntimeException()
+
 private class PairLeaseAbort : RuntimeException()
 
-private fun abort(reason: DreamSynthesisCommitRejection): Nothing = throw CommitAbort(reason)
+/**
+ * Abort the enclosing commit transaction with a durable, allow-listed reason. [stage] names the
+ * exact check so the forensics sidecar can tell apart aborts that share a rejection code — for
+ * example a checkpoint precondition and a claim-version conflict both surface as
+ * STORE_CORRUPTION on the run row. Never carries model or user text.
+ */
+private fun abort(
+    reason: DreamSynthesisCommitRejection,
+    stage: String = "COMMIT",
+): Nothing = throw CommitAbort(reason, stage)
 
 private const val DREAM_SYNTHESIS_INITIAL_LEASE_MS = 15L * 60_000L
 private const val DREAM_SYNTHESIS_STORE_LOG_TAG = "DreamSynthesisStore"
