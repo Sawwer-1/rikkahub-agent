@@ -155,12 +155,23 @@ object ScheduleJobValidator {
             }
         }
 
-        // Tags — comma-joined; reject anything that would break the LIKE query
+        // Tags — comma-joined; reject anything that would break the LIKE query.
+        // 2026-10-13 device evidence: the ASCII-only rule rejected a Chinese tag ("bad_tag"),
+        // while the only real requirement is "matches literally under LIKE": no whitespace, no
+        // LIKE wildcards, bounded length. Unicode letters/digits/dash/underscore are accepted now.
         val tags = input["tags"] as? kotlinx.serialization.json.JsonArray
         tags?.forEach { tag ->
             val v = (tag as? JsonPrimitive)?.contentOrNull ?: return ValidationError("bad_tag", "tag is not a string")
-            if (!v.matches(Regex("^[a-z0-9-]{1,40}$")))
-                return ValidationError("bad_tag", "tag '$v' must be lowercase alphanumeric or dash, ≤40 chars")
+            if (v.isEmpty() || v.length > 40 ||
+                v.any { it.isWhitespace() } ||
+                v.contains('%') || v.contains('_') || v.contains('\\') ||
+                v.contains(',')
+            ) {
+                return ValidationError(
+                    "bad_tag",
+                    "tag '$v' must be 1..40 chars without whitespace, comma, or the LIKE wildcards % _ \\",
+                )
+            }
         }
 
         return null

@@ -513,8 +513,15 @@ fun listZipContentsTool(context: Context): Tool = Tool(
         )
     },
     execute = { input ->
-        val source = input.jsonObject["source"]?.jsonPrimitive?.contentOrNull
+        val rawSource = input.jsonObject["source"]?.jsonPrimitive?.contentOrNull
             ?: return@Tool arcErr("source is required")
+        // 2026-10-13 device evidence: `~/x.zip` was never expanded here, so an archive that
+        // zip_files had just written into the agent workspace came back as `invalid_zip`
+        // (File("~/x.zip") simply does not exist), while the same file via file:// worked.
+        // Expand first — identical to zip_files/unzip_file — and run the same path guard this
+        // tool was missing.
+        val source = AgentWorkspace.expand(rawSource)
+        guardArchivePath(source)?.let { return@Tool it }
         return@Tool try {
             if (!isContent(source)) {
                 // file:// path — ZipFile reads the central directory, so size /

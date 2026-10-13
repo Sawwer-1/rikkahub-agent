@@ -643,7 +643,18 @@ class RikkaHubApp : Application() {
                     runCatching {
                         val repository = get<WorkspaceRepository>()
                         repository.checkIntegrity()
-                        val validWorkspaces = repository.getAll().associate { it.id to it.root }
+                        // 2026-10-13: bind the shell's /workspace bind mount into
+                        // AgentWorkspace.expand so host-side file tools (read_file / csv_write /
+                        // zip_files / list_zip_contents) and the workspace_* tool group share one
+                        // namespace instead of failing on each other's paths.
+                        val workspaces = repository.getAll()
+                        workspaces.firstOrNull()?.let { first ->
+                            me.rerere.rikkahub.data.ai.tools.local.AgentWorkspace
+                                .registerMountedWorkspaceFilesDir(
+                                    get<me.rerere.workspace.WorkspaceManager>().filesDir(first.root),
+                                )
+                        }
+                        val validWorkspaces = workspaces.associate { it.id to it.root }
                         val manager = get<me.rerere.workspace.WorkspaceProcessManager>()
                         if (manager.hasDesiredProcesses(validWorkspaces)) {
                             ContextCompat.startForegroundService(

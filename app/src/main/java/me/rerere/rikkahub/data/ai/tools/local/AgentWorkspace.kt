@@ -28,9 +28,18 @@ import java.io.File
  */
 object AgentWorkspace {
     private const val DIR_NAME = "workspace"
+    private const val MOUNTED_WORKSPACE_PREFIX = "/workspace"
 
     @Volatile
     private var workspaceDir: File? = null
+
+    /**
+     * Host-side directory the Linux workspace binds to `/workspace`
+     * (see `me.rerere.workspace.WorkspaceMountResolver`). Null until the app has resolved a
+     * workspace; `/workspace/...` then stays a literal path, i.e. exactly the old behaviour.
+     */
+    @Volatile
+    private var mountedWorkspaceFilesDir: String? = null
 
     /** Wire up at app start (RikkaHubApp.onCreate) — idempotent. */
     fun init(context: Context) {
@@ -39,20 +48,43 @@ object AgentWorkspace {
         workspaceDir = dir
     }
 
+    /**
+     * Register the host directory exposed as `/workspace` inside the shell.
+     *
+     * 2026-10-13 device evidence: the two tool groups disagreed on the root.
+     * `workspace_write_file("/workspace/tmp/x")` landed in the PRoot bind mount, while
+     * `read_file("~/tmp/x")`, `zip_files(["~/tmp/x"])` and `csv_write("/workspace/...")` looked
+     * under `${filesDir}/workspace` and failed with not_found / source_unreadable /
+     * destination_unwritable. Accepting the mount prefix here puts both groups into one namespace.
+     * The expanded path still lives under `filesDir`, so PathSafetyGuard keeps accepting it.
+     */
+    fun registerMountedWorkspaceFilesDir(dir: File?) {
+        mountedWorkspaceFilesDir = dir?.absolutePath
+    }
+
     /** Absolute path of `~`. Throws if [init] hasn't been called yet. */
     fun rootPath(): String = workspaceDir?.absolutePath
         ?: error("AgentWorkspace not initialised — call AgentWorkspace.init(context) first")
 
     /**
-     * Expand a tilde-prefixed path to the workspace dir. No-op for everything else.
+     * Expand a tilde-prefixed path to the workspace dir, and the Linux mount prefix to its host
+     * directory. No-op for everything else.
      *   "~"            → "/data/data/<pkg>/files/workspace"
      *   "~/learnings/" → "/data/data/<pkg>/files/workspace/learnings/"
+     *   "/workspace/x" → "/data/data/<pkg>/files/workspaces/<root>/files/x"  (once registered)
      *   "/sdcard/x"    → "/sdcard/x"   (unchanged)
      */
     fun expand(raw: String): String {
         if (raw.isEmpty()) return raw
         if (raw == "~") return rootPath()
         if (raw.startsWith("~/")) return rootPath() + raw.removePrefix("~")
+        val mounted = mountedWorkspaceFilesDir
+        if (mounted != null) {
+            if (raw == MOUNTED_WORKSPACE_PREFIX) return mounted
+            if (raw.startsWith("$MOUNTED_WORKSPACE_PREFIX/")) {
+                return mounted + raw.removePrefix(MOUNTED_WORKSPACE_PREFIX)
+            }
+        }
         return raw
     }
 }
