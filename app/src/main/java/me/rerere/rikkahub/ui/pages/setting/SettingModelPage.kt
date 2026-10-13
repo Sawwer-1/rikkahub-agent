@@ -16,6 +16,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
@@ -479,6 +481,9 @@ private fun SeparateApiModelSettingItem(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // 2026-10-13 (scroll audit): the separate-API config form is tall (3 fields +
+                    // switches) and used to overflow the sheet with no scroll host.
+                    .verticalScroll(rememberScrollState())
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {

@@ -916,7 +916,12 @@ private fun ChatPageContent(
                 onDismissRequest = { showSendModeDialog = false },
                 title = { Text("这条消息怎么处理？") },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(
+                        modifier = Modifier
+                            .heightIn(max = 360.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         SendModeOption(
                             title = "继续做，下一步参考这条",
                             description = "不打断正在执行的工具；做完当前这一步后，AI 会按你的补充调整后续操作。",

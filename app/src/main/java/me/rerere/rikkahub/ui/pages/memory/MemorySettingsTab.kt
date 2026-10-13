@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -908,7 +909,10 @@ private fun ModelPickerDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.memory_v2_choose_model)) },
         text = {
-            LazyColumn {
+            // 2026-10-13 (scroll audit): a LazyColumn directly inside the AlertDialog text slot is
+            // measured with unbounded height — bound it so it stays scrollable (and stays clear of
+            // the infinite-constraint crash class).
+            LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
                 item {
                     TextButton(onClick = { onSelect(null) }, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.memory_v2_use_fast_model))

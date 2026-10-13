@@ -699,6 +699,7 @@ private fun SettingsBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .imePadding(),
             verticalArrangement = Arrangement.spacedBy(16.dp)

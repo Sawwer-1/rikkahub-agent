@@ -31,6 +31,8 @@ import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -335,6 +337,10 @@ private fun AssistantCreationSheet(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // 2026-10-13 (scroll audit): this sheet disables sheet gestures entirely
+                    // (sheetGesturesEnabled = false, empty drag handle), so the body must be
+                    // scrollable or tall content becomes unreachable.
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {

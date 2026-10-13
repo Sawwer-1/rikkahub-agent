@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -180,7 +183,14 @@ fun SecondUserToolLibraryPage(
             onDismissRequest = { editing = null },
             title = { Text(experience.primaryToolName) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // 2026-10-13 (scroll audit): AlertDialog text slot is not scrollable by default;
+                // long evidence lists used to overflow and become unreachable.
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 380.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     Text(
                         "${experience.confidence} · ${experience.state}",
                         style = MaterialTheme.typography.labelMedium,
