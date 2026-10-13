@@ -152,8 +152,45 @@ class MemoryCenterVM(
 
     private val pairDreamScopeId = DreamScopeId.pairScope(assistantId)
 
+    /**
+     * 2026-10-13 (work order B): Dream claims and their statements can still carry the upstream
+     * fork's personal names (斯啾伊 / 七七) from persisted rows. Resolve them to the configured
+     * 「记忆中的名称」 at read time — the shared role-label table in normalizeMemoryNarrativeText
+     * does the rewrite, and persisted claim revisions stay hash-stable.
+     */
+    private fun narrativeNamesForOrigin(originAssistantId: String?): MemoryNarrativeNames =
+        assistants.value.memoryNarrativeNamesFor(
+            originAssistantId = originAssistantId,
+            fallbackAssistant = assistant.value,
+            defaultSelfName = me.rerere.rikkahub.memory.DEFAULT_MEMORY_NARRATIVE_SELF_NAME,
+            defaultCompanionName = me.rerere.rikkahub.memory.DEFAULT_MEMORY_NARRATIVE_COMPANION_NAME,
+        )
+
+    private fun DreamReviewProjection.mapNarrativeNames(): DreamReviewProjection = copy(
+        claims = claims.map { claim ->
+            val names = narrativeNamesForOrigin(claim.originAssistantId)
+            claim.copy(
+                title = names.readableText(claim.title),
+                statement = names.readableText(claim.statement),
+            )
+        },
+    )
+
+    private fun me.rerere.rikkahub.memory.dreaming.review.DreamClaimDetail.mapNarrativeNames():
+        me.rerere.rikkahub.memory.dreaming.review.DreamClaimDetail {
+        val names = narrativeNamesForOrigin(summary.originAssistantId)
+        return copy(
+            summary = summary.copy(
+                title = names.readableText(summary.title),
+                statement = names.readableText(summary.statement),
+            ),
+        )
+    }
+
     val dreamProjection = dreamReviewRepository.observeScope(pairDreamScopeId)
-        .map<DreamReviewProjection, DreamReviewProjection?> { it }
+        .map<DreamReviewProjection, DreamReviewProjection?> { projection ->
+            projection?.mapNarrativeNames()
+        }
         .catch { error ->
             if (error is CancellationException) throw error
             emit(null)
@@ -1010,7 +1047,8 @@ class MemoryCenterVM(
         viewModelScope.launch(Dispatchers.IO) {
             val next = try {
                 when (val result = dreamReviewRepository.readClaim(target)) {
-                    is DreamReviewReadResult.Found -> MemoryDreamDetailState.Ready(result.value)
+                    is DreamReviewReadResult.Found ->
+                        MemoryDreamDetailState.Ready(result.value.mapNarrativeNames())
                     is DreamReviewReadResult.Conflict -> {
                         MemoryDreamDetailState.Failed(target, "conflict_${result.conflict.name.lowercase()}")
                     }

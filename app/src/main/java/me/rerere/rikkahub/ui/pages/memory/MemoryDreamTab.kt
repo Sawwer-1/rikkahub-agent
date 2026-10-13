@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
@@ -574,74 +577,87 @@ private fun DreamClaimSheet(
     var rejectConfirmation by remember(detail?.target) { mutableStateOf(false) }
     var correctionOpen by remember(detail?.target) { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(stringResource(R.string.memory_dream_claim_detail_title), style = MaterialTheme.typography.titleLarge)
-            when {
-                loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
-                failedReason != null -> Text(
-                    text = stringResource(R.string.memory_dream_claim_load_failed, failedReason),
-                    color = MaterialTheme.colorScheme.error,
-                )
-                detail != null -> {
-                    Text(detail.summary.title, style = MaterialTheme.typography.titleMedium)
-                    Text(detail.summary.statement)
-                    Text(
-                        text = stringResource(
-                            R.string.memory_dream_claim_detail_meta,
-                            detail.summary.state.name,
-                            detail.storageClass.name,
-                            detail.epistemicType.name,
-                            detail.summary.confidencePermille / 10,
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // 2026-10-13 (work order A): the sheet used to be one non-scrolling column, so a long
+            // evidence list pushed 拒绝/纠正 off the screen with no way to reach them (device
+            // report: "详情页划不动，底部按钮永远够不到"). Content now scrolls inside a capped
+            // area; the action row is pinned below it and always visible.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = DREAM_CLAIM_SHEET_CONTENT_MAX_HEIGHT)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 18.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(stringResource(R.string.memory_dream_claim_detail_title), style = MaterialTheme.typography.titleLarge)
+                when {
+                    loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+                    failedReason != null -> Text(
+                        text = stringResource(R.string.memory_dream_claim_load_failed, failedReason),
+                        color = MaterialTheme.colorScheme.error,
                     )
-                    HorizontalDivider()
-                    Text(stringResource(R.string.memory_dream_evidence_title), style = MaterialTheme.typography.titleMedium)
-                    if (detail.evidence.isEmpty()) {
-                        Text(stringResource(R.string.memory_dream_evidence_empty))
-                    } else {
-                        detail.evidence.forEach { evidence ->
-                            DreamEvidenceRow(
-                                evidence = evidence,
-                                excerpt = revealed[evidence.reference]?.text,
-                                revealing = evidence.reference in revealing,
-                                onReveal = { onRevealEvidence(evidence) },
+                    detail != null -> {
+                        Text(detail.summary.title, style = MaterialTheme.typography.titleMedium)
+                        Text(detail.summary.statement)
+                        Text(
+                            text = stringResource(
+                                R.string.memory_dream_claim_detail_meta,
+                                detail.summary.state.name,
+                                detail.storageClass.name,
+                                detail.epistemicType.name,
+                                detail.summary.confidencePermille / 10,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        HorizontalDivider()
+                        Text(stringResource(R.string.memory_dream_evidence_title), style = MaterialTheme.typography.titleMedium)
+                        if (detail.evidence.isEmpty()) {
+                            Text(stringResource(R.string.memory_dream_evidence_empty))
+                        } else {
+                            detail.evidence.forEach { evidence ->
+                                DreamEvidenceRow(
+                                    evidence = evidence,
+                                    excerpt = revealed[evidence.reference]?.text,
+                                    revealing = evidence.reference in revealing,
+                                    onReveal = { onRevealEvidence(evidence) },
+                                )
+                            }
+                        }
+                        HorizontalDivider()
+                        Text(stringResource(R.string.memory_dream_versions_title), style = MaterialTheme.typography.titleMedium)
+                        detail.versions.takeLast(MAX_VISIBLE_VERSIONS).asReversed().forEach { version ->
+                            Text(
+                                text = stringResource(
+                                    R.string.memory_dream_version_row,
+                                    version.revision,
+                                    version.state.name,
+                                    version.reasonCode,
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
                             )
                         }
                     }
-                    HorizontalDivider()
-                    Text(stringResource(R.string.memory_dream_versions_title), style = MaterialTheme.typography.titleMedium)
-                    detail.versions.takeLast(MAX_VISIBLE_VERSIONS).asReversed().forEach { version ->
-                        Text(
-                            text = stringResource(
-                                R.string.memory_dream_version_row,
-                                version.revision,
-                                version.state.name,
-                                version.reasonCode,
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
+                }
+                Spacer(Modifier.height(4.dp))
+            }
+            if (detail != null) {
+                HorizontalDivider()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                ) {
+                    OutlinedButton(onClick = { rejectConfirmation = true }) {
+                        Text(stringResource(R.string.memory_dream_reject))
                     }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                    ) {
-                        OutlinedButton(onClick = { rejectConfirmation = true }) {
-                            Text(stringResource(R.string.memory_dream_reject))
-                        }
-                        Button(onClick = { correctionOpen = true }) {
-                            Text(stringResource(R.string.memory_dream_correct))
-                        }
+                    Button(onClick = { correctionOpen = true }) {
+                        Text(stringResource(R.string.memory_dream_correct))
                     }
                 }
             }
-            Spacer(Modifier.height(24.dp))
         }
     }
     if (rejectConfirmation && detail != null) {
@@ -852,6 +868,8 @@ private val CURRENT_PORTRAIT_STATES = setOf(
     DreamClaimState.PENDING_REVIEW,
 )
 
+/** Work order A: cap the scrollable content area so the pinned 拒绝/纠正 row stays reachable. */
+private val DREAM_CLAIM_SHEET_CONTENT_MAX_HEIGHT = 480.dp
 private const val MAX_VISIBLE_DIFF_ROWS = 20
 private const val MAX_VISIBLE_RUNS = 10
 private const val MAX_VISIBLE_VERSIONS = 20

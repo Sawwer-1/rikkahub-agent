@@ -63,6 +63,14 @@ private enum class NarrativeRole {
 }
 
 private val ROLE_LABEL_REPLACEMENTS = listOf(
+    // 2026-10-13 (work order B): the upstream fork hard-coded its author's personal names
+    // (斯啾伊 / 七七) into Dream experience summaries and synthesis prompts, and those names
+    // have leaked into persisted claim statements on this device (7 claims, 600+ experiences).
+    // They are meaningless here (the conversation has its own configured names), so they are
+    //回收 as legacy aliases — every readableText() call maps them back to the configured
+    // self/companion names without touching persisted rows (claim revisions stay hash-stable).
+    Regex("斯啾伊") to NarrativeRole.SELF,
+    Regex("七七") to NarrativeRole.COMPANION,
     Regex("(?i)\\bthe\\s+user\\b") to NarrativeRole.SELF,
     Regex("(?i)\\buser\\b") to NarrativeRole.SELF,
     Regex("用户") to NarrativeRole.SELF,
