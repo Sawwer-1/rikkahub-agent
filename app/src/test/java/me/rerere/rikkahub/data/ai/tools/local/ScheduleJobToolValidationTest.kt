@@ -175,12 +175,39 @@ class ScheduleJobToolValidationTest {
     }
 
     @Test
-    fun `bad tag uppercase rejected`() {
+    fun `uppercase and unicode tags accepted`() {
+        // 2026-10-13 device evidence: the ASCII-lowercase-only rule rejected a Chinese tag
+        // ("bad_tag"), while tags are only ever matched literally under LIKE. Case and script no
+        // longer matter; the wildcards and separators below still do.
         val r = ScheduleJobValidator.validate(buildJsonObject {
             put("name", "x"); put("mode", "llm"); put("prompt", "p")
             put("schedule_type", "cron"); put("cron_expression", "@hourly")
-            put("tags", buildJsonArray { add("HasUppercase") })
+            put("tags", buildJsonArray { add("HasUppercase"); add("日常"); add("work-2") })
         }, knownTools)
-        assertEquals("bad_tag", r!!.code)
+        assertNull(r)
+    }
+
+    @Test
+    fun `like wildcard whitespace and comma tags rejected`() {
+        val wildcard = ScheduleJobValidator.validate(buildJsonObject {
+            put("name", "x"); put("mode", "llm"); put("prompt", "p")
+            put("schedule_type", "cron"); put("cron_expression", "@hourly")
+            put("tags", buildJsonArray { add("50%") })
+        }, knownTools)
+        assertEquals("bad_tag", wildcard!!.code)
+
+        val spaced = ScheduleJobValidator.validate(buildJsonObject {
+            put("name", "x"); put("mode", "llm"); put("prompt", "p")
+            put("schedule_type", "cron"); put("cron_expression", "@hourly")
+            put("tags", buildJsonArray { add("two words") })
+        }, knownTools)
+        assertEquals("bad_tag", spaced!!.code)
+
+        val comma = ScheduleJobValidator.validate(buildJsonObject {
+            put("name", "x"); put("mode", "llm"); put("prompt", "p")
+            put("schedule_type", "cron"); put("cron_expression", "@hourly")
+            put("tags", buildJsonArray { add("a,b") })
+        }, knownTools)
+        assertEquals("bad_tag", comma!!.code)
     }
 }
