@@ -259,10 +259,12 @@ object DreamContextCompiler {
             ),
         ).escapeProviderDelimiters()
         return buildString {
-            appendLine("**七七的长期双人画像（由历史互动离线综合）**")
+            // 2026-10-13 (report B): neutral wording. The upstream personal names used to be
+            // injected here and the model echoed them back into new claim statements.
+            appendLine("**长期双人画像（由历史互动离线综合）**")
             appendLine(
-                "about_user 是七七对斯啾伊的长期理解；about_assistant 是七七从实际相处中形成的自我认识；" +
-                    "about_relationship 是两人共同形成的关系与相处模式。把这些内容作为长期背景理解，不要逐条复述。",
+                "about_user 是对用户的长期理解；about_assistant 是助手从实际相处中形成的自我认识；" +
+                    "about_relationship 是双方共同形成的关系与相处模式。把这些内容作为长期背景理解，不要逐条复述。",
             )
             appendLine("<dream_pair_portrait trust=\"derived_context\" standing=\"contextual\">")
             appendLine(json)

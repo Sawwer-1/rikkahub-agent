@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -389,8 +389,12 @@ private fun DreamStatusCard(projection: DreamReviewProjection?) {
                 }
             } else {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AssistChip(onClick = {}, label = { Text(projection.derivedStatus.title()) })
-                    AssistChip(onClick = {}, label = { Text(projection.usageMode.title()) })
+                    // Status and usage mode are read-only facts. They used to render as AssistChips
+                    // with an empty onClick — device report (2026-10-13, problem C): users kept
+                    // tapping them and nothing ever happened. Plain tags make the non-interactive
+                    // nature visible.
+                    DreamFactTag(projection.derivedStatus.title())
+                    DreamFactTag(projection.usageMode.title())
                 }
                 Text(
                     // Plain language by design: the internal epoch/debt counters used to read
@@ -782,14 +786,34 @@ private fun DreamCorrectionDialog(
 
 @Composable
 private fun DreamSnapshotSection.title(): String = when (this) {
-    DreamSnapshotSection.ABOUT_USER -> "斯啾伊"
-    DreamSnapshotSection.ABOUT_ASSISTANT -> "七七"
-    DreamSnapshotSection.ABOUT_RELATIONSHIP -> "我们"
+    // 2026-10-13 (report B): these rendered the upstream author's personal names (斯啾伊 /
+    // 七七) — names that exist nowhere in this device's conversations, so the user could not
+    // tell who each section was about. Use neutral person pronouns that match the
+    // USER / ASSISTANT / RELATIONSHIP subject kinds.
+    DreamSnapshotSection.ABOUT_USER -> "关于你"
+    DreamSnapshotSection.ABOUT_ASSISTANT -> "关于我"
+    DreamSnapshotSection.ABOUT_RELATIONSHIP -> "关于我们"
     DreamSnapshotSection.PROFILE -> stringResource(R.string.memory_dream_section_profile)
     DreamSnapshotSection.CURRENT_PROJECTS -> stringResource(R.string.memory_dream_section_projects)
     DreamSnapshotSection.ACTIVE_PLANS -> stringResource(R.string.memory_dream_section_plans)
     DreamSnapshotSection.ACTIVE_CONSTRAINTS -> stringResource(R.string.memory_dream_section_constraints)
     DreamSnapshotSection.OTHER_CONTEXT -> stringResource(R.string.memory_dream_section_other)
+}
+
+/** Read-only fact label; deliberately not a chip-shaped button — these are never clickable. */
+@Composable
+private fun DreamFactTag(text: String) {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+        )
+    }
 }
 
 @Composable

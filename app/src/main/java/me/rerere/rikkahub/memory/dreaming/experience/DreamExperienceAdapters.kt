@@ -37,9 +37,12 @@ class ConversationEpisodeAdapter(
         val sourceRef = "conversation:$conversationId:$userMessageId:$assistantMessageId"
         val digest = sha256("$userText\n\u0000\n$assistantText")
         val summary = buildString {
-            append("斯啾伊：")
+            // 2026-10-13 (report B): neutral role labels. The upstream author's personal names
+            // (斯啾伊 / 七七) leaked into every experience summary, from there into the Dream
+            // synthesis prompt and finally into portrait claim statements and section titles.
+            append("用户：")
             append(userText.compactForDream())
-            append("\n七七：")
+            append("\n助手：")
             append(assistantText.compactForDream())
         }.take(MAX_EXPERIENCE_SUMMARY_CHARS)
         val manifest = Json.encodeToString(
