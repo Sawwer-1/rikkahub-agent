@@ -65,6 +65,15 @@
 13. **UI 控件打 `testTag`（自检自动化依赖它）。**
     `RouteActivity` 已开 `testTagsAsResourceId = true`，因此 `WindowTreeTool` 能在无障碍树里看到 `Modifier.testTag("...")`。关键控件（记忆中心各 Tab、策略审查、立即做梦、ask_user 提交……）请用 `<页>_<控件>` 的稳定名，**不要写中文、不要随文案改**。
 
+14. **记忆叙事的命名中性化是"三层、两条口径"，且刻意不回填数据。**
+    上游遗留的生造名（`斯啾伊` / `七七`）走三层处理：
+    | 层 | 版本 | 做法 |
+    |---|---|---|
+    | 写入端 | 228 起 | 新 experience 摘要用 `用户：/助手：`；Dream `SYSTEM_CONTRACT` 名字替换 + "不得自造人名"约束句（旧 claim 可自愈） |
+    | UI 渲染 | 228/229 | 三栏标题硬编码为 `关于你 / 关于我 / 关于我们`；`MemoryNarrativePolicy.normalizeMemoryNarrativeText` 读时映射成"设置里的名称" |
+    | 模型侧 | 232 起 | `normalizeMemoryNarrativeTextForOutput` 把同一张别名表接到 `dream_view` 等工具输出，防止模型读到生造名再写回新 claim |
+    **口径：存量数据一律不回填。** 理由：claim 的 `revision`/hash 必须保持稳定，回填会让 Learning 证据链漂移、并可能让既有 claim 被当成新 claim 重复写入；用户可见文本已由读时映射处理，数据层保留原文是**预期行为而不是漏修**。若将来真要清洗存量，必须同时重算 hash 并在同一事务里做，不能只改文本。
+
 ---
 
 ## 2 · 构建与验证（本机限制）

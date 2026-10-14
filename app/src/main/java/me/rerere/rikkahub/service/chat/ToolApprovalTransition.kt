@@ -49,9 +49,23 @@ fun resolveToolApproval(
  *    approval projection, so without this carve-out every ask_user confirmation was
  *    silently rejected as `approval_exact_identity_required` and the question card stayed
  *    pending forever.
+ *  - [legacyOrdinaryApproval]: a plain tool approval tapped in the app's own UI
+ *    (origin = APP_UI) in a **non-second-user** conversation. Those conversations never
+ *    persist an approval projection either —— both `persistPendingBarrier*` insert paths
+ *    `require(subjectType == LOCAL_SECOND_USER)` —— so a positive decision can never carry
+ *    the exact identity. Device evidence 2026-10-13/14: the approval card appeared but
+ *    every 确认 was rejected as `Approval exact identity is required`, and because the
+ *    rejected command left the tool call Pending, the whole conversation deadlocked
+ *    (could not send anything further) whenever global auto-approve was off. The real gate
+ *    stays the message-graph transition in the inline executor, which only ever applies to
+ *    a still-Pending part of the very same toolCallId.
  */
 fun mayUseLegacyApprovalPath(
     decision: ToolDecision,
     exactIdentityPresent: Boolean,
     legacyAskUserAnswer: Boolean,
-): Boolean = decision is ToolDecision.Denied || exactIdentityPresent || legacyAskUserAnswer
+    legacyOrdinaryApproval: Boolean = false,
+): Boolean = decision is ToolDecision.Denied ||
+    exactIdentityPresent ||
+    legacyAskUserAnswer ||
+    legacyOrdinaryApproval

@@ -1468,6 +1468,28 @@ class ChatService(
         }
     }
 
+    /**
+     * True when [toolCallId] targets a tool part that is still waiting for a decision.
+     *
+     * Used by the approval admission/executor carve-out for ordinary (non-second-user)
+     * conversations: those never persist an approval projection, so a positive decision has no
+     * exact identity to present. The part being still Pending is exactly the condition the inline
+     * executor re-checks before mutating, so requiring it here keeps the legacy path as narrow as
+     * the ask_user one.
+     */
+    private fun conversationHasPendingToolCall(
+        conversation: me.rerere.rikkahub.data.model.Conversation,
+        toolCallId: String,
+    ): Boolean = conversation.messageNodes.any { node ->
+        node.messages.any { message ->
+            message.parts.any { part ->
+                part is UIMessagePart.Tool &&
+                    part.toolCallId == toolCallId &&
+                    part.isPending
+            }
+        }
+    }
+
     // 错误状�?
     private val _errors = MutableStateFlow<List<ChatError>>(emptyList())
     val errors: StateFlow<List<ChatError>> = _errors.asStateFlow()
@@ -1916,6 +1938,20 @@ class ChatService(
                         persistedAdmissionConversation,
                         command.toolCallId,
                     )
+                // Normal (LOCAL_ASSISTANT) conversations never persist an approval projection —
+                // both `persistPendingBarrier*` insert paths require LOCAL_SECOND_USER — so an
+                // approval tapped in this app's own UI carries no approvalId/executionId and used
+                // to be rejected right here ("Approval exact identity is required"), leaving the
+                // tool call Pending forever and deadlocking the conversation. Same carve-out as
+                // the ask_user answer above, gated on the part still being Pending.
+                val legacyOrdinaryApproval = command.decision is ToolDecision.Approved &&
+                    command.approvalId == null &&
+                    command.executionId == null &&
+                    origin == CommandOrigin.APP_UI &&
+                    conversationHasPendingToolCall(
+                        persistedAdmissionConversation,
+                        command.toolCallId,
+                    )
                 val exactOwner = when {
                     command.approvalId != null && command.executionId != null ->
                         secondUserApprovalLifecycle.findOwningCommandIdExact(
@@ -1933,6 +1969,8 @@ class ChatService(
 
                     answeredAskUserPending -> null
 
+                    legacyOrdinaryApproval -> null
+
                     else -> return rejectedTrackedCommand(
                         "Approval exact identity is required [answered=" +
                             "${command.decision is ToolDecision.Answered} " +
@@ -1940,7 +1978,10 @@ class ChatService(
                     )
                 }
                 exactOwner?.let { runCatching { Uuid.parse(it) }.getOrNull() }
-                    ?: if (command.decision is ToolDecision.Denied || answeredAskUserPending) {
+                    ?: if (command.decision is ToolDecision.Denied ||
+                        answeredAskUserPending ||
+                        legacyOrdinaryApproval
+                    ) {
                         durableCommandQueue.findSingleWaitingForConversation(conversationId)
                             ?.id
                             ?.let { runCatching { Uuid.parse(it) }.getOrNull() }
@@ -3987,9 +4028,30 @@ class ChatService(
         // approval_exact_identity_required (device evidence 2026-10-12).
         val legacyAskUserAnswer = decision is ToolDecision.Answered &&
             conversationHasPendingAskUserCall(approvalBase, command.toolCallId)
-        if (!mayUseLegacyApprovalPath(decision, exactIdentityPresent, legacyAskUserAnswer)) {
+        // Ordinary (LOCAL_ASSISTANT) conversations never persist an approval projection, so a plain
+        // 确认 of a pending tool call can never carry the exact identity. Without this carve-out the
+        // command was rejected as approval_exact_identity_required, the call stayed Pending, and
+        // the conversation deadlocked (device evidence 2026-10-13/14: "Approval exact identity is
+        // required [answered=false pendingAskUser=false]" then no further sends possible).
+        // Scope mirrors `mayUseLegacyApprovalPath`: app UI only, no identity present, and the very
+        // toolCallId still Pending — the transition below is the real gate.
+        val legacyOrdinaryApproval = approved &&
+            command.approvalId == null &&
+            command.executionId == null &&
+            origin == CommandOrigin.APP_UI &&
+            conversationHasPendingToolCall(approvalBase, command.toolCallId)
+        if (
+            !mayUseLegacyApprovalPath(
+                decision = decision,
+                exactIdentityPresent = exactIdentityPresent,
+                legacyAskUserAnswer = legacyAskUserAnswer,
+                legacyOrdinaryApproval = legacyOrdinaryApproval,
+            )
+        ) {
             // Legacy positive payloads used a mutable latest-by-tool lookup and can approve a
-            // newer execution after replay. Only denial may use that conservative legacy path.
+            // newer execution after replay. Denial, ask_user answers and (2026-10-14) plain
+            // approvals in ordinary conversations may use that conservative legacy path; a
+            // second-user positive decision still needs its exact projection.
             return RunOutcome.Rejected("approval_exact_identity_required")
         }
         val approvalProjection = if (command.approvalId != null && command.executionId != null) {
