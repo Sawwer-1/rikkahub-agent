@@ -58,6 +58,71 @@ class DsmlToolCallRecoveryTest {
     }
 
     @Test
+    fun `gateway down-converted marker variants are still recovered`() {
+        // 2026-10-14 自检 §31 现场：外层写成 function_calls、内层标签不带 DSML 前缀时，恢复逻辑
+        // 此前一步都不跑（detected = false），整块工具调用退化成普通文本、该轮在调用处结束。
+        val raw = """
+            <function_calls>
+            <invoke name="workspace_shell">
+            <parameter name="command" string="true">echo hi</parameter>
+            </invoke>
+            </function_calls>
+        """.trimIndent()
+        val message = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(UIMessagePart.Text(raw)),
+        )
+
+        val recovered = message.recoverDsmlToolCalls(setOf("workspace_shell"))
+
+        assertTrue(recovered.detected)
+        assertFalse(recovered.malformed)
+        val tool = recovered.recoveredTools.single()
+        assertEquals("workspace_shell", tool.toolName)
+        assertEquals(
+            "echo hi",
+            Json.parseToJsonElement(tool.input).jsonObject.getValue("command").jsonPrimitive.content,
+        )
+    }
+
+    @Test
+    fun `ascii pipe marker variant is recovered too`() {
+        // 网关把全角竖线降级成半角时（同一语法的另一种拼写）也必须认。
+        val raw = """
+            <||DSML||tool_calls>
+            <||DSML||invoke name="workspace_shell">
+            <||DSML||parameter name="command" string="true">echo hi</||DSML||parameter>
+            </||DSML||invoke>
+            </||DSML||tool_calls>
+        """.trimIndent()
+        val message = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(UIMessagePart.Text(raw)),
+        )
+
+        val recovered = message.recoverDsmlToolCalls(setOf("workspace_shell"))
+
+        assertTrue(recovered.detected)
+        assertFalse(recovered.malformed)
+        assertEquals("workspace_shell", recovered.recoveredTools.single().toolName)
+    }
+
+    @Test
+    fun `prose that merely mentions a wrapper name is not treated as a tool call`() {
+        // 只有包名、没有 invoke 的普通叙述不能被当成工具调用（否则会误删正文）。
+        val raw = "I can wrap calls in <function_calls> when needed, but this sentence is prose."
+        val message = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(UIMessagePart.Text(raw)),
+        )
+
+        val recovered = message.recoverDsmlToolCalls(setOf("workspace_shell"))
+
+        assertFalse(recovered.detected)
+        assertEquals(listOf(UIMessagePart.Text(raw)), recovered.message.parts)
+    }
+
+    @Test
     fun `unknown tool is suppressed instead of becoming visible or executable`() {
         val raw = """
             before

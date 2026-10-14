@@ -6871,9 +6871,15 @@ class ChatService(
         saveConversation(conversationId, updated)
     }
 
-    suspend fun saveConversationAutoCompressConfig(conversationId: Uuid, config: AutoCompressConfig?) {
+    suspend fun saveConversationAutoCompressConfig(conversationId: Uuid, config: AutoCompressConfig?): Boolean {
+        // 只写一个字段，但必须先把会话水合再整快照写回：saveConversation 带一条数据保护——
+        // “已存在的行有内容、而传入快照为空时不覆盖、直接 return”。未水合时会话状态是空壳，
+        // 于是这次保存被静默吞掉，表现为“点保存没反应、关掉重开又回到关闭”（自检 2026-10-14 §7）。
+        // 水合后写回，末尾再读回实际值作为返回值，UI 可以据此给出确定的成功/失败反馈。
+        ensureHydrated(conversationId)
         val updated = getConversationFlow(conversationId).value.copy(autoCompressConfig = config)
         saveConversation(conversationId, updated)
+        return getConversationFlow(conversationId).value.autoCompressConfig == config
     }
 
     // ---- 压缩对话历史 ----

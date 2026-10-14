@@ -276,7 +276,9 @@
   <string name="chat_interrupted_and_restarted">Stopped the previous reply — continuing from your new message.</string>
   <string name="chat_page_compress_target_tokens">Target Token Size</string>
   <string name="chat_page_compress_target_tokens_supporting">Enter a whole number from 100 to 32,000.</string>
-  <string name="chat_page_compress_warning">⚠️ Compressing context will reset all messages in the current conversation</string>
+  <string name="chat_page_compress_warning">⚠️ Original messages are kept — only what the model sees is replaced by the summary for the folded part</string>
+  <string name="chat_compress_config_saved">Auto rolling summary setting saved</string>
+  <string name="chat_compress_config_save_failed">Could not save the auto rolling summary setting — please retry</string>
   <string name="chat_page_compressing">Compressing...</string>
   <string name="chat_page_conversation_system_prompt">Conversation System Prompt</string>
   <string name="chat_page_conversation_system_prompt_clear">Clear</string>

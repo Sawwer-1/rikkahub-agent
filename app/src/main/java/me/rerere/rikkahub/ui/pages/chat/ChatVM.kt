@@ -495,7 +495,17 @@ class ChatVM(
 
     fun saveAutoCompressConfig(config: AutoCompressConfig?) {
         viewModelScope.launch {
-            chatService.saveConversationAutoCompressConfig(_conversationId, config)
+            val saved = chatService.saveConversationAutoCompressConfig(_conversationId, config)
+            // 保存必须给出确定反馈：此前按「保存」既不关窗也不提示，用户只能靠重开弹窗猜
+            // （自检 2026-10-14 §7.1-2）。
+            Toast.makeText(
+                context,
+                context.getString(
+                    if (saved) R.string.chat_compress_config_saved
+                    else R.string.chat_compress_config_save_failed
+                ),
+                Toast.LENGTH_SHORT,
+            ).show()
         }
     }
 

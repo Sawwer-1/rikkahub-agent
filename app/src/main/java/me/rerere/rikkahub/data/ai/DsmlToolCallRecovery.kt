@@ -11,6 +11,7 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 
 private const val DSML_SIGNATURE = "｜｜DSML｜｜"
+private const val DSML_SIGNATURE_ASCII = "||DSML||"
 private const val TOOL_CALLS_OPEN = "<｜｜DSML｜｜tool_calls>"
 private const val TOOL_CALLS_CLOSE = "</｜｜DSML｜｜tool_calls>"
 private const val INVOKE_OPEN = "<｜｜DSML｜｜invoke"
@@ -23,6 +24,37 @@ private const val MAX_DSML_TOOL_CALLS = 20
 private val ATTRIBUTE = Regex("([A-Za-z_][A-Za-z0-9_-]*)\\s*=\\s*\"([^\"]*)\"")
 private val TOOL_OR_PARAMETER_NAME = Regex("[A-Za-z0-9_.:-]{1,128}")
 private val JSON_NUMBER = Regex("-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?")
+
+/**
+ * 同一套语法的不同拼写（2026-10-14 自检 §31 的现场：整块工具调用退化成普通文本，用户看到
+ * `</｜DSML｜parameter>` 之类被转义的标签，该轮在调用处直接结束）。
+ *
+ * 三种变体此前都识别不了，于是 `detected = false`，恢复逻辑一步都不执行：
+ *  1. 网关把全角竖线降级成半角：`<||DSML||parameter>`；
+ *  2. 外层包名写成 `function_calls` 而不是 `tool_calls`；
+ *  3. 内层标签干脆不带 DSML 前缀（裸 `<invoke>` / `<parameter>`）。
+ *
+ * 归一化只在“确实像工具调用块”的文本上跑（见 [looksLikeDsmlToolCalls]），内层语法照旧走严格
+ * 解析：工具名必须在本次暴露的工具集里、参数必须是严格 JSON、长度与条数都有上限。
+ */
+private val MARKER = "(?:${Regex.escape(DSML_SIGNATURE)}|${Regex.escape(DSML_SIGNATURE_ASCII)})"
+private val WRAPPER_NAME = "(?:tool_calls|function_calls)"
+private val WRAPPER_OPEN_ANY = Regex("<\\s*$MARKER?\\s*$WRAPPER_NAME\\s*>")
+private val WRAPPER_CLOSE_ANY = Regex("</\\s*$MARKER?\\s*$WRAPPER_NAME\\s*>")
+private val INVOKE_OPEN_ANY = Regex("<\\s*$MARKER?\\s*invoke(?=[\\s>])")
+private val INVOKE_OPEN_NORMALIZE = Regex("<\\s*$MARKER?\\s*(invoke|parameter)(?=[\\s>])")
+private val INVOKE_CLOSE_NORMALIZE = Regex("</\\s*$MARKER?\\s*(invoke|parameter)\\s*>")
+
+private fun String.looksLikeDsmlToolCalls(): Boolean =
+    DSML_SIGNATURE in this ||
+        DSML_SIGNATURE_ASCII in this ||
+        (WRAPPER_OPEN_ANY.containsMatchIn(this) && INVOKE_OPEN_ANY.containsMatchIn(this))
+
+private fun String.normalizeDsmlMarkup(): String = replace(DSML_SIGNATURE_ASCII, DSML_SIGNATURE)
+    .replace(WRAPPER_OPEN_ANY, TOOL_CALLS_OPEN)
+    .replace(WRAPPER_CLOSE_ANY, TOOL_CALLS_CLOSE)
+    .replace(INVOKE_OPEN_NORMALIZE) { "<$DSML_SIGNATURE${it.groupValues[1]}" }
+    .replace(INVOKE_CLOSE_NORMALIZE) { "</$DSML_SIGNATURE${it.groupValues[1]}>" }
 
 internal data class DsmlToolCallRecovery(
     val message: UIMessage,
@@ -60,7 +92,7 @@ internal fun UIMessage.recoverDsmlToolCalls(
     allowedToolNames: Set<String>,
 ): DsmlToolCallRecovery {
     if (role != MessageRole.ASSISTANT || parts.none { part ->
-            part is UIMessagePart.Text && DSML_SIGNATURE in part.text
+            part is UIMessagePart.Text && part.text.looksLikeDsmlToolCalls()
         }
     ) {
         return DsmlToolCallRecovery(this, detected = false, malformed = false, recoveredTools = emptyList())
@@ -68,9 +100,9 @@ internal fun UIMessage.recoverDsmlToolCalls(
 
     var recoveredIndex = 0
     val recoveredByPart = parts.map { part ->
-        if (part !is UIMessagePart.Text || DSML_SIGNATURE !in part.text) return@map null
+        if (part !is UIMessagePart.Text || !part.text.looksLikeDsmlToolCalls()) return@map null
         recoverDsmlText(
-            text = part.text,
+            text = part.text.normalizeDsmlMarkup(),
             allowedToolNames = allowedToolNames,
             toolId = {
                 "call_dsml_${id}_${recoveredIndex++}"
@@ -81,7 +113,7 @@ internal fun UIMessage.recoverDsmlToolCalls(
     if (malformed) {
         return DsmlToolCallRecovery(
             message = copy(parts = parts.filterNot { part ->
-                part is UIMessagePart.Text && DSML_SIGNATURE in part.text
+                part is UIMessagePart.Text && part.text.looksLikeDsmlToolCalls()
             }),
             detected = true,
             malformed = true,

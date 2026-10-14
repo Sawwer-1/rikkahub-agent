@@ -660,7 +660,9 @@
   <string name="chat_interrupted_and_restarted">已停掉上一轮回复，正在从这条消息继续。</string>
   <string name="chat_page_compress_target_tokens">目标Token大小</string>
   <string name="chat_page_compress_target_tokens_supporting">请输入 100 到 32,000 之间的整数。</string>
-  <string name="chat_page_compress_warning">⚠️ 压缩上下文将重置当前对话中的所有消息</string>
+  <string name="chat_page_compress_warning">⚠️ 原始消息会保留，只是被折叠的区段不再原样发给模型、改用摘要替代</string>
+  <string name="chat_compress_config_saved">已保存「自动滚动摘要」设置</string>
+  <string name="chat_compress_config_save_failed">「自动滚动摘要」没能保存，请重试</string>
   <string name="chat_page_compressing">正在压缩...</string>
   <string name="chat_page_conversation_system_prompt">对话系统提示</string>
   <string name="chat_page_conversation_system_prompt_clear">清除</string>
