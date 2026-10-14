@@ -3,6 +3,7 @@ package me.rerere.rikkahub.data.ai.transformers
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.rikkahub.data.ai.tools.OFFLOAD_HINT_BYTES
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.workspace.WorkspaceShellStatus
@@ -59,7 +60,13 @@ private fun buildWorkspacePrompt(workspace: WorkspaceEntity, cwd: String? = null
     appendLine("  - `workspace_read_file`: read file contents.")
     appendLine("  - `workspace_write_file` / `workspace_edit_file`: create files, or make precise edits to existing files.")
     appendLine("  - `workspace_shell`: run shell commands (the files area is mounted at /workspace).")
+    appendLine("  - `workspace_offload`: persist a large block of text under `/workspace/offloads/` and get back only a short preview plus its path.")
     appendLine("- Prefer `workspace_shell` for tasks that standard Unix tools handle well, and prefer `workspace_edit_file` for targeted edits over rewriting whole files.")
+    appendLine(
+        "- Long outputs (logs, full file dumps, diffs, transcripts, generated code) larger than " +
+            "$OFFLOAD_HINT_BYTES bytes must go through `workspace_offload` instead of being echoed into the conversation; " +
+            "read them back in smaller passes with `workspace_read_file` when needed, and list the area with `workspace_read_folder /workspace/offloads`.",
+    )
     appendLine("- The skills directory is mounted at `/skills`. Each skill is a subdirectory `/skills/<skill-name>/` containing a `SKILL.md` (with `name` and `description` frontmatter) plus any supporting files. Read a skill's `SKILL.md` before using it, and follow its instructions.")
     appendLine("- `/sdcard` is the Android shared-storage mount only when the current execution has an explicit shared-storage grant. Otherwise use direct phone file tools and do not treat Rootfs lookalike paths as phone storage.")
     appendLine("- When the mount is authorized, exchange files with RikkaHub or Termux through `/sdcard/RikkaHubExchange`.")

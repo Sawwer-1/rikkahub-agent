@@ -12,6 +12,7 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.ai.tools.ToolInvocationContext
 import me.rerere.rikkahub.data.db.dao.DreamDao
 import me.rerere.rikkahub.data.db.dao.DreamExperienceDao
+import me.rerere.rikkahub.memory.normalizeMemoryNarrativeTextForOutput
 import me.rerere.rikkahub.data.db.dao.DreamSynthesisDao
 import me.rerere.rikkahub.memory.dreaming.diagnostics.DreamSynthesisForensicsStore
 import me.rerere.rikkahub.memory.dreaming.model.DreamPairScopeId
@@ -90,8 +91,8 @@ class DreamIntrospectionToolProvider(
                     put("profile_section", claim.profileSection)
                     put("epistemic_origin", claim.epistemicOrigin)
                     put("content_type", claim.contentType)
-                    put("title", claim.title)
-                    put("statement", claim.statement)
+                    put("title", normalizeMemoryNarrativeTextForOutput(claim.title))
+                    put("statement", normalizeMemoryNarrativeTextForOutput(claim.statement))
                     put("confidence", claim.confidence)
                 })
             }
@@ -135,7 +136,7 @@ class DreamIntrospectionToolProvider(
                         put("experience_kind", experience.experienceKind)
                         put("actor", experience.actor)
                         put("occurred_at_ms", experience.occurredAtMs)
-                        put("summary", experience.summary)
+                        put("summary", normalizeMemoryNarrativeTextForOutput(experience.summary))
                     })
                 }
             }
@@ -154,8 +155,8 @@ class DreamIntrospectionToolProvider(
             return@buildJsonObject
         }
         put("claim_id", claim.claimId)
-        put("title", claim.title)
-        put("statement", claim.statement)
+        put("title", normalizeMemoryNarrativeTextForOutput(claim.title))
+        put("statement", normalizeMemoryNarrativeTextForOutput(claim.statement))
         put("sources", buildJsonArray {
             synthesisDao.listClaimExperienceSources(claim.claimId, claim.claimRevision).forEach { source ->
                 val experience = experienceDao.getExperience(source.experienceId, scopeId)
@@ -168,7 +169,7 @@ class DreamIntrospectionToolProvider(
                     put("experience_kind", experience.experienceKind)
                     put("conversation_id", experience.conversationId ?: "")
                     put("occurred_at_ms", experience.occurredAtMs)
-                    put("summary", experience.summary)
+                    put("summary", normalizeMemoryNarrativeTextForOutput(experience.summary))
                     put("source_manifest_json", experience.sourceManifestJson)
                     put("support_type", source.supportType)
                 })
@@ -232,8 +233,8 @@ class DreamIntrospectionToolProvider(
     ) = buildJsonArray {
         claims.filter { it.subjectKind == subject }.forEach { claim ->
             add(buildJsonObject {
-                put("title", claim.title)
-                put("statement", claim.statement)
+                put("title", normalizeMemoryNarrativeTextForOutput(claim.title))
+                put("statement", normalizeMemoryNarrativeTextForOutput(claim.statement))
                 put("profile_section", claim.profileSection)
                 put("confidence", claim.confidence)
             })

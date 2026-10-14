@@ -54,7 +54,15 @@
 
 10. **资源文案（`res/values*/strings.xml`）**：`values/` 是**英文默认**、`values-zh` 是中文；**单引号必须写成 `\'`**（裸单引号会让资源编译直接失败）；跨语言**占位符必须一致**。
 
-11. **UI 控件打 `testTag`（自检自动化依赖它）。**
+11. **路径口径（双命名空间，2026-10-14 设备实测）**：
+    `~/...` 落 **App 私有** `files/workspace/`；`/workspace/...` 落 **手机存储** `RikkaHubExchange/workspaces/<uuid>/`。
+    两套命名空间**仍然并存且未合并**（E 项已知）；写路径时按此表走。注意 224 报告写的映射方向与此**相反**，以 230/231 两次实测为准。
+
+12. **自检自动化（testTag → WindowTreeTool）有前置条件**：
+    设备端要能"看见" `Modifier.testTag`，需要该助手**勾选「屏幕自动化」**（`LocalToolOption.ScreenAutomation`，一组 11 件：tap/long_press/swipe/`read_window_tree`/find_node/click_node/set_text/scroll/global_action/take_screenshot/wake_screen）**并且**「无障碍服务」已授权——`WindowTreeTool` 直接依赖 `AccessibilityNodeInfo`，只勾选项、无授权仍然拿不到。
+    勾选入口：助手设置 → 本地工具 → 屏幕自动化（`AssistantLocalToolPage`）。**没有**"能力不可用就自动隐藏"的额外门控，纯粹由该开关决定。
+
+13. **UI 控件打 `testTag`（自检自动化依赖它）。**
     `RouteActivity` 已开 `testTagsAsResourceId = true`，因此 `WindowTreeTool` 能在无障碍树里看到 `Modifier.testTag("...")`。关键控件（记忆中心各 Tab、策略审查、立即做梦、ask_user 提交……）请用 `<页>_<控件>` 的稳定名，**不要写中文、不要随文案改**。
 
 ---

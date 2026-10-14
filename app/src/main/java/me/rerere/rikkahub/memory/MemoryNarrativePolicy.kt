@@ -57,6 +57,17 @@ private fun defaultMemoryNarrativeIdentity() = MemoryNarrativeIdentity(
     companionName = DEFAULT_MEMORY_NARRATIVE_COMPANION_NAME,
 )
 
+/**
+ * 模型侧可读文本（工具输出等非 UI 界面）用的同一张别名表：把上游遗留的生造名与角色词统一换成
+ * 中性的默认角色名。
+ *
+ * 为什么工具输出也要过这张表：设备自检（2026-10-14）发现 `dream_view` 直接读库，把「斯啾伊 /
+ * 七七」原样回给模型；模型据此可能把这两个生造名再写进新的 claim / experience，形成回流。
+ * 持久化行一律不动（claim revision 与 hash 保持稳定），只改这一份面向模型的可读文本。
+ */
+fun normalizeMemoryNarrativeTextForOutput(text: String): String =
+    normalizeMemoryNarrativeText(text, defaultMemoryNarrativeIdentity())
+
 private enum class NarrativeRole {
     SELF,
     COMPANION,
