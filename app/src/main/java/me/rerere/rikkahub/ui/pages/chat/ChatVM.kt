@@ -2,6 +2,7 @@ package me.rerere.rikkahub.ui.pages.chat
 
 import android.app.Application
 import android.content.Context
+import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -347,15 +348,23 @@ class ChatVM(
     fun handleInterrupt(content: List<UIMessagePart>, answer: Boolean = true) {
         if (content.isEmptyInputMessage()) return
         val agentTimingSubmission = chatService.beginAgentTimingSubmission(_conversationId)
-        reportSubmitResult(
-            chatService.submitInterrupt(
-                _conversationId,
-                content,
-                answer,
-                CommandOrigin.APP_UI,
-                agentTimingSubmission,
-            )
+        val result = chatService.submitInterrupt(
+            _conversationId,
+            content,
+            answer,
+            CommandOrigin.APP_UI,
+            agentTimingSubmission,
         )
+        reportSubmitResult(result)
+        if (result is SubmitResult.Accepted) {
+            // 生成中短按发送现在是"打断 + 从这条消息重启"（不再是静默提醒），必须让用户看见
+            // 上一轮确实停了，否则会以为消息被吞了。
+            Toast.makeText(
+                context,
+                context.getString(R.string.chat_interrupted_and_restarted),
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
     }
 
     fun resumeQueue() {
@@ -444,7 +453,11 @@ class ChatVM(
                 additionalPrompt,
                 targetTokens,
                 keepRecentMessages
-            ).onFailure {
+            ).onSuccess {
+                // 压缩是长任务且结果不可见（历史折叠后不容易一眼看出），成功与失败都必须有
+                // 明确信号，否则用户只能靠"加载一会自己关闭"猜（自检 2026-10-14 §21.4-4）。
+                Toast.makeText(context, context.getString(R.string.chat_compress_succeeded), Toast.LENGTH_SHORT).show()
+            }.onFailure {
                 chatService.addError(it, title = context.getString(R.string.error_title_compress_conversation))
             }
         }
@@ -472,7 +485,9 @@ class ChatVM(
                     targetTokens = targetTokens,
                     keepRecentMessages = keepRecentMessages,
                 ),
-            ).onFailure {
+            ).onSuccess {
+                Toast.makeText(context, context.getString(R.string.chat_compress_succeeded), Toast.LENGTH_SHORT).show()
+            }.onFailure {
                 chatService.addError(it, title = context.getString(R.string.error_title_compress_conversation))
             }
         }

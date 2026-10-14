@@ -19,12 +19,23 @@ internal enum class RunningSendChoice {
     STOP_AND_REPLACE,
 }
 
+/**
+ * 短按发送的分流。
+ *
+ * 生成中带文本 → [ChatSendAction.INTERRUPT]（需求 2026-10-14，对齐 EXTV）：当前这一轮立即
+ * 停下、已生成内容保留，并把这条消息作为最新用户消息从它之下重新起一轮；不再是"当提醒注入
+ * 当前上下文"。只想提醒不断当前轮的走长按选单（[RunningSendChoice.CONTINUE_WITH_GUIDANCE]）。
+ *
+ * 等待审批时仍走 [ChatSendAction.QUEUE]：运行时要先取消审批屏障并对账，才允许启动替代命令
+ * （`APPROVAL_BARRIER_REQUIRES_RECONCILIATION`，见 ConversationRuntime 的 InterruptCommand
+ * 分支），自动打断会把队列按暂停、消息判失败。先批准/拒绝（或取消）那张审批卡即可继续。
+ */
 internal fun resolveShortSendAction(
     runtimeState: RuntimeState,
     hasInput: Boolean,
     hasGuidanceText: Boolean,
 ): ChatSendAction = when {
-    runtimeState == RuntimeState.Running && hasGuidanceText -> ChatSendAction.SOFT_STEER
+    runtimeState == RuntimeState.Running && hasGuidanceText -> ChatSendAction.INTERRUPT
     runtimeState == RuntimeState.Running && !hasInput -> ChatSendAction.STOP
     runtimeState == RuntimeState.Running -> ChatSendAction.SHOW_RUNNING_CHOICES
     else -> ChatSendAction.QUEUE

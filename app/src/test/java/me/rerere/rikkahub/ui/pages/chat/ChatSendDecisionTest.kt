@@ -10,9 +10,11 @@ import kotlin.uuid.Uuid
 
 class ChatSendDecisionTest {
     @Test
-    fun `running short send guides with text and asks how to handle attachment only input`() {
+    fun `running short send interrupts the run and restarts from the new message`() {
+        // 2026-10-14 需求（对齐 EXTV）：生成中追加消息 = 停当前这一轮 + 从这条消息之下续跑，
+        // 不再是"当提醒塞进当前上下文"。想只提醒的走长按选单（CONTINUE_WITH_GUIDANCE）。
         assertEquals(
-            ChatSendAction.SOFT_STEER,
+            ChatSendAction.INTERRUPT,
             resolveShortSendAction(RuntimeState.Running, hasInput = true, hasGuidanceText = true),
         )
         assertEquals(
@@ -23,6 +25,11 @@ class ChatSendDecisionTest {
             ChatSendAction.SHOW_RUNNING_CHOICES,
             resolveShortSendAction(RuntimeState.Running, hasInput = true, hasGuidanceText = false),
         )
+        // 长按选单里的"继续引导"仍是提醒语义，两条路都留着。
+        assertEquals(
+            ChatSendAction.SOFT_STEER,
+            RunningSendChoice.CONTINUE_WITH_GUIDANCE.toSendAction(),
+        )
     }
 
     @Test
@@ -31,6 +38,9 @@ class ChatSendDecisionTest {
             ChatSendAction.QUEUE,
             resolveShortSendAction(RuntimeState.Idle, hasInput = true, hasGuidanceText = true),
         )
+        // WaitingApproval 不自动打断：运行时取消审批屏障后要求先对账再启动替代
+        // （APPROVAL_BARRIER_REQUIRES_RECONCILIATION，ConversationRuntime 约 :1268），
+        // 自动打断会把队列按暂停、消息被判失败。先处理或取消那张审批卡即可继续。
         assertEquals(
             ChatSendAction.QUEUE,
             resolveShortSendAction(RuntimeState.WaitingApproval, hasInput = true, hasGuidanceText = true),

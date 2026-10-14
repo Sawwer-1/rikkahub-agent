@@ -6693,7 +6693,10 @@ class ChatService(
             throw IllegalStateException(context.getString(R.string.chat_page_compress_not_enough_messages))
         }
         // 折叠前先挡：整段（不是只有喂摘要的那几条）都会被隐藏，含待审批调用就整段拒绝。
-        requireNoPendingToolCalls(nodesToCompress.map { node -> node.currentMessage })
+        // 判据取整段会话而不是只有被压缩的那几条——待审批的调用通常挂在最新一条（在保留窗口
+        // 内、不在被压缩范围里），只看范围会让门形同虚设（自检 2026-10-14 §21.3-4：卡片
+        // pending 期间点压缩"照跑，一点没拦"）。
+        requireNoPendingToolCalls(allNodes.map { node -> node.currentMessage })
 
         suspend fun generateCompressedSummary(contentToCompress: String, extraContext: String): String {
             val prompt = settings.compressPrompt.applyPlaceholders(
@@ -6911,7 +6914,9 @@ class ChatService(
         if (messagesToCompress.isEmpty()) {
             throw IllegalStateException(context.getString(R.string.chat_page_compress_not_enough_messages))
         }
-        requireNoPendingToolCalls(messagesToCompress)
+        // 与滚动压缩同口径：判据取整段会话——待审批调用通常挂在最新一条（在保留窗口内），
+        // 只看被压缩的那几条会让门形同虚设（自检 2026-10-14 §21.3-4）。
+        requireNoPendingToolCalls(allMessages)
 
         suspend fun compressMessages(messages: List<UIMessage>): String {
             val contentToCompress = messages.joinToString("\n\n") { it.summaryAsText() }
