@@ -16,6 +16,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import me.rerere.rikkahub.data.db.entity.PolicyNoteEntity
@@ -80,10 +81,16 @@ fun MemoryPolicyReviewSection(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f),
                             )
-                            TextButton(onClick = { onReview(policy.id, false) }) {
+                            TextButton(
+                                onClick = { onReview(policy.id, false) },
+                                modifier = Modifier.testTag("policy_review_reject"),
+                            ) {
                                 Text("拒绝")
                             }
-                            TextButton(onClick = { onReview(policy.id, true) }) {
+                            TextButton(
+                                onClick = { onReview(policy.id, true) },
+                                modifier = Modifier.testTag("policy_review_accept"),
+                            ) {
                                 Text("确认")
                             }
                         }

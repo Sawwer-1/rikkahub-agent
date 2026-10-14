@@ -152,6 +152,7 @@ internal fun selfPreservationBlockReason(
         "unzip_file",
         "workspace_write_file",
         "workspace_edit_file",
+        "workspace_offload",
     )
     if (pathMutation) {
         fun strings(element: JsonElement): Sequence<String> = when (element) {

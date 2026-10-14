@@ -31,6 +31,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -112,13 +113,17 @@ fun MemoryReviewTab(
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = onAcceptSafeNew,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("memory_review_accept_safe_new_button"),
                         ) {
                             Text(stringResource(R.string.memory_v2_accept_safe_new))
                         }
                         OutlinedButton(
                             onClick = onRejectAllPending,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("memory_review_reject_all_button"),
                         ) {
                             Text(stringResource(R.string.memory_v2_reject_all_pending))
                         }

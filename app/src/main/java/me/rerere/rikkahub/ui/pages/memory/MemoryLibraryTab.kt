@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -93,7 +94,10 @@ fun MemoryLibraryTab(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Button(onClick = { creating = true }) {
+            Button(
+                onClick = { creating = true },
+                modifier = Modifier.testTag("memory_library_add_button"),
+            ) {
                 Text(stringResource(R.string.memory_v2_add_memory))
             }
             FilterChip(
@@ -550,6 +554,7 @@ private fun MemoryEditorDialog(
         confirmButton = {
             TextButton(
                 enabled = content.trim().length >= 1,
+                modifier = Modifier.testTag("memory_editor_save_button"),
                 onClick = {
                     onSave(
                         MemoryWriteInput(

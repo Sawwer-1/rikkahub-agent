@@ -292,6 +292,7 @@ class DefaultToolExecutionPolicyResolver : ToolExecutionPolicyResolver {
             "write_text_file", "write_binary_file", "delete_file", "move_file", "copy_file",
             "create_directory", "batch_copy", "batch_move", "batch_delete", "zip_files",
             "unzip_file", "download_file", "workspace_write_file", "workspace_edit_file",
+            "workspace_offload",
         )
         private val LOCAL_READ_TOOLS = setOf(
             "get_time_info", "get_battery_status", "get_audio_info", "get_telephony_info",

@@ -33,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -598,6 +599,7 @@ private fun ChainOfThoughtScope.AskUserToolStep(
                             }
                             onToolAnswer(tool.toolCallId, answerPayload.toString())
                         },
+                        modifier = Modifier.testTag("ask_user_submit_button"),
                         enabled = questions.all { q ->
                             when (q.selectionType) {
                                 "multi" -> !multiAnswers[q.id].isNullOrEmpty() ||

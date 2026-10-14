@@ -345,6 +345,8 @@ object CapabilityCatalog {
         "generate_bug_report",
         "workspace_write_file",
         "workspace_edit_file",        "workspace_create_folder",
+        // 大输出落盘（2.5.20）：写工作区文件，与 workspace_write_file 同属文件变更面。
+        "workspace_offload",
         // Spreadsheet surface (2.5.4/215) — writes xlsx/csv files, so it shares the file
         // mutation surface with the rest of the Files toggle group.
         me.rerere.rikkahub.data.ai.tools.local.TOOL_NAME_EXCEL_WRITE,

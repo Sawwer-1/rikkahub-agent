@@ -33,6 +33,9 @@ val WORKSPACE_TOOL_NAMES: Set<String> = setOf(
     "workspace_create_folder",
     "workspace_read_folder",
     "workspace_shell",
+    // 大输出落盘（2026-10-14 吸收自 xiwangone/rikkahub-agents）：本集合被
+    // CapabilityCatalog 的 WorkspaceTools 能力直接引用，因此登记在这里即完成能力面登记。
+    "workspace_offload",
 )
 
 val WorkspaceToolDefaultApprovals: Map<String, Boolean> = mapOf(
@@ -42,6 +45,7 @@ val WorkspaceToolDefaultApprovals: Map<String, Boolean> = mapOf(
     "workspace_create_folder" to false,
     "workspace_read_folder" to false,
     "workspace_shell" to true,
+    "workspace_offload" to false,
 )
 
 fun resolveWorkspaceToolApproval(name: String, overrides: Map<String, Boolean>): Boolean =
@@ -72,6 +76,7 @@ suspend fun createWorkspaceTools(
             shellCwd,
             allowSharedStorage,
         ),
+        createOffloadTool(workspaceId, ::needsApproval, workspaceRepository, allowSharedStorage),
     )
 }
 
@@ -360,6 +365,99 @@ private fun createShellTool(
         )
     },
 )
+
+/** 落盘区目录（工作区 Rootfs 内的绝对路径）。 */
+private const val OFFLOAD_DIR = "/workspace/offloads"
+
+/** 回显给模型的 preview 上限（字符）。 */
+private const val OFFLOAD_PREVIEW_CHARS = 400
+
+/** 建议模型"超过此长度先落盘"的字节阈值，供系统提示引用。 */
+const val OFFLOAD_HINT_BYTES = 12 * 1024
+
+/**
+ * 大输出落盘（2026-10-14 吸收自 xiwangone/rikkahub-agents）。
+ *
+ * 长日志 / 完整文件 dump / diff / 转录 / 生成代码写进工作区 `offloads/`，只回显一小段
+ * preview，完整内容留盘，后续可用 `workspace_read_file` 取回、用 `workspace_read_folder`
+ * 列举 —— 避免工具输出一次性撑爆上下文。
+ *
+ * 与 `GenerationHandler` 的自动兜底（超 32 KB 且本回合有 shell 访问时自动落盘到
+ * filesDir）互补：那条是自动兜底且不可见，这条是模型显式可控、落在工作区（人可见、可引用）。
+ */
+private fun createOffloadTool(
+    workspaceId: String,
+    needsApproval: (String) -> Boolean,
+    workspaceRepository: WorkspaceRepository,
+    allowSharedStorage: Boolean,
+) = Tool(
+    name = "workspace_offload",
+    description = """
+        Persist a potentially large block of text (logs, full file dumps, diffs, transcripts,
+        generated code) into the workspace offload area and return a reference instead of echoing
+        it back into the conversation. Only the first $OFFLOAD_PREVIEW_CHARS characters come back
+        as preview; the full content is written to $OFFLOAD_DIR/<name>.md and can be read later
+        with workspace_read_file (list the area with workspace_read_folder on $OFFLOAD_DIR).
+        Prefer this over dumping outputs larger than $OFFLOAD_HINT_BYTES bytes into the conversation.
+    """.trimIndent().replace("\n", " "),
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                put("name", buildJsonObject {
+                    put("type", "string")
+                    put(
+                        "description",
+                        "File name base, letters/digits/-/_ only, e.g. crash_log. Written as <name>.md",
+                    )
+                })
+                put("text", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Full UTF-8 content to persist. May be arbitrarily large.")
+                })
+                put("overwrite", buildJsonObject {
+                    put("type", "boolean")
+                    put("description", "Whether to overwrite an existing file. Defaults to true.")
+                })
+            },
+            required = listOf("name", "text"),
+        )
+    },
+    needsApproval = { needsApproval("workspace_offload") },
+    execute = {
+        val params = it.jsonObject
+        val name = sanitizeOffloadName(params.string("name"))
+        val text = params.string("text") ?: error("text is required")
+        val overwrite = params["overwrite"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: true
+        val path = "$OFFLOAD_DIR/$name.md"
+        val entry = workspaceRepository.writeTextInRootfs(
+            workspaceId,
+            path,
+            text,
+            overwrite,
+            allowSharedStorage,
+        )
+        val preview = if (text.length <= OFFLOAD_PREVIEW_CHARS) {
+            text
+        } else {
+            text.take(OFFLOAD_PREVIEW_CHARS) +
+                "\n…[+${text.length - OFFLOAD_PREVIEW_CHARS} chars; full at $path]"
+        }
+        listOf(
+            UIMessagePart.Text(
+                buildJsonObject {
+                    put("path", entry.path)
+                    put("sizeBytes", entry.sizeBytes)
+                    put("preview", preview)
+                }.toString()
+            )
+        )
+    },
+)
+
+private fun sanitizeOffloadName(raw: String?): String {
+    val cleaned = (raw ?: "offload").replace(Regex("[^A-Za-z0-9_-]"), "_").take(64)
+    return cleaned.ifBlank { "offload" }
+}
 
 private fun kotlinx.serialization.json.JsonObject.string(name: String): String? =
     this[name]?.jsonPrimitive?.contentOrNull

@@ -29,13 +29,33 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Gradle cache
+      # 2026-10-14 吸收自 xiwangone/rikkahub-agents：与 unit-tests.yml 共用同一组 key，
+      # 这样 UT 与发版两条流可以互相复用依赖缓存与构建缓存。
+      - name: Cache Gradle modules
         uses: actions/cache@v4
         with:
           path: |
-            ~/.gradle/caches
+            ~/.gradle/caches/modules-2
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-modules-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-modules-
+
+      - name: Cache Gradle build cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches/build-cache-1
+          key: ${{ runner.os }}-gradle-buildcache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-buildcache-
+
+      - name: Cache web-ui dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: ${{ runner.os }}-webui-${{ hashFiles('web-ui/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-webui-
 
       - name: Prepare build files
         run: |
@@ -59,7 +79,7 @@ jobs:
       - name: Gradle Build
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64
+          ./gradlew assembleRelease --parallel --build-cache -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

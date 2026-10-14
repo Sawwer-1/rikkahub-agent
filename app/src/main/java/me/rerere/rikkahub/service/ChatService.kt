@@ -6565,6 +6565,23 @@ class ChatService(
     // ---- 滚动摘要压缩（jude 移植主体 + extv 工具记录保留语义）----
 
     /**
+     * 压缩区段若含「仍在等用户审批」的工具调用则拒绝压缩：节点折进摘要后被隐藏，审批卡片随之
+     * 消失，用户再点批准也没有对象可执行（K 项「会话暂停态锁死」同源）。
+     *
+     * 判据只认 [UIMessagePart.Tool.isPending]，**不要**改成 output 是否为空：历史遗留的空
+     * output（被拒未回填 / 生成中断 / 用户取消）已不可能再执行，压缩掉无妨；用 `output.isEmpty()`
+     * 会把这些陈旧条目误判成待处理，从而永久挡住压缩。
+     */
+    private fun requireNoPendingToolCalls(messages: Collection<UIMessage>) {
+        val hasPendingToolCall = messages.any { message ->
+            message.parts.any { part -> part is UIMessagePart.Tool && part.isPending }
+        }
+        if (hasPendingToolCall) {
+            throw IllegalStateException(context.getString(R.string.chat_page_compress_pending_tools))
+        }
+    }
+
+    /**
      * Rolling-summary compression. Nodes stay in place and are hidden behind a persisted
      * summary; the tool-bearing nodes inside the compressed range are preserved verbatim in
      * a tool-history ledger at generation time instead of being fed into the prose summary.
@@ -6613,6 +6630,8 @@ class ChatService(
         } else {
             throw IllegalStateException(context.getString(R.string.chat_page_compress_not_enough_messages))
         }
+        // 折叠前先挡：整段（不是只有喂摘要的那几条）都会被隐藏，含待审批调用就整段拒绝。
+        requireNoPendingToolCalls(nodesToCompress.map { node -> node.currentMessage })
 
         suspend fun generateCompressedSummary(contentToCompress: String, extraContext: String): String {
             val prompt = settings.compressPrompt.applyPlaceholders(
@@ -6830,6 +6849,7 @@ class ChatService(
         if (messagesToCompress.isEmpty()) {
             throw IllegalStateException(context.getString(R.string.chat_page_compress_not_enough_messages))
         }
+        requireNoPendingToolCalls(messagesToCompress)
 
         suspend fun compressMessages(messages: List<UIMessage>): String {
             val contentToCompress = messages.joinToString("\n\n") { it.summaryAsText() }

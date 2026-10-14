@@ -16,6 +16,8 @@ class WorkspaceAndKeyboardCapabilityCatalogTest {
             "workspace_create_folder" to ToolInvocationSurface.FileMutation,
             "workspace_read_folder" to ToolInvocationSurface.Background,
             "workspace_shell" to ToolInvocationSurface.UnboundedExecution,
+            // 2026-10-14：大输出落盘工具，写入工作区，与 workspace_write_file 同面。
+            "workspace_offload" to ToolInvocationSurface.FileMutation,
         )
 
         val capability = CapabilityCatalog.capabilityOf(CapabilityId.WorkspaceTools)

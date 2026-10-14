@@ -29,13 +29,35 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Gradle cache
+      # 2026-10-14 吸收自 xiwangone/rikkahub-agents：缓存拆三块 + key 精准化。
+      # 旧 key 用 '**/*.gradle*'，任何构建脚本改动都会让整份依赖缓存失效，命中率极低；
+      # modules-2 的 key 只跟版本目录与 wrapper 走（依赖实际由 libs.versions.toml 决定）。
+      - name: Cache Gradle modules
         uses: actions/cache@v4
         with:
           path: |
-            ~/.gradle/caches
+            ~/.gradle/caches/modules-2
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-v2-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-modules-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-modules-
+
+      # 构建缓存单独缓存、key 带 sha 兜底：跨提交复用编译产物，只影响时长不影响正确性。
+      - name: Cache Gradle build cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches/build-cache-1
+          key: ${{ runner.os }}-gradle-buildcache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-buildcache-
+
+      - name: Cache web-ui dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: ${{ runner.os }}-webui-${{ hashFiles('web-ui/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-webui-
 
       - name: Prepare build files
         run: |
@@ -54,7 +76,7 @@ jobs:
       - name: Run JVM unit tests
         run: |
           chmod +x gradlew
-          ./gradlew testDebugUnitTest --continue --stacktrace --no-configuration-cache -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64
+          ./gradlew testDebugUnitTest --continue --stacktrace --no-configuration-cache --parallel --build-cache -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64
 
       - name: Upload test results
         uses: actions/upload-artifact@v4

@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -117,6 +118,7 @@ fun MemoryDreamTab(
                         Button(
                             onClick = onDreamNow,
                             enabled = !dreamNowRunning && generateEnabled,
+                            modifier = Modifier.testTag("dream_run_now_button"),
                         ) {
                             Text(if (dreamNowRunning) "做梦进行中…" else "立即做梦")
                         }
@@ -396,8 +398,14 @@ private fun DreamStatusCard(projection: DreamReviewProjection?) {
                     // with an empty onClick — device report (2026-10-13, problem C): users kept
                     // tapping them and nothing ever happened. Plain tags make the non-interactive
                     // nature visible.
-                    DreamFactTag(projection.derivedStatus.title())
-                    DreamFactTag(projection.usageMode.title())
+                    DreamFactTag(
+                        text = projection.derivedStatus.title(),
+                        modifier = Modifier.testTag("dream_status_tag"),
+                    )
+                    DreamFactTag(
+                        text = projection.usageMode.title(),
+                        modifier = Modifier.testTag("dream_usage_tag"),
+                    )
                 }
                 Text(
                     // Plain language by design: the internal epoch/debt counters used to read
@@ -818,10 +826,11 @@ private fun DreamSnapshotSection.title(): String = when (this) {
 
 /** Read-only fact label; deliberately not a chip-shaped button — these are never clickable. */
 @Composable
-private fun DreamFactTag(text: String) {
+private fun DreamFactTag(text: String, modifier: Modifier = Modifier) {
     Surface(
         shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        modifier = modifier,
     ) {
         Text(
             text = text,

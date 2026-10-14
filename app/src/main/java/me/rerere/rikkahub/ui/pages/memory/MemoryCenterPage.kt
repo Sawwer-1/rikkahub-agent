@@ -24,6 +24,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -158,6 +159,9 @@ fun MemoryCenterPage(id: String) {
                     Tab(
                         selected = pagerState.currentPage == index,
                         onClick = { coroutineScope.launch { pagerState.animateScrollToPage(index) } },
+                        // 稳定 testTag：设备端 agent 用 WindowTreeTool（testTagsAsResourceId 已开）
+                        // 就能定位到这四个 Tab，自检 UI 项不再依赖人工。
+                        modifier = Modifier.testTag("memory_tab_${tab.name.lowercase()}"),
                         text = {
                             if (tab == MemoryCenterTab.REVIEW && stats.pendingReview > 0) {
                                 BadgedBox(badge = { Badge { Text(stats.pendingReview.toString()) } }) {
