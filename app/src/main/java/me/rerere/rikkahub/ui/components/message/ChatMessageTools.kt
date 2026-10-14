@@ -599,7 +599,6 @@ private fun ChainOfThoughtScope.AskUserToolStep(
                             }
                             onToolAnswer(tool.toolCallId, answerPayload.toString())
                         },
-                        modifier = Modifier.testTag("ask_user_submit_button"),
                         enabled = questions.all { q ->
                             when (q.selectionType) {
                                 "multi" -> !multiAnswers[q.id].isNullOrEmpty() ||
@@ -607,7 +606,9 @@ private fun ChainOfThoughtScope.AskUserToolStep(
                                 else -> !answers[q.id].isNullOrBlank()
                             }
                         },
-                        modifier = Modifier.align(Alignment.End),
+                        modifier = Modifier
+                            .align(Alignment.End)
+                            .testTag("ask_user_submit_button"),
                     ) {
                         Icon(
                             imageVector = HugeIcons.Tick01,
