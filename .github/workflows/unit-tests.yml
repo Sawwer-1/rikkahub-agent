@@ -29,6 +29,40 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      # 2026-10-14：Gradle 会在配置期自行补装缺失的 SDK 组件，一次损坏的下载就让整个 job 挂在
+      # InstallFailedException（当天 unit-tests 首次运行即因此失败、重跑才过，与本版代码无关）。
+      # 这里把 SDK 目录缓存起来并带重试预装组件，把这类抖动挡在 Gradle 之前。
+      - name: Cache Android SDK
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk
+          key: ${{ runner.os }}-android-sdk-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-android-sdk-
+
+      - name: Ensure Android SDK components (retry)
+        run: |
+          set -uo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SM="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          echo "SDK=$SDK"
+          yes | "$SM" --licenses >/dev/null 2>&1 || true
+          for attempt in 1 2 3; do
+            ok=1
+            for pkg in "platform-tools" "platforms;android-37"; do
+              if ! "$SM" --install "$pkg"; then
+                echo "::warning::sdkmanager failed for $pkg (attempt $attempt)"
+                ok=0
+              fi
+            done
+            if [ "$ok" = "1" ]; then
+              echo "android sdk components ready"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::warning::sdk preinstall did not fully succeed; letting Gradle try"
+
       # 2026-10-14 吸收自 xiwangone/rikkahub-agents：缓存拆三块 + key 精准化。
       # 旧 key 用 '**/*.gradle*'，任何构建脚本改动都会让整份依赖缓存失效，命中率极低；
       # modules-2 的 key 只跟版本目录与 wrapper 走（依赖实际由 libs.versions.toml 决定）。
