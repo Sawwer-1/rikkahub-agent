@@ -1924,6 +1924,10 @@ class ChatService(
                 return rejectedTrackedCommand(validation.reason)
             }
         }
+        // 两个「无 durable owner 的交互式决策」标志在 when 之外声明：下面 parentLineage == null
+        // 那处的 lineage 放行判定要用到它们（此前写在分支里，作用域不够会编译失败）。
+        var answeredAskUserPending = false
+        var legacyOrdinaryApproval = false
         val resolvedParentId = parentCommandId ?: when (command) {
             is ToolApprovalCommand -> {
                 // An answer to a still-pending ask_user part carries no permission grant and
@@ -1933,7 +1937,7 @@ class ChatService(
                 // own legacy-path exemption could run — device evidence 2026-10-12. The
                 // answer is applied by toolCallId with a pending re-check, and lineage falls
                 // back to the single WAITING owner exactly like a denial does.
-                val answeredAskUserPending = command.decision is ToolDecision.Answered &&
+                answeredAskUserPending = command.decision is ToolDecision.Answered &&
                     conversationHasPendingAskUserCall(
                         persistedAdmissionConversation,
                         command.toolCallId,
@@ -1944,7 +1948,7 @@ class ChatService(
                 // to be rejected right here ("Approval exact identity is required"), leaving the
                 // tool call Pending forever and deadlocking the conversation. Same carve-out as
                 // the ask_user answer above, gated on the part still being Pending.
-                val legacyOrdinaryApproval = command.decision is ToolDecision.Approved &&
+                legacyOrdinaryApproval = command.decision is ToolDecision.Approved &&
                     command.approvalId == null &&
                     command.executionId == null &&
                     origin == CommandOrigin.APP_UI &&
