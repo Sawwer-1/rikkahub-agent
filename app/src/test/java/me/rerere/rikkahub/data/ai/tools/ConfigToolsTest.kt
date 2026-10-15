@@ -43,7 +43,8 @@ class ConfigToolsTest {
         val (updated, _) = configApplySet(settings("a" to "1", "b" to "2"), "c", "3")
 
         assertEquals(setOf("a", "b", "c"), updated.keys)
-        assertEquals(JsonPrimitive("3"), updated["c"])
+        // value 是 JSON 编码：`3` 解析成 JSON 数字，而不是字符串 "3"（243 CI 实测校正）
+        assertEquals(JsonPrimitive(3), updated["c"])
     }
 
     @Test

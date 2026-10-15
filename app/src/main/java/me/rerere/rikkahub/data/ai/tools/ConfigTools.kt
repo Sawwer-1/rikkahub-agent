@@ -47,13 +47,36 @@ internal fun createConfigTools(
  * 纯函数：把 [valueJson] 解析成 JSON 值写入 [current] 的 [key]，返回 (新对象, 旧值)。
  * 键不存在时旧值为 null；[valueJson] 不是合法 JSON 时抛 [IllegalArgumentException]。
  */
+/**
+ * **严格口径**的"value 必须是 JSON 编码"校验。
+ *
+ * `Json.parseToJsonElement` 对裸标识符是宽松的（`dark`、`hello` 会被当成字符串解析而不报错），
+ * 于是「字符串必须带引号」这条 UX 约定形同虚设——243 CI 实测：传 `dark` 时旧实现放行了。
+ * 这里显式要求首字符像 JSON 起始（引号 / 括号 / 数字 / true|false|null），再交给解析器做完整校验。
+ */
+private fun requireJsonEncoded(valueJson: String): String {
+    val trimmed = valueJson.trim()
+    val head = trimmed.firstOrNull()
+    val looksLikeJson = when {
+        head == null -> false
+        head == '"' || head == '{' || head == '[' || head == '-' || head == '+' -> true
+        head.isDigit() -> true
+        trimmed == "true" || trimmed == "false" || trimmed == "null" -> true
+        else -> false
+    }
+    require(looksLikeJson) {
+        "value must be valid JSON — a string needs quotes (for example \"dark\")"
+    }
+    return trimmed
+}
+
 internal fun configApplySet(
     current: JsonObject,
     key: String,
     valueJson: String,
 ): Pair<JsonObject, JsonElement?> {
     val parsed = try {
-        Json.parseToJsonElement(valueJson)
+        Json.parseToJsonElement(requireJsonEncoded(valueJson))
     } catch (e: IllegalArgumentException) {
         throw IllegalArgumentException("value must be valid JSON: ${e.message}")
     }
