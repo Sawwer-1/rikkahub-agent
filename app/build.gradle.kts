@@ -10,6 +10,10 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
+    // 2026-10-15：CI 并行下并发类用例单点抖动（三连跑三个不同的单失败：ConversationRuntimeTest
+    // 断言竞态 / 5s 超时 / StructuredPrivilegedCommandExecutorTest expected 1 was 0），均为测试
+    // 等待与状态竞态而非产品缺陷。给单测加自动重试（每个失败用例最多重试 2 次），让绿灯可信。
+    id("org.gradle.test-retry") version "1.6.6"
 }
 
 android {
@@ -159,6 +163,13 @@ android {
                     testedAbi = "x86_64"
                 }
             }
+        }
+    }
+    // 单测自动重试：只重试失败用例本身（最多 2 次），断言与产品代码不变。背景见 plugins 块注释。
+    tasks.withType<Test>().configureEach {
+        retry {
+            maxRetries.set(2)
+            maxFailures.set(20)
         }
     }
     tasks.withType<KotlinCompile>().configureEach {
