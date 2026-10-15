@@ -35,6 +35,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import me.rerere.rikkahub.ui.components.ui.DialogTestTagsAsResourceId
+import me.rerere.rikkahub.ui.components.ui.testTagInDialog
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -486,6 +488,8 @@ private fun MemoryEditorDialog(
     var importance by remember(initial?.id) { mutableStateOf((initial?.importance ?: 0.5f).toString()) }
 
     AlertDialog(
+        // 弹窗是独立窗口，主窗口根的 testTagsAsResourceId 不生效（见 DialogSemantics.kt）。
+        modifier = DialogTestTagsAsResourceId,
         onDismissRequest = onDismiss,
         title = {
             Text(
@@ -554,7 +558,7 @@ private fun MemoryEditorDialog(
         confirmButton = {
             TextButton(
                 enabled = content.trim().length >= 1,
-                modifier = Modifier.testTag("memory_editor_save_button"),
+                modifier = Modifier.testTagInDialog("memory_editor_save_button"),
                 onClick = {
                     onSave(
                         MemoryWriteInput(

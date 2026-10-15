@@ -27,6 +27,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Job
 import me.rerere.rikkahub.R
@@ -79,6 +81,12 @@ fun RollingCompressDialog(
     }
 
     AlertDialog(
+        // 2026-10-15 自检 §三：四个 `compress_dialog_*` 在无障碍树里读不到，而同一 App 主窗口的
+        // `chat_input` / `chat_send_button` 能读到 —— 因为 `testTagsAsResourceId = true` 只挂在
+        // RouteActivity 的根（RouteActivity.kt:429），而 AlertDialog 渲染在**独立窗口**里，其
+        // ComposeView 根上没有这个 flag。这里在弹窗自己的根上再挂一次（并在每个控件上各挂一次，
+        // 兼容"只读节点自身 config"的实现），tag 才会落成无障碍 resource-id。
+        modifier = Modifier.semantics { testTagsAsResourceId = true },
         onDismissRequest = {
             if (!isLoading) {
                 onDismiss()
@@ -121,7 +129,9 @@ fun RollingCompressDialog(
                         Switch(
                             checked = autoCompress,
                             onCheckedChange = { autoCompress = it },
-                            modifier = Modifier.testTag("compress_dialog_auto_summary_switch"),
+                            modifier = Modifier
+                                .testTag("compress_dialog_auto_summary_switch")
+                                .semantics { testTagsAsResourceId = true },
                         )
                     }
 
@@ -211,7 +221,9 @@ fun RollingCompressDialog(
                                 onSaveConfig(additionalPrompt, selectedTokens, keepRecentMessages, autoCompress)
                             },
                             // 该按钮此前不在无障碍树里（自检 §12.4-1 实测 find_node no-match），补 tag。
-                            modifier = Modifier.testTag("compress_dialog_save_button"),
+                            modifier = Modifier
+                                .testTag("compress_dialog_save_button")
+                                .semantics { testTagsAsResourceId = true },
                         ) {
                             Text(stringResource(R.string.chat_page_save))
                         }
@@ -220,7 +232,9 @@ fun RollingCompressDialog(
                         onClick = {
                             currentJob = onConfirm(additionalPrompt, selectedTokens, keepRecentMessages, autoCompress)
                         },
-                        modifier = Modifier.testTag("compress_dialog_confirm_button"),
+                        modifier = Modifier
+                            .testTag("compress_dialog_confirm_button")
+                            .semantics { testTagsAsResourceId = true },
                     ) {
                         Text(stringResource(R.string.confirm))
                     }
@@ -231,7 +245,9 @@ fun RollingCompressDialog(
             if (!isLoading) {
                 TextButton(
                     onClick = onDismiss,
-                    modifier = Modifier.testTag("compress_dialog_cancel_button"),
+                    modifier = Modifier
+                        .testTag("compress_dialog_cancel_button")
+                        .semantics { testTagsAsResourceId = true },
                 ) {
                     Text(stringResource(R.string.cancel))
                 }

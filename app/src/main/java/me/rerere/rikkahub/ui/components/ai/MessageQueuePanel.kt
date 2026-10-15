@@ -33,6 +33,8 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.service.MessageQueueState
 import me.rerere.rikkahub.service.QueuedMessage
+import me.rerere.rikkahub.ui.components.ui.DialogTestTagsAsResourceId
+import me.rerere.rikkahub.ui.components.ui.testTagInDialog
 import me.rerere.rikkahub.ui.hooks.ChatInputState
 
 @Composable
@@ -128,6 +130,8 @@ internal fun MessageQueuePanel(
             onDispose { finishEdit(message.id, null) }
         }
         AlertDialog(
+            // 弹窗是独立窗口，主窗口根的 testTagsAsResourceId 不生效（见 DialogSemantics.kt）。
+            modifier = DialogTestTagsAsResourceId,
             onDismissRequest = { editing = null },
             title = { Text(stringResource(R.string.chat_page_queue_edit_title)) },
             text = {
@@ -137,7 +141,7 @@ internal fun MessageQueuePanel(
                         state = input.textContent,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag("chat_queue_edit_text"),
+                            .testTagInDialog("chat_queue_edit_text"),
                         lineLimits = TextFieldLineLimits.MultiLine(
                             minHeightInLines = 3,
                             maxHeightInLines = 8
