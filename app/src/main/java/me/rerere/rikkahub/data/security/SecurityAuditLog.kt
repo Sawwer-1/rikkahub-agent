@@ -67,7 +67,7 @@ class SecurityAuditRepository(private val context: Context) {
         private val RETAIN_MS = RETAIN_DAYS * 24 * 60 * 60 * 1000L
     }
 
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = AUDIT_JSON
     private val mutex = Mutex()
     private val _entries = MutableStateFlow<List<SecurityAuditEntry>>(emptyList())
 
@@ -145,6 +145,10 @@ class SecurityAuditRepository(private val context: Context) {
                 withContext(NonCancellable + Dispatchers.IO) {
                     if (!loaded) loadLocked()
                     val entry = SecurityAuditEntry(
+                        // 显式传 id/timestamp：不依赖构造器默认值，双保险防止序列化端把它们当
+                        // "等于默认值"而省略（238 实测的字段级丢失，见 [AUDIT_JSON] 注释）。
+                        id = Uuid.random().toString(),
+                        timestamp = System.currentTimeMillis(),
                         category = category,
                         action = action,
                         target = target.take(200),
@@ -201,6 +205,20 @@ class SecurityAuditRepository(private val context: Context) {
         _entries.value = kept
         fileLineCount = kept.size
     }
+}
+
+/**
+ * 审计行的序列化配置。
+ *
+ * `encodeDefaults = true` 是**必须的**（2026-10-15 自检 238 §1 实测的字段级丢失）：
+ * [SecurityAuditEntry] 的 `id` / `timestamp` 只靠构造器默认值填充，而 kotlinx.serialization 默认
+ * `encodeDefaults = false`，满 500 条后的新写入里 `timestamp` 被整字段省略 —— 行是完整 JSON、
+ * 不是半行，但时间字段没了：`status`/`target` 等非默认值字段照常写出，只有"等于默认值"的字段失踪。
+ * 用单测（`SecurityAuditLogSerializationTest`）钉死"每行都必须带 id 与 timestamp"。
+ */
+internal val AUDIT_JSON = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
 }
 
 /**
