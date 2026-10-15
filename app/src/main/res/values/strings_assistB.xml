@@ -14,6 +14,14 @@
     <string name="security_audit_filter_approval">Approvals</string>
     <string name="security_audit_filter_automation">Automation</string>
     <string name="security_audit_sensitive">sensitive</string>
+    <string name="security_audit_export">Export CSV</string>
+    <string name="security_audit_export_failed">Failed to export the audit log</string>
+    <string name="security_audit_search_hint">Search target, detail or status</string>
+    <string name="security_audit_status_all">All statuses</string>
+    <string name="security_audit_status_blocked">Blocked</string>
+    <string name="security_audit_status_denied">Denied</string>
+    <string name="security_audit_status_failure">Failure</string>
+    <string name="security_audit_status_success">Success</string>
 
     <!-- Mini App -->
     <string name="mini_app_page_title">Mini apps</string>

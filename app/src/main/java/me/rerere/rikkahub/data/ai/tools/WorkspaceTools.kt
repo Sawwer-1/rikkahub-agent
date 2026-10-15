@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.data.ai.tools
 
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.JsonObjectBuilder
@@ -33,9 +34,16 @@ val WORKSPACE_TOOL_NAMES: Set<String> = setOf(
     "workspace_create_folder",
     "workspace_read_folder",
     "workspace_shell",
+    // 工作区枚举（jude-port）：只读列出所有工作区及其 id，供其它工作区工具的 `workspace` 参数取值。
+    "workspace_list",
     // 大输出落盘（2026-10-14 吸收自 xiwangone/rikkahub-agents）：本集合被
     // CapabilityCatalog 的 WorkspaceTools 能力直接引用，因此登记在这里即完成能力面登记。
     "workspace_offload",
+    // 工作区配置存储（jude-port）：工作区作用域的键值配置读取/写入/回滚。
+    // 本集合被 CapabilityCatalog 的 WorkspaceTools 能力直接引用，登记在此即完成能力面登记。
+    "config_get_all",
+    "config_set",
+    "config_revert",
 )
 
 val WorkspaceToolDefaultApprovals: Map<String, Boolean> = mapOf(
@@ -45,7 +53,11 @@ val WorkspaceToolDefaultApprovals: Map<String, Boolean> = mapOf(
     "workspace_create_folder" to false,
     "workspace_read_folder" to false,
     "workspace_shell" to true,
+    "workspace_list" to false,
     "workspace_offload" to false,
+    "config_get_all" to false,
+    "config_set" to false,
+    "config_revert" to false,
 )
 
 fun resolveWorkspaceToolApproval(name: String, overrides: Map<String, Boolean>): Boolean =
@@ -64,6 +76,7 @@ suspend fun createWorkspaceTools(
     val shellCwd = cwd?.removePrefix("/workspace/")?.removePrefix("/workspace")
 
     return listOf(
+        createListTool(workspaceRepository, approvalOverrides),
         createReadFileTool(workspaceId, ::needsApproval, workspaceRepository, allowSharedStorage),
         createWriteFileTool(workspaceId, ::needsApproval, workspaceRepository, allowSharedStorage),
         createEditFileTool(workspaceId, ::needsApproval, workspaceRepository, allowSharedStorage),
@@ -77,8 +90,58 @@ suspend fun createWorkspaceTools(
             allowSharedStorage,
         ),
         createOffloadTool(workspaceId, ::needsApproval, workspaceRepository, allowSharedStorage),
+        createConfigTools(workspaceId, ::needsApproval, workspaceRepository, allowSharedStorage),
     )
 }
+
+/**
+ * 枚举所有工作区（jude-port）。只读、无参数；默认不需审批，但可在工作区详情页逐工具设定，
+ * 口径与其它工作区工具一致（[WorkspaceToolDefaultApprovals] 默认 false）。
+ *
+ * 返回 `{"workspaces":[{"id","name","shellStatus","lastAccessAt"?}...]}`；模型可用其中的 id
+ * 作为其它工作区工具的可选 `workspace` 参数，省略则该工具作用于助手绑定的工作区。
+ */
+internal fun createListTool(
+    workspaceRepository: WorkspaceRepository,
+    approvalOverrides: Map<String, Boolean> = emptyMap(),
+): Tool = Tool(
+    name = "workspace_list",
+    description = buildString {
+        append("List the available workspaces with their id, name and shell status. ")
+        append("Use one of these ids as the optional `workspace` parameter of the other workspace ")
+        append("tools (for example workspace_read_file / workspace_write_file) to act on that ")
+        append("workspace; omitting the parameter acts on the assistant's bound workspace.")
+    },
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {},
+            required = emptyList(),
+        )
+    },
+    // 只读枚举：默认不审批，但工作区详情页可逐工具设为必批（P2 口径修正，2026-10-15）。
+    needsApproval = { resolveWorkspaceToolApproval("workspace_list", approvalOverrides) },
+    execute = {
+        val workspaces = workspaceRepository.getAll()
+        listOf(
+            UIMessagePart.Text(
+                buildJsonObject {
+                    put("workspaces", buildJsonArray {
+                        workspaces.forEach { w ->
+                            add(
+                                buildJsonObject {
+                                    put("id", w.id)
+                                    put("name", w.name)
+                                    put("shellStatus", w.shellStatus)
+                                    w.lastAccessAt?.let { put("lastAccessAt", it) }
+                                }
+                            )
+                        }
+                    })
+                }.toString()
+            )
+        )
+    },
+)
 
 private fun createReadFileTool(
     workspaceId: String,
@@ -93,19 +156,24 @@ private fun createReadFileTool(
         use direct phone file tools for Android shared-storage files.
         Supports UTF-8 text and header-verified PNG, JPEG, WebP, GIF, BMP, safe SVG,
         HEIC, HEIF, AVIF, and ICO files. Unsupported images are returned as ordinary files.
+        The optional `workspace` parameter targets another workspace id (from workspace_list);
+        it defaults to the assistant's bound workspace.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
             properties = buildJsonObject {
                 putPathProperty(required = true)
+                putWorkspaceProperty()
             },
             required = listOf("path"),
         )
     },
     needsApproval = { needsApproval("workspace_read_file") },
     execute = {
-        val path = it.jsonObject.absolutePath("path")
-        workspaceRepository.readFileInRootfs(workspaceId, path, allowSharedStorage)
+        val params = it.jsonObject
+        val path = params.absolutePath("path")
+        val targetWorkspaceId = resolveTargetWorkspaceId(workspaceRepository, params, workspaceId)
+        workspaceRepository.readFileInRootfs(targetWorkspaceId, path, allowSharedStorage)
     },
 )
 
@@ -120,6 +188,8 @@ private fun createWriteFileTool(
         Write a UTF-8 text file using the assistant's bound workspace Rootfs. Paths must be absolute inside Rootfs.
         Use /workspace for the workspace files area. For a phone-visible file, use a direct phone
         file tool instead.
+        The optional `workspace` parameter targets another workspace id (from workspace_list);
+        it defaults to the assistant's bound workspace.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
@@ -133,6 +203,7 @@ private fun createWriteFileTool(
                     put("type", "boolean")
                     put("description", "Whether to overwrite an existing file. Defaults to true.")
                 })
+                putWorkspaceProperty()
             },
             required = listOf("path", "text"),
         )
@@ -143,8 +214,9 @@ private fun createWriteFileTool(
         val path = params.absolutePath("path")
         val text = params.string("text") ?: error("text is required")
         val overwrite = params["overwrite"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: true
+        val targetWorkspaceId = resolveTargetWorkspaceId(workspaceRepository, params, workspaceId)
         val entry = workspaceRepository.writeTextInRootfs(
-            workspaceId,
+            targetWorkspaceId,
             path,
             text,
             overwrite,
@@ -167,6 +239,8 @@ private fun createEditFileTool(
         file tool instead.
         Provide old_text and new_text. By default old_text must occur exactly once; set replace_all=true to replace every occurrence.
         If no exact match is found, whitespace-tolerant line matching is attempted automatically.
+        The optional `workspace` parameter targets another workspace id (from workspace_list);
+        it defaults to the assistant's bound workspace.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
@@ -184,6 +258,7 @@ private fun createEditFileTool(
                     put("type", "boolean")
                     put("description", "Whether to replace every occurrence. Defaults to false.")
                 })
+                putWorkspaceProperty()
             },
             required = listOf("path", "old_text", "new_text"),
         )
@@ -197,7 +272,8 @@ private fun createEditFileTool(
         val replaceAll = params["replace_all"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
         require(oldText.isNotEmpty()) { "old_text must not be empty" }
 
-        val original = workspaceRepository.readTextInRootfs(workspaceId, path, allowSharedStorage)
+        val targetWorkspaceId = resolveTargetWorkspaceId(workspaceRepository, params, workspaceId)
+        val original = workspaceRepository.readTextInRootfs(targetWorkspaceId, path, allowSharedStorage)
         // 逐级尝试 exact -> line_trimmed -> block_anchor 替换器, 见 TextReplacers.kt
         val result = try {
             replaceText(original, oldText, newText, replaceAll)
@@ -205,7 +281,7 @@ private fun createEditFileTool(
             error("${e.message} (path: $path)")
         }
         val entry = workspaceRepository.writeTextInRootfs(
-            workspaceId,
+            targetWorkspaceId,
             path,
             result.updated,
             overwrite = true,
@@ -239,19 +315,24 @@ private fun createCreateFolderTool(
         Create a directory (and any missing parent directories) using the assistant's bound workspace Rootfs.
         Paths must be absolute inside Rootfs. Use /workspace for the workspace files area.
         Does nothing (succeeds) if the directory already exists.
+        The optional `workspace` parameter targets another workspace id (from workspace_list);
+        it defaults to the assistant's bound workspace.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
             properties = buildJsonObject {
                 putPathProperty(required = true)
+                putWorkspaceProperty()
             },
             required = listOf("path"),
         )
     },
     needsApproval = { needsApproval("workspace_create_folder") || it.pathOutsideWorkspace("path") },
     execute = {
-        val path = it.jsonObject.absolutePath("path")
-        val entry = workspaceRepository.createFolderInRootfs(workspaceId, path, allowSharedStorage)
+        val params = it.jsonObject
+        val path = params.absolutePath("path")
+        val targetWorkspaceId = resolveTargetWorkspaceId(workspaceRepository, params, workspaceId)
+        val entry = workspaceRepository.createFolderInRootfs(targetWorkspaceId, path, allowSharedStorage)
         listOf(UIMessagePart.Text(entry.toJson().toString()))
     },
 )
@@ -267,19 +348,24 @@ private fun createReadFolderTool(
         Recursively list a directory using the assistant's bound workspace Rootfs, as an indented tree.
         Paths must be absolute inside Rootfs. Use /workspace for the workspace files area.
         The listing is capped in entry count and depth; a truncation notice is included when a cap is hit.
+        The optional `workspace` parameter targets another workspace id (from workspace_list);
+        it defaults to the assistant's bound workspace.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
             properties = buildJsonObject {
                 putPathProperty(required = true)
+                putWorkspaceProperty()
             },
             required = listOf("path"),
         )
     },
     needsApproval = { needsApproval("workspace_read_folder") },
     execute = {
-        val path = it.jsonObject.absolutePath("path")
-        val result = workspaceRepository.readFolderTree(workspaceId, path, allowSharedStorage)
+        val params = it.jsonObject
+        val path = params.absolutePath("path")
+        val targetWorkspaceId = resolveTargetWorkspaceId(workspaceRepository, params, workspaceId)
+        val result = workspaceRepository.readFolderTree(targetWorkspaceId, path, allowSharedStorage)
         listOf(UIMessagePart.Text(formatWorkspaceTree(path, result)))
     },
 )
@@ -304,6 +390,8 @@ private fun createShellTool(
         if (!defaultCwd.isNullOrBlank()) {
             append("Defaults to '$defaultCwd'. ")
         }
+        append("The optional `workspace` parameter targets another workspace id (from workspace_list); ")
+        append("it defaults to the assistant's bound workspace. ")
         append("Requires Rootfs to be installed and ready.")
     },
     parameters = {
@@ -331,6 +419,7 @@ private fun createShellTool(
                         "Command timeout in seconds. Defaults to 30, max $SHELL_TIMEOUT_MAX_SECONDS."
                     )
                 })
+                putWorkspaceProperty()
             },
             required = listOf("command"),
         )
@@ -339,14 +428,16 @@ private fun createShellTool(
     execute = {
         val params = it.jsonObject
         val command = params.string("command") ?: error("command is required")
-        val cwd = (params.string("cwd") ?: defaultCwd.orEmpty())
+        val targetWorkspaceId = resolveTargetWorkspaceId(workspaceRepository, params, workspaceId)
+        // cwd 相对目标工作区文件根; 跨区调用时会话捕获的 shellCwd 对别的区没有意义, 忽略之(等价于不传 cwd)
+        val cwd = (params.string("cwd") ?: if (targetWorkspaceId == workspaceId) defaultCwd.orEmpty() else "")
             .removePrefix("/workspace/").removePrefix("/workspace")
         val timeoutMillis = params.string("timeout")?.toLongOrNull()
             ?.coerceIn(1L, SHELL_TIMEOUT_MAX_SECONDS)
             ?.times(1_000L)
             ?: WorkspaceManager.DEFAULT_COMMAND_TIMEOUT_MS
         val result = workspaceRepository.executeCommand(
-            id = workspaceId,
+            id = targetWorkspaceId,
             command = command,
             cwd = cwd,
             timeoutMillis = timeoutMillis,
@@ -399,6 +490,8 @@ private fun createOffloadTool(
         as preview; the full content is written to $OFFLOAD_DIR/<name>.md and can be read later
         with workspace_read_file (list the area with workspace_read_folder on $OFFLOAD_DIR).
         Prefer this over dumping outputs larger than $OFFLOAD_HINT_BYTES bytes into the conversation.
+        The optional `workspace` parameter targets another workspace id (from workspace_list);
+        it defaults to the assistant's bound workspace.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
@@ -418,6 +511,7 @@ private fun createOffloadTool(
                     put("type", "boolean")
                     put("description", "Whether to overwrite an existing file. Defaults to true.")
                 })
+                putWorkspaceProperty()
             },
             required = listOf("name", "text"),
         )
@@ -428,9 +522,10 @@ private fun createOffloadTool(
         val name = sanitizeOffloadName(params.string("name"))
         val text = params.string("text") ?: error("text is required")
         val overwrite = params["overwrite"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: true
+        val targetWorkspaceId = resolveTargetWorkspaceId(workspaceRepository, params, workspaceId)
         val path = "$OFFLOAD_DIR/$name.md"
         val entry = workspaceRepository.writeTextInRootfs(
-            workspaceId,
+            targetWorkspaceId,
             path,
             text,
             overwrite,
@@ -528,7 +623,7 @@ private suspend fun WorkspaceRepository.readFileInRootfs(
     )
 }
 
-private suspend fun WorkspaceRepository.readTextInRootfs(
+internal suspend fun WorkspaceRepository.readTextInRootfs(
     workspaceId: String,
     path: String,
     allowSharedStorage: Boolean,
@@ -548,7 +643,7 @@ private suspend fun WorkspaceRepository.readRootfsBytes(
     return buffer.toByteArray()
 }
 
-private suspend fun WorkspaceRepository.writeTextInRootfs(
+internal suspend fun WorkspaceRepository.writeTextInRootfs(
     workspaceId: String,
     path: String,
     text: String,
@@ -579,7 +674,7 @@ private suspend fun WorkspaceRepository.writeTextInRootfs(
     return result.stdout.parseRootfsEntry()
 }
 
-private suspend fun WorkspaceRepository.createFolderInRootfs(
+internal suspend fun WorkspaceRepository.createFolderInRootfs(
     workspaceId: String,
     path: String,
     allowSharedStorage: Boolean = false,

@@ -657,6 +657,8 @@
   <string name="chat_page_compress_not_enough_messages">消息数量不足，无法压缩。请减少保留的消息数量或添加更多消息。</string>
   <string name="chat_page_compress_pending_tools">无法压缩：这个会话里还有等待你审批的工具调用，请先批准或拒绝它们。</string>
   <string name="chat_compress_succeeded">历史已压缩：被折叠的部分已收进摘要。</string>
+  <string name="chat_compress_succeeded_counts">历史已压缩：折叠 %1$d 条进摘要，保留 %2$d 条。</string>
+  <string name="chat_compress_nothing_to_fold">没有可折叠的内容：会话已在目标范围内，保持原样。</string>
   <string name="chat_interrupted_and_restarted">已停掉上一轮回复，正在从这条消息继续。</string>
   <string name="chat_page_compress_target_tokens">目标Token大小</string>
   <string name="chat_page_compress_target_tokens_supporting">请输入 100 到 32,000 之间的整数。</string>
@@ -2607,11 +2609,15 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_detail_tool_delete_file">删除文件</string>
   <string name="workspace_detail_tool_edit_file">编辑文件</string>
   <string name="workspace_detail_tool_list_files">列出文件</string>
+  <string name="workspace_detail_tool_list">列出工作区</string>
   <string name="workspace_detail_tool_move_file">移动文件</string>
   <string name="workspace_detail_tool_read_file">读取文件</string>
   <string name="workspace_detail_tool_shell">执行命令</string>
   <string name="workspace_detail_tool_write_file">写入文件</string>
   <string name="workspace_detail_tool_offload">大输出落盘</string>
+  <string name="workspace_detail_tool_config_get_all">读取配置</string>
+  <string name="workspace_detail_tool_config_set">设置配置</string>
+  <string name="workspace_detail_tool_config_revert">回滚配置</string>
   <string name="workspace_detail_will_delete">将删除 %s.</string>
   <string name="workspace_detail_workspace_info">工作区</string>
   <string name="workspace_file_editor_preview">预览</string>

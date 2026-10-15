@@ -338,10 +338,16 @@ object ToolCapabilityResolver {
         "create_directory", "batch_copy", "batch_move", "batch_delete", "zip_files",
         "unzip_file", "download_file", "workspace_write_file", "workspace_edit_file",
         "workspace_offload",
+        // 工作区配置存储（jude-port）：写侧。
+        "config_set", "config_revert",
     )
     private val FILE_READ_TOOLS = setOf(
         "read_file", "list_files", "file_info", "find_files", "show_image", "list_zip_contents",
         "workspace_read_file",
+        // 工作区枚举（jude-port）：只读，与 workspace_read_file 同侧。
+        "workspace_list",
+        // 工作区配置存储（jude-port）：读侧。
+        "config_get_all",
     )
     private fun JsonObject.boolean(name: String): Boolean =
         string(name)?.toBooleanStrictOrNull() == true

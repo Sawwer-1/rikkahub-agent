@@ -86,6 +86,7 @@ import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.tools.LocalTools
 import me.rerere.rikkahub.data.ai.tools.WebSearchPolicy
 import me.rerere.rikkahub.data.ai.tools.createConversationTools
+import me.rerere.rikkahub.data.ai.tools.createListTool
 import me.rerere.rikkahub.data.ai.tools.createSearchTools
 import me.rerere.rikkahub.data.ai.tools.createSkillTools
 import me.rerere.rikkahub.data.ai.tools.createWorkspaceTools
@@ -1218,6 +1219,12 @@ class ChatService(
         me.rerere.rikkahub.data.authority.transaction.FinalConversationAuthorityCoordinator,
     private val executionMessageAuthorityBinder:
         me.rerere.rikkahub.data.execution.ExecutionMessageAuthorityBinder,
+    /**
+     * Security-audit sidecar (rolling JSONL). Nullable with a default so existing test
+     * constructions keep compiling; [me.rerere.rikkahub.data.security.SecurityAuditRepository.record]
+     * never throws, so an audit write can never disturb the approval command path.
+     */
+    private val securityAudit: me.rerere.rikkahub.data.security.SecurityAuditRepository? = null,
 ) {
     @androidx.annotation.VisibleForTesting
     @Volatile
@@ -4114,6 +4121,14 @@ class ChatService(
             approved -> me.rerere.rikkahub.data.execution.PersistedApprovalDecision.APPROVED
             else -> me.rerere.rikkahub.data.execution.PersistedApprovalDecision.DENIED
         }
+        // 审批决策本身要留痕（240 工单 §六「审批拒绝也写审计」）：此前只有 GenerationHandler 在
+        // 「拒绝被执行」时记 denied，批准/回答路径全无记录，事后无法回答"谁批的、什么时候批的"。
+        recordApprovalDecisionAudit(
+            command = command,
+            origin = origin,
+            reason = reason,
+            status = "submitted",
+        )
         var foundPending = false
         var appliedPendingDecision = false
         var foundSameTerminal = false
@@ -4201,6 +4216,18 @@ class ChatService(
                 }
                 commitApprovalScopeGrant(conversationId, command, approved)
             }
+            // 决策没能落地（冲突 / 已被别的决策终结 / 已不再 pending）：失败也要有痕，
+            // 否则用户看到的只有一张错误卡片，审计里查不到任何东西（240 工单 §六）。
+            recordApprovalDecisionAudit(
+                command = command,
+                origin = origin,
+                reason = reason,
+                status = when {
+                    foundConflictingTerminal -> "rejected:conflict"
+                    foundSameTerminal -> "already_resolved"
+                    else -> "rejected:not_pending"
+                },
+            )
             return when {
                 foundConflictingTerminal -> RunOutcome.Conflict("Tool approval already resolved with another decision")
                 foundSameTerminal -> RunOutcome.Completed()
@@ -4343,6 +4370,39 @@ class ChatService(
         // The row is already durable. enqueueEnvelope re-adopts the exact identity and only
         // supplies an in-memory Deferred/channel entry; it cannot create another resume.
         getOrCreateRuntime(conversationId).enqueueEnvelope(envelope)
+    }
+
+    /**
+     * Audit one approval decision as it enters the command path (approved / answered / denied).
+     *
+     * Only the decision, its origin and the rejection reason are recorded — never tool arguments
+     * or caller-supplied text — so the audit log stays safe to export. Denials are additionally
+     * recorded by GenerationHandler when the denial is applied; the two entries differ in
+     * `status` ("submitted" = the user's decision, "denied" = the runtime effect).
+     */
+    private suspend fun recordApprovalDecisionAudit(
+        command: ToolApprovalCommand,
+        origin: CommandOrigin,
+        reason: String,
+        status: String,
+    ) {
+        val audit = securityAudit ?: return
+        val action = when (command.decision) {
+            is ToolDecision.Approved -> "approved"
+            is ToolDecision.Answered -> "answered"
+            else -> "denied"
+        }
+        audit.record(
+            category = "approval",
+            action = action,
+            target = command.toolName.orEmpty(),
+            detail = buildString {
+                append("origin=").append(origin.name)
+                append(" scope=").append(command.scope)
+                if (reason.isNotBlank()) append(" reason=").append(reason.take(120))
+            },
+            status = status,
+        )
     }
 
     private suspend fun commitApprovalScopeGrant(
@@ -6414,9 +6474,12 @@ class ChatService(
         if (workspace.shellStatus != WorkspaceShellStatus.READY.name) {
             Log.d(
                 TAG,
-                "createWorkspaceToolsIfReady: skip workspace tools, workspace=$workspaceId, status=${workspace.shellStatus}"
+                "createWorkspaceToolsIfReady: workspace=$workspaceId not READY (status=${workspace.shellStatus}); " +
+                    "exposing only workspace_list"
             )
-            return emptyList()
+            // Rootfs 未就绪时其它工作区工具不可用，但 workspace_list 只读枚举、不依赖 Rootfs，
+            // 仍应可用（模型可据此看到工作区 id 与 shell 状态）；审批口径与 READY 分支一致。
+            return listOf(createListTool(workspaceRepository, workspace.toolApprovalOverrides()))
         }
         return createWorkspaceTools(
             workspaceId = workspaceId,
@@ -6670,7 +6733,7 @@ class ChatService(
         targetTokens: Int,
         keepRecentMessages: Int = 32,
         autoCompressConfig: AutoCompressConfig? = null,
-    ): Result<Unit> = runCatching {
+    ): Result<CompressionOutcome> = runCatching {
         val settings = settingsStore.settingsFlow.first()
         initializeConversation(conversationId)
         val compressionBase = getConversationFlow(conversationId).value.normalizeCompressionState()
@@ -6826,13 +6889,17 @@ class ChatService(
         if (newConversation == null) {
             // 压缩期间会话已被其他写入（新一轮压缩/摘要编辑）推进，按过期丢弃本次结果。
             Log.i(TAG, "compressConversationRolling: stale compression result dropped for $conversationId")
-            return@runCatching
+            return@runCatching CompressionOutcome(foldedMessages = 0, keptMessages = allNodes.size)
         }
 
         saveConversation(conversationId, newConversation)
         // 「确认」路径同样要带上配置：saveConversation 只写图，配置必须单独走元数据写入，
         // 否则在弹窗里打开开关、点确认后重开仍是关闭（236 实测，自检 §12.1 第 5/6 步）。
         newConversation.autoCompressConfig?.let { persistAutoCompressConfig(conversationId, it) }
+        CompressionOutcome(
+            foldedMessages = nodesToCompress.size,
+            keptMessages = allNodes.size - nodesToCompress.size,
+        )
     }
 
     private suspend fun autoCompressConversationIfNeeded(
@@ -6924,7 +6991,7 @@ class ChatService(
         additionalPrompt: String,
         targetTokens: Int,
         keepRecentMessages: Int = 32
-    ): Result<Unit> {
+    ): Result<CompressionOutcome> {
         return try {
         require(targetTokens in 100..32_000) { "Compression target must be between 100 and 32,000 tokens." }
         require(keepRecentMessages >= 0) { "Messages to keep cannot be negative." }
@@ -7003,7 +7070,12 @@ class ChatService(
         )
 
         saveConversation(conversationId, newConversation)
-        Result.success(Unit)
+        Result.success(
+            CompressionOutcome(
+                foldedMessages = messagesToCompress.size,
+                keptMessages = messagesToKeep.size,
+            )
+        )
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Throwable) {

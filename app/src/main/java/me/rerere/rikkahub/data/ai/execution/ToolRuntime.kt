@@ -42,11 +42,21 @@ data class ToolAssessmentRequest(
     val context: ToolExecutionContext,
 )
 
+/**
+ * Machine-stable assessment error codes surfaced as the tool result `error` field.
+ * They stay distinct on purpose: "no descriptor at all" and "policy still reports unknown
+ * effects" are different failures with different fixes, and the model only sees the code.
+ */
+const val TOOL_ERROR_SECURITY_DESCRIPTOR_MISSING = "tool_security_descriptor_missing"
+const val TOOL_ERROR_POLICY_EFFECT_UNKNOWN = "tool_policy_effect_unknown"
+
 data class ToolAssessment(
     val policy: ToolExecutionPolicy,
     val securityDescriptor: ToolSecurityDescriptor?,
     val accepted: Boolean,
     val errorCode: String? = null,
+    /** Plain-language explanation handed to the model when rejected; null while accepted. */
+    val detail: String? = null,
 )
 
 data class ToolExecutionPlanRequest(
@@ -264,17 +274,26 @@ class DefaultToolRuntime(
         val explicitlyUntrustedPlugin = descriptor?.source == ToolDescriptorSource.PLUGIN &&
             policy.effects == setOf(ToolEffect.UNKNOWN) &&
             policy.concurrency == ToolConcurrency.GLOBAL_SERIAL
-        return if (descriptor == null ||
-            (ToolEffect.UNKNOWN in policy.effects && !explicitlyUntrustedPlugin)
-        ) {
-            ToolAssessment(
+        return when {
+            descriptor == null -> ToolAssessment(
+                policy = policy,
+                securityDescriptor = null,
+                accepted = false,
+                errorCode = TOOL_ERROR_SECURITY_DESCRIPTOR_MISSING,
+                detail = "This tool has no runtime security descriptor, so the runtime refuses to " +
+                    "execute it. It is missing from the security catalog of this build — check the " +
+                    "enabled tool set and the app version.",
+            )
+            ToolEffect.UNKNOWN in policy.effects && !explicitlyUntrustedPlugin -> ToolAssessment(
                 policy = policy,
                 securityDescriptor = descriptor,
                 accepted = false,
-                errorCode = "tool_security_descriptor_missing",
+                errorCode = TOOL_ERROR_POLICY_EFFECT_UNKNOWN,
+                detail = "This tool has a security descriptor, but its execution policy still reports " +
+                    "unknown side effects, so the runtime refuses to execute it. The tool is present " +
+                    "but not fully registered — check the execution-policy registration of this build.",
             )
-        } else {
-            ToolAssessment(
+            else -> ToolAssessment(
                 policy = policy,
                 securityDescriptor = descriptor,
                 accepted = true,
@@ -377,10 +396,11 @@ class DefaultToolRuntime(
         val assessment = assess(ToolAssessmentRequest(request.toolName, argsObject, context))
         if (!assessment.accepted) {
             timing?.preflightFinished()
-            notifyRejected(provisionalRedacted, checkNotNull(assessment.errorCode))
+            val assessmentErrorCode = checkNotNull(assessment.errorCode)
+            notifyRejected(provisionalRedacted, assessmentErrorCode)
             return ToolExecutionPlanResult.Rejected(
-                errorCode = checkNotNull(assessment.errorCode),
-                detail = "No runtime security descriptor exists for this tool.",
+                errorCode = assessmentErrorCode,
+                detail = assessment.detail ?: "This tool cannot be executed by the runtime.",
             )
         }
 

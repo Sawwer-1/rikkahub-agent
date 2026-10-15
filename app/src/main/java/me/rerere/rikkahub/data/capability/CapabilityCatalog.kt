@@ -347,6 +347,9 @@ object CapabilityCatalog {
         "workspace_edit_file",        "workspace_create_folder",
         // 大输出落盘（2.5.20）：写工作区文件，与 workspace_write_file 同属文件变更面。
         "workspace_offload",
+        // 工作区配置存储（jude-port）：config_set / config_revert 写工作区配置，属文件变更面。
+        "config_set",
+        "config_revert",
         // Spreadsheet surface (2.5.4/215) — writes xlsx/csv files, so it shares the file
         // mutation surface with the rest of the Files toggle group.
         me.rerere.rikkahub.data.ai.tools.local.TOOL_NAME_EXCEL_WRITE,
@@ -518,6 +521,10 @@ object CapabilityCatalog {
         "ui_wait_for_window",
         "ui_wait_for_node",
         "workspace_read_file",
+        // 工作区枚举（jude-port）：只读列出工作区，与 workspace_read_file 同为 Background。
+        "workspace_list",
+        // 工作区配置存储（jude-port）：config_get_all 只读配置，与 workspace_read_file 同为 Background。
+        "config_get_all",
         "conversation_list_recent",
         "conversation_read_recent",
         "conversation_search",

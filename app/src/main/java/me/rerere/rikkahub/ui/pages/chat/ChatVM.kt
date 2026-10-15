@@ -58,6 +58,7 @@ import me.rerere.rikkahub.data.repository.FavoriteRepository
 import me.rerere.rikkahub.service.ChatError
 import me.rerere.rikkahub.service.ChatRequestMode
 import me.rerere.rikkahub.service.ChatService
+import me.rerere.rikkahub.service.CompressionOutcome
 import me.rerere.rikkahub.service.MessageQueueState
 import me.rerere.rikkahub.service.QueuedMessage
 import me.rerere.rikkahub.ui.hooks.writeStringPreference
@@ -453,10 +454,11 @@ class ChatVM(
                 additionalPrompt,
                 targetTokens,
                 keepRecentMessages
-            ).onSuccess {
+            ).onSuccess { outcome ->
                 // 压缩是长任务且结果不可见（历史折叠后不容易一眼看出），成功与失败都必须有
                 // 明确信号，否则用户只能靠"加载一会自己关闭"猜（自检 2026-10-14 §21.4-4）。
-                Toast.makeText(context, context.getString(R.string.chat_compress_succeeded), Toast.LENGTH_SHORT).show()
+                // 报出实际条数：只说"已压缩"无法区分"折了 40 条"和"这条被新一轮写入挤掉、一条没折"。
+                Toast.makeText(context, compressionOutcomeText(outcome), Toast.LENGTH_SHORT).show()
             }.onFailure {
                 chatService.addError(it, title = context.getString(R.string.error_title_compress_conversation))
             }
@@ -485,13 +487,25 @@ class ChatVM(
                     targetTokens = targetTokens,
                     keepRecentMessages = keepRecentMessages,
                 ),
-            ).onSuccess {
-                Toast.makeText(context, context.getString(R.string.chat_compress_succeeded), Toast.LENGTH_SHORT).show()
+            ).onSuccess { outcome ->
+                Toast.makeText(context, compressionOutcomeText(outcome), Toast.LENGTH_SHORT).show()
             }.onFailure {
                 chatService.addError(it, title = context.getString(R.string.error_title_compress_conversation))
             }
         }
     }
+
+    /** Human summary of a compression pass: how much was folded and what stayed visible. */
+    private fun compressionOutcomeText(outcome: CompressionOutcome): String =
+        if (outcome.foldedMessages <= 0) {
+            context.getString(R.string.chat_compress_nothing_to_fold)
+        } else {
+            context.getString(
+                R.string.chat_compress_succeeded_counts,
+                outcome.foldedMessages,
+                outcome.keptMessages,
+            )
+        }
 
     fun saveAutoCompressConfig(config: AutoCompressConfig?) {
         viewModelScope.launch {

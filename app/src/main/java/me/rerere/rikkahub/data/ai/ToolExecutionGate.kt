@@ -169,6 +169,9 @@ internal fun selfPreservationBlockReason(
         "workspace_write_file",
         "workspace_edit_file",
         "workspace_offload",
+        // 工作区配置存储（jude-port）：config_set / config_revert 写工作区配置，按写入路径做自我数据保护。
+        "config_set",
+        "config_revert",
     )
     if (pathMutation) {
         fun strings(element: JsonElement): Sequence<String> = when (element) {

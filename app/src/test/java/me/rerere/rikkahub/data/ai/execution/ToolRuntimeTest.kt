@@ -509,6 +509,52 @@ class ToolRuntimeTest {
     }
 
     @Test
+    fun `unknown tool is rejected with the descriptor-missing code and a readable detail`() = runBlocking {
+        val runtime = DefaultToolRuntime(
+            policyResolver = resolver,
+            securityDescriptorResolver = DefaultToolSecurityDescriptorResolver(),
+        )
+
+        val assessment = runtime.assess(
+            ToolAssessmentRequest(
+                toolName = "unregistered_runtime_tool",
+                args = buildJsonObject {},
+                context = executionContext(),
+            )
+        )
+
+        assertFalse(assessment.accepted)
+        assertEquals("tool_security_descriptor_missing", assessment.errorCode)
+        assertTrue(assessment.detail.orEmpty().contains("security descriptor"))
+    }
+
+    @Test
+    fun `registered tool with unknown policy effects gets its own code, not descriptor-missing`() = runBlocking {
+        val runtime = DefaultToolRuntime(
+            policyResolver = ToolExecutionPolicyResolver { _, _, _ ->
+                ToolExecutionPolicy(
+                    effects = setOf(ToolEffect.UNKNOWN),
+                    concurrency = ToolConcurrency.GLOBAL_SERIAL,
+                    cancellationCapability = ToolCancellationCapability.REAL,
+                )
+            },
+            securityDescriptorResolver = DefaultToolSecurityDescriptorResolver(),
+        )
+
+        val assessment = runtime.assess(
+            ToolAssessmentRequest(
+                toolName = "read_file",
+                args = buildJsonObject {},
+                context = executionContext(),
+            )
+        )
+
+        assertFalse(assessment.accepted)
+        assertEquals("tool_policy_effect_unknown", assessment.errorCode)
+        assertTrue(assessment.detail.orEmpty().contains("execution policy"))
+    }
+
+    @Test
     fun `hard safety gate runs before an interceptor and can block startup`() = runBlocking {
         val events = mutableListOf<String>()
         val runtime = DefaultToolRuntime(

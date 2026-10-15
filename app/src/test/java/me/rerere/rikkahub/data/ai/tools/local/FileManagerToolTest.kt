@@ -368,6 +368,37 @@ class FileManagerToolTest {
         assertEquals(100, result["bytes_read"]?.jsonPrimitive?.content?.toInt())
     }
 
+    @Test fun `read_file honors offset and max_bytes to page through a file`() {
+        val f = tmp.newFile("page.txt")
+        f.writeText("0123456789")
+        val result = invokeTool(readFileTool(),
+            """{"path":"${f.absolutePath}","offset":4,"max_bytes":3}""")
+        assertEquals("456", result["content"]?.jsonPrimitive?.content)
+        assertEquals(3, result["bytes_read"]?.jsonPrimitive?.content?.toInt())
+        assertEquals(4L, result["offset"]?.jsonPrimitive?.content?.toLong())
+        assertTrue(result["truncated"]!!.jsonPrimitive.boolean)
+    }
+
+    @Test fun `read_file with offset past EOF returns empty content without error`() {
+        val f = tmp.newFile("tail.txt")
+        f.writeText("abc")
+        val result = invokeTool(readFileTool(),
+            """{"path":"${f.absolutePath}","offset":99}""")
+        assertNull(result["error"])
+        assertEquals("", result["content"]?.jsonPrimitive?.content)
+        assertEquals(0, result["bytes_read"]?.jsonPrimitive?.content?.toInt())
+        assertFalse(result["truncated"]!!.jsonPrimitive.boolean)
+    }
+
+    @Test fun `read_file offset reaching EOF exactly is not truncated`() {
+        val f = tmp.newFile("exact.txt")
+        f.writeText("abcdef")
+        val result = invokeTool(readFileTool(),
+            """{"path":"${f.absolutePath}","offset":3,"max_bytes":3}""")
+        assertEquals("def", result["content"]?.jsonPrimitive?.content)
+        assertFalse(result["truncated"]!!.jsonPrimitive.boolean)
+    }
+
     @Test fun `read_file returns not_found for missing file`() {
         val result = invokeTool(readFileTool(),
             """{"path":"${tmp.root.absolutePath}/missing.txt"}""")

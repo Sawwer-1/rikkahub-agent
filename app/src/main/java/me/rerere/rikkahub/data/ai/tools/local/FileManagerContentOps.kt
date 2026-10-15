@@ -10,6 +10,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import me.rerere.ai.ui.UIMessagePart
 import java.util.Base64 as JBase64
@@ -81,11 +82,13 @@ internal fun readFileContent(context: Context, raw: String, obj: JsonObject): Li
     guardOrNull(raw)?.let { return it }
     val maxBytes = (obj["max_bytes"]?.jsonPrimitive?.intOrNull ?: CONTENT_DEFAULT_READ)
         .coerceIn(1, CONTENT_MAX_READ)
+    val offset = (obj["offset"]?.jsonPrimitive?.longOrNull ?: 0L).coerceAtLeast(0L)
     var overflow = false
     val bytes = try {
         val stream = ContentUriResolver.openInput(context, raw)
             ?: return fmTextPart(ContentUriResolver.notGrantedEnvelope(raw))
         stream.use { s ->
+            if (offset > 0L) skipExactly(s, offset)
             val b = readUpTo(s, maxBytes)
             // Probe one byte past the budget so `truncated` is honest even when the
             // provider reports no SIZE column (totalSize falls back to bytes.size).
@@ -98,8 +101,8 @@ internal fun readFileContent(context: Context, raw: String, obj: JsonObject): Li
         return fmTextPart(fmErrEnvelope("io_error", e.message ?: "IO error"))
     }
     // total size for the truncation flag
-    val totalSize = ContentUriResolver.resolve(context, raw)?.length() ?: bytes.size.toLong()
-    val truncated = totalSize > maxBytes || overflow
+    val totalSize = ContentUriResolver.resolve(context, raw)?.length() ?: (offset + bytes.size)
+    val truncated = totalSize > offset + maxBytes || overflow
     val sample = bytes.take(minOf(512, bytes.size))
     val nonPrintable = countNonPrintable(sample)
     val isBinary = sample.isNotEmpty() && (nonPrintable.toDouble() / sample.size) > 0.15
@@ -108,6 +111,7 @@ internal fun readFileContent(context: Context, raw: String, obj: JsonObject): Li
             put("content_base64", JBase64.getEncoder().encodeToString(bytes))
             put("binary", true)
             put("bytes_read", bytes.size)
+            put("offset", offset)
             put("truncated", truncated)
         }.toString())
     } else {
@@ -115,6 +119,7 @@ internal fun readFileContent(context: Context, raw: String, obj: JsonObject): Li
             put("content", String(bytes, Charsets.UTF_8))
             put("truncated", truncated)
             put("bytes_read", bytes.size)
+            put("offset", offset)
             put("encoding", "UTF-8")
         }.toString())
     }
