@@ -22,6 +22,17 @@ import me.rerere.rikkahub.data.ai.tools.ToolExecutionHandle
 import me.rerere.rikkahub.data.ai.tools.ToolTerminationState
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.service.withSteeringAuditMessage
+
+/**
+ * 等待运行时状态迁移的阈值。
+ *
+ * 原值 5_000ms 在 CI 上（2875 个用例并行、runner 负载高）偶发不够：2026-10-14 与 10-15 两次假失败，
+ * 一次表现为断言竞态（`interrupt with no active run … fails closed`）、一次直接
+ * `TimeoutCancellationException: Timed out waiting for 5000 ms`（`hydration failure rejects accepted
+ * commands`），都是**测试等待太短**而非产品缺陷（重跑即绿）。这里统一抬到 20s：断言内容不变，
+ * 真挂死仍会失败，只是慢一点暴露。
+ */
+private const val AWAIT_TIMEOUT_MS = 20_000L
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -55,15 +66,15 @@ class ConversationRuntimeTest {
             val send = CommandEnvelope(conversationId = conversationId, command = messageCommand("send"),
                 origin = CommandOrigin.APP_UI, sequence = 1L)
             runtime.enqueueEnvelope(send)
-            withTimeout(5000) { started.await() }
+            withTimeout(AWAIT_TIMEOUT_MS) { started.await() }
             val edit = CommandEnvelope(conversationId = conversationId,
                 command = MutateMessageCommand(Uuid.random(), Uuid.random()), origin = CommandOrigin.APP_UI, sequence = 2L)
             runtime.enqueueEnvelope(edit)
             assertFalse(editStarted.isCompleted)
             assertFalse(edit.result.isCompleted)
             release.complete(Unit)
-            assertEquals(CommandOutcome.Completed, withTimeout(5000) { send.result.await() })
-            assertEquals(CommandOutcome.Conflict("Message target disappeared"), withTimeout(5000) { edit.result.await() })
+            assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { send.result.await() })
+            assertEquals(CommandOutcome.Conflict("Message target disappeared"), withTimeout(AWAIT_TIMEOUT_MS) { edit.result.await() })
         } finally { runtime.close(); scope.cancel() }
     }
 
@@ -149,7 +160,7 @@ class ConversationRuntimeTest {
         val second = rootEnvelope(secondId, 2L)
 
         assertEquals(SubmitResult.Accepted(firstId), runtime.enqueueEnvelope(first))
-        withTimeout(5_000) {
+        withTimeout(AWAIT_TIMEOUT_MS) {
             while (dao.row(firstId)?.state != DurableCommandState.WAITING_APPROVAL.name) {
                 kotlinx.coroutines.delay(10)
             }
@@ -172,7 +183,7 @@ class ConversationRuntimeTest {
             lineage = firstLineage.copy(parentCommandId = firstId),
         )
         assertEquals(SubmitResult.Accepted(firstResumeId), runtime.enqueueEnvelope(resume))
-        withTimeout(5_000) {
+        withTimeout(AWAIT_TIMEOUT_MS) {
             while (
                 dao.row(firstResumeId)?.state != DurableCommandState.WAITING_APPROVAL.name ||
                 runtime.queueStatus.value.activeCommandId != null
@@ -195,7 +206,7 @@ class ConversationRuntimeTest {
             lineage = firstLineage.copy(parentCommandId = firstResumeId),
         )
         assertEquals(SubmitResult.Accepted(finalResumeId), runtime.enqueueEnvelope(finalResume))
-        withTimeout(5_000) {
+        withTimeout(AWAIT_TIMEOUT_MS) {
             assertEquals(CommandOutcome.Completed, first.result.await())
             assertEquals(CommandOutcome.Completed, resume.result.await())
             assertEquals(CommandOutcome.Completed, finalResume.result.await())
@@ -205,7 +216,7 @@ class ConversationRuntimeTest {
         assertEquals(DurableCommandState.COMPLETED.name, dao.row(firstResumeId)?.state)
         assertEquals(DurableCommandState.COMPLETED.name, dao.row(finalResumeId)?.state)
         assertEquals(4, executions.get())
-        withTimeout(5_000) {
+        withTimeout(AWAIT_TIMEOUT_MS) {
             while (runtime.runtimeState.value != RuntimeState.Idle) {
                 kotlinx.coroutines.delay(10)
             }
@@ -243,7 +254,7 @@ class ConversationRuntimeTest {
             sequence = 1L,
         ).withRootLineage()
         assertEquals(SubmitResult.Accepted(rootId), runtime.enqueueEnvelope(root))
-        withTimeout(5_000) {
+        withTimeout(AWAIT_TIMEOUT_MS) {
             while (
                 dao.row(rootId)?.state != DurableCommandState.WAITING_APPROVAL.name ||
                 runtime.queueStatus.value.activeCommandId != null
@@ -262,7 +273,7 @@ class ConversationRuntimeTest {
             SubmitResult.Accepted(interrupt.id),
             runtime.replaceEmergencyEnvelope(interrupt),
         )
-        withTimeout(5_000) {
+        withTimeout(AWAIT_TIMEOUT_MS) {
             assertEquals(CommandOutcome.Cancelled, root.result.await())
             assertTrue(interrupt.result.await() is CommandOutcome.Failed)
         }
@@ -300,7 +311,7 @@ class ConversationRuntimeTest {
             sequence = 1L,
         ).withRootLineage()
         runtime.enqueueEnvelope(root)
-        withTimeout(5_000) {
+        withTimeout(AWAIT_TIMEOUT_MS) {
             while (
                 dao.row(rootId)?.state != DurableCommandState.WAITING_APPROVAL.name ||
                 runtime.queueStatus.value.activeCommandId != null
@@ -316,7 +327,7 @@ class ConversationRuntimeTest {
             sequence = 2L,
         )
         runtime.replaceEmergencyEnvelope(stop)
-        withTimeout(5_000) {
+        withTimeout(AWAIT_TIMEOUT_MS) {
             assertEquals(CommandOutcome.Cancelled, root.result.await())
             assertEquals(CommandOutcome.Completed, stop.result.await())
         }
@@ -333,8 +344,8 @@ class ConversationRuntimeTest {
         // §14（ea53e2a）：对账不是死路——barrier 待对账时 ResumeQueueCommand 走 durable 重扫
         // 完成延迟对账后放行，不再回弹 Conflict；队列与等待集皆空时 reconcileStopPause
         // 把停机暂停回落为 Idle。
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { resumeQueue.result.await() })
-        withTimeout(5_000) {
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { resumeQueue.result.await() })
+        withTimeout(AWAIT_TIMEOUT_MS) {
             while (runtime.runtimeState.value != RuntimeState.Idle) {
                 kotlinx.coroutines.delay(10)
             }
@@ -423,7 +434,7 @@ class ConversationRuntimeTest {
         assertTrue(runtime.replaceEmergencyEnvelope(second) is SubmitResult.Accepted)
         assertEquals(CommandOutcome.Superseded(second.id), first.result.await())
         hydrationGate.complete(Unit)
-        withTimeout(5_000) { started.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { started.await() }
         release.complete(Unit)
         assertEquals(CommandOutcome.Completed, second.result.await())
 
@@ -448,7 +459,7 @@ class ConversationRuntimeTest {
         )
 
         assertTrue(runtime.enqueueEnvelope(command) is SubmitResult.Accepted)
-        val outcome = withTimeout(5_000) { command.result.await() }
+        val outcome = withTimeout(AWAIT_TIMEOUT_MS) { command.result.await() }
         assertTrue(outcome is CommandOutcome.Rejected)
         runtime.close()
         scope.cancel()
@@ -528,11 +539,11 @@ class ConversationRuntimeTest {
         )
 
         runtime.enqueueEnvelope(first)
-        withTimeout(5_000) { firstStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { firstStarted.await() }
         runtime.enqueueEnvelope(second)
         runtime.enqueueEnvelope(third)
 
-        withTimeout(5_000) {
+        withTimeout(AWAIT_TIMEOUT_MS) {
             while (runtime.queuedMessages.value.size != 2) kotlinx.coroutines.delay(10)
         }
         val snapshot = runtime.queuedMessages.value
@@ -602,10 +613,10 @@ class ConversationRuntimeTest {
         )
 
         runtime.enqueueEnvelope(first)
-        withTimeout(5_000) { firstStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { firstStarted.await() }
         runtime.enqueueEnvelope(queued)
         runtime.enqueueEnvelope(update)
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { update.result.await() })
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { update.result.await() })
         assertEquals("new", runtime.queuedMessages.value.single().content.parts
             .filterIsInstance<UIMessagePart.Text>().single().text)
 
@@ -659,15 +670,15 @@ class ConversationRuntimeTest {
         )
 
         runtime.enqueueEnvelope(active)
-        withTimeout(5_000) { runStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { runStarted.await() }
         runtime.enqueueEnvelope(queued)
         runtime.enqueueEnvelope(promote)
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { promote.result.await() })
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { promote.result.await() })
         assertTrue(runtime.queuedMessages.value.none { it.commandId == queued.id })
 
         allowCheckpoint.complete(Unit)
-        assertEquals(queued.id, withTimeout(5_000) { deliveredCommandId.await() })
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { queued.result.await() })
+        assertEquals(queued.id, withTimeout(AWAIT_TIMEOUT_MS) { deliveredCommandId.await() })
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { queued.result.await() })
         releaseRun.complete(Unit)
         assertEquals(CommandOutcome.Completed, active.result.await())
         assertEquals(1, executionCount.get())
@@ -716,11 +727,11 @@ class ConversationRuntimeTest {
         )
 
         runtime.enqueueEnvelope(active)
-        withTimeout(5_000) { runStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { runStarted.await() }
         runtime.enqueueEnvelope(queued)
         runtime.enqueueEnvelope(promote)
 
-        val promoteOutcome = withTimeout(5_000) { promote.result.await() }
+        val promoteOutcome = withTimeout(AWAIT_TIMEOUT_MS) { promote.result.await() }
         assertTrue(promoteOutcome is CommandOutcome.Rejected)
         assertEquals(attachmentContent, runtime.queuedMessages.value.single().content)
 
@@ -777,10 +788,10 @@ class ConversationRuntimeTest {
         )
 
         runtime.enqueueEnvelope(active)
-        withTimeout(5_000) { runStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { runStarted.await() }
         runtime.enqueueEnvelope(queued)
         runtime.enqueueEnvelope(promote)
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { promote.result.await() })
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { promote.result.await() })
 
         releaseRun.complete(Unit)
         assertEquals(CommandOutcome.Completed, active.result.await())
@@ -867,7 +878,7 @@ class ConversationRuntimeTest {
         )
 
         assertTrue(runtime.enqueueEnvelope(first) is SubmitResult.Accepted)
-        withTimeout(5_000) { firstStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { firstStarted.await() }
         assertTrue(runtime.enqueueEnvelope(second) is SubmitResult.Accepted)
         val stop = CommandEnvelope(
             conversationId = runtime.conversationId,
@@ -889,7 +900,7 @@ class ConversationRuntimeTest {
             sequence = 4,
         )
         assertTrue(runtime.enqueueEnvelope(resume) is SubmitResult.Accepted)
-        withTimeout(5_000) { secondStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { secondStarted.await() }
         assertEquals(CommandOutcome.Completed, second.result.await())
         assertEquals(CommandOutcome.Completed, resume.result.await())
         runtime.close()
@@ -928,7 +939,7 @@ class ConversationRuntimeTest {
             sequence = 1,
         )
         assertTrue(runtime.enqueueEnvelope(first) is SubmitResult.Accepted)
-        withTimeout(5_000) { firstStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { firstStarted.await() }
 
         // 排队消息先于停止提交：带排队工作的停止保留 Paused（纯停止才会回落 Idle）。
         val queued = CommandEnvelope(
@@ -946,9 +957,9 @@ class ConversationRuntimeTest {
             sequence = 3,
         )
         assertTrue(runtime.replaceEmergencyEnvelope(stop) is SubmitResult.Accepted)
-        assertEquals(CommandOutcome.Cancelled, withTimeout(5_000) { first.result.await() })
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { stop.result.await() })
-        withTimeout(5_000) {
+        assertEquals(CommandOutcome.Cancelled, withTimeout(AWAIT_TIMEOUT_MS) { first.result.await() })
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { stop.result.await() })
+        withTimeout(AWAIT_TIMEOUT_MS) {
             while (runtime.runtimeState.value != RuntimeState.Paused) {
                 kotlinx.coroutines.delay(10)
             }
@@ -961,7 +972,7 @@ class ConversationRuntimeTest {
             sequence = 4,
         )
         assertTrue(runtime.enqueueEnvelope(promote) is SubmitResult.Accepted)
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { promote.result.await() })
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { promote.result.await() })
         assertEquals(
             me.rerere.rikkahub.data.ai.SteeringState.FALLBACK_QUEUED,
             runtime.steeringEntries.value.getValue(queued.id).state,
@@ -974,12 +985,12 @@ class ConversationRuntimeTest {
             sequence = 5,
         )
         assertTrue(runtime.enqueueEnvelope(resume) is SubmitResult.Accepted)
-        withTimeout(5_000) { secondStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { secondStarted.await() }
         assertTrue(queued.id !in runtime.steeringEntries.value)
 
         releaseSecond.complete(Unit)
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { queued.result.await() })
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { resume.result.await() })
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { queued.result.await() })
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { resume.result.await() })
         runtime.close()
         scope.cancel()
     }
@@ -1020,7 +1031,7 @@ class ConversationRuntimeTest {
             sequence = 2,
         )
         assertTrue(runtime.enqueueEnvelope(first) is SubmitResult.Accepted)
-        withTimeout(5_000) { firstStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { firstStarted.await() }
         assertTrue(runtime.enqueueEnvelope(second) is SubmitResult.Accepted)
 
         val stop = CommandEnvelope(
@@ -1030,9 +1041,9 @@ class ConversationRuntimeTest {
             sequence = 3,
         )
         assertTrue(runtime.replaceEmergencyEnvelope(stop) is SubmitResult.Accepted)
-        assertEquals(CommandOutcome.Cancelled, withTimeout(5_000) { first.result.await() })
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { stop.result.await() })
-        withTimeout(5_000) {
+        assertEquals(CommandOutcome.Cancelled, withTimeout(AWAIT_TIMEOUT_MS) { first.result.await() })
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { stop.result.await() })
+        withTimeout(AWAIT_TIMEOUT_MS) {
             while (runtime.runtimeState.value != RuntimeState.Paused) {
                 kotlinx.coroutines.delay(10)
             }
@@ -1046,8 +1057,8 @@ class ConversationRuntimeTest {
             sequence = 4,
         )
         assertTrue(runtime.enqueueEnvelope(edit) is SubmitResult.Accepted)
-        withTimeout(5_000) { editApplied.await() }
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { edit.result.await() })
+        withTimeout(AWAIT_TIMEOUT_MS) { editApplied.await() }
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { edit.result.await() })
 
         // 编辑不解除暂停：排队的 B 依旧被拦，恢复入口（ResumeQueueCommand）才放行。
         kotlinx.coroutines.delay(100)
@@ -1061,8 +1072,8 @@ class ConversationRuntimeTest {
             sequence = 5,
         )
         assertTrue(runtime.enqueueEnvelope(resume) is SubmitResult.Accepted)
-        withTimeout(5_000) { secondStarted.await() }
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { second.result.await() })
+        withTimeout(AWAIT_TIMEOUT_MS) { secondStarted.await() }
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { second.result.await() })
         runtime.close()
         scope.cancel()
     }
@@ -1091,7 +1102,7 @@ class ConversationRuntimeTest {
             sequence = 1,
         )
         assertTrue(runtime.enqueueEnvelope(first) is SubmitResult.Accepted)
-        withTimeout(5_000) { started.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { started.await() }
 
         val stop = CommandEnvelope(
             conversationId = runtime.conversationId,
@@ -1100,10 +1111,10 @@ class ConversationRuntimeTest {
             sequence = 2,
         )
         assertTrue(runtime.replaceEmergencyEnvelope(stop) is SubmitResult.Accepted)
-        assertEquals(CommandOutcome.Cancelled, withTimeout(5_000) { first.result.await() })
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { stop.result.await() })
+        assertEquals(CommandOutcome.Cancelled, withTimeout(AWAIT_TIMEOUT_MS) { first.result.await() })
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { stop.result.await() })
         // 纯停止 + 空队列：runtime 回落 Idle，不再永久钉死 Paused。
-        withTimeout(5_000) {
+        withTimeout(AWAIT_TIMEOUT_MS) {
             while (runtime.runtimeState.value != RuntimeState.Idle) {
                 kotlinx.coroutines.delay(10)
             }
@@ -1117,7 +1128,7 @@ class ConversationRuntimeTest {
             sequence = 3,
         )
         assertTrue(runtime.enqueueEnvelope(next) is SubmitResult.Accepted)
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { next.result.await() })
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { next.result.await() })
         runtime.close()
         scope.cancel()
     }
@@ -1155,7 +1166,7 @@ class ConversationRuntimeTest {
             sequence = 1L,
         ).withRootLineage()
         assertEquals(SubmitResult.Accepted(rootId), runtime.enqueueEnvelope(root))
-        withTimeout(5_000) {
+        withTimeout(AWAIT_TIMEOUT_MS) {
             while (
                 dao.row(rootId)?.state != DurableCommandState.WAITING_APPROVAL.name ||
                 runtime.queueStatus.value.activeCommandId != null
@@ -1174,8 +1185,8 @@ class ConversationRuntimeTest {
             sequence = 2L,
         ).withRootLineage()
         assertEquals(SubmitResult.Accepted(editId), runtime.enqueueEnvelope(edit))
-        withTimeout(5_000) { editExecuted.await() }
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { edit.result.await() })
+        withTimeout(AWAIT_TIMEOUT_MS) { editExecuted.await() }
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { edit.result.await() })
         assertEquals(DurableCommandState.COMPLETED.name, dao.row(editId)?.state)
         // 审批屏障不受编辑影响。
         assertEquals(DurableCommandState.WAITING_APPROVAL.name, dao.row(rootId)?.state)
@@ -1401,7 +1412,7 @@ class ConversationRuntimeTest {
         hydrationGate.complete(Unit)
 
         retries.forEach { retry ->
-            assertEquals(CommandOutcome.Completed, withTimeout(5_000) { retry.result.await() })
+            assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { retry.result.await() })
         }
         assertEquals(1, executions.get())
         runtime.close()
@@ -1597,7 +1608,7 @@ class ConversationRuntimeTest {
         )
 
         assertTrue(runtime.enqueueEnvelope(first) is SubmitResult.Accepted)
-        withTimeout(5_000) { firstStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { firstStarted.await() }
         assertTrue(runtime.replaceEmergencyEnvelope(replacement) is SubmitResult.Accepted)
 
         assertEquals(CommandOutcome.Cancelled, first.result.await())
@@ -1636,7 +1647,7 @@ class ConversationRuntimeTest {
             sequence = 1,
         )
         assertTrue(runtime.enqueueEnvelope(active) is SubmitResult.Accepted)
-        withTimeout(5_000) { firstStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { firstStarted.await() }
 
         val targetMessageId = Uuid.random()
         val regenerate = CommandEnvelope(
@@ -1651,9 +1662,9 @@ class ConversationRuntimeTest {
         )
         assertTrue(runtime.enqueueEnvelope(regenerate) is SubmitResult.Accepted)
 
-        assertEquals(CommandOutcome.Cancelled, withTimeout(5_000) { active.result.await() })
-        withTimeout(5_000) { regenerateStarted.await() }
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { regenerate.result.await() })
+        assertEquals(CommandOutcome.Cancelled, withTimeout(AWAIT_TIMEOUT_MS) { active.result.await() })
+        withTimeout(AWAIT_TIMEOUT_MS) { regenerateStarted.await() }
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { regenerate.result.await() })
 
         runtime.close()
         scope.cancel()
@@ -1696,8 +1707,8 @@ class ConversationRuntimeTest {
             sequence = 1,
         ).withRootLineage()
         assertTrue(runtime.enqueueEnvelope(regenerate) is SubmitResult.Accepted)
-        withTimeout(5_000) { regenerateStarted.await() }
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { regenerate.result.await() })
+        withTimeout(AWAIT_TIMEOUT_MS) { regenerateStarted.await() }
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { regenerate.result.await() })
         val durableRow = checkNotNull(dao.row(regenerate.id))
         assertEquals(DurableCommandState.COMPLETED.name, durableRow.state)
         assertEquals(1, durableRow.attempt)
@@ -1738,7 +1749,7 @@ class ConversationRuntimeTest {
             sequence = 1,
         )
         assertTrue(runtime.enqueueEnvelope(active) is SubmitResult.Accepted)
-        withTimeout(5_000) { firstStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { firstStarted.await() }
 
         val targetMessageId = Uuid.random()
         val regenerate = CommandEnvelope(
@@ -1753,8 +1764,8 @@ class ConversationRuntimeTest {
         )
         assertTrue(runtime.enqueueEnvelope(regenerate) is SubmitResult.Accepted)
 
-        withTimeout(2_000) { regenerateStarted.await() }
-        assertEquals(CommandOutcome.Completed, withTimeout(2_000) { regenerate.result.await() })
+        withTimeout(AWAIT_TIMEOUT_MS) { regenerateStarted.await() }
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { regenerate.result.await() })
         assertTrue(!surfacedError.isCompleted)
 
         releaseFirst.complete(Unit)
@@ -1802,7 +1813,7 @@ class ConversationRuntimeTest {
             sequence = 1,
         )
         assertTrue(runtime.enqueueEnvelope(active) is SubmitResult.Accepted)
-        withTimeout(5_000) { firstStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { firstStarted.await() }
 
         val targetMessageId = Uuid.random()
         val regenerate = CommandEnvelope(
@@ -1817,9 +1828,9 @@ class ConversationRuntimeTest {
         )
         assertTrue(runtime.enqueueEnvelope(regenerate) is SubmitResult.Accepted)
 
-        val outcome = withTimeout(2_000) { regenerate.result.await() }
+        val outcome = withTimeout(AWAIT_TIMEOUT_MS) { regenerate.result.await() }
         assertTrue(outcome is CommandOutcome.Failed)
-        assertEquals((outcome as CommandOutcome.Failed).error, withTimeout(2_000) { surfacedError.await() })
+        assertEquals((outcome as CommandOutcome.Failed).error, withTimeout(AWAIT_TIMEOUT_MS) { surfacedError.await() })
         assertTrue(!regenerateStarted.isCompleted)
 
         releaseFirst.complete(Unit)
@@ -1868,13 +1879,13 @@ class ConversationRuntimeTest {
 
         assertTrue(runtime.enqueueEnvelope(first) is SubmitResult.Accepted)
         assertTrue(runtime.enqueueEnvelope(second) is SubmitResult.Accepted)
-        withTimeout(5_000) { barrierEntered.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { barrierEntered.await() }
         assertTrue(!bStarted.isCompleted)
         assertTrue(!first.result.isCompleted)
 
         releaseBarrier.complete(Unit)
         assertEquals(CommandOutcome.Completed, first.result.await())
-        withTimeout(5_000) { bStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { bStarted.await() }
         assertEquals(CommandOutcome.Completed, second.result.await())
         runtime.close()
         scope.cancel()
@@ -1928,14 +1939,14 @@ class ConversationRuntimeTest {
             sequence = 2,
         )
         assertTrue(runtime.enqueueEnvelope(first) is SubmitResult.Accepted)
-        withTimeout(5_000) { started.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { started.await() }
         assertTrue(runtime.replaceEmergencyEnvelope(stop) is SubmitResult.Accepted)
         release.complete(Unit)
         assertEquals(CommandOutcome.Cancelled, first.result.await())
         assertEquals(CommandOutcome.Completed, stop.result.await())
         assertEquals(
             CancelRequestResult.LocalWaitCancelledOnly,
-            withTimeout(5_000) { repaired.await()["call-1"] },
+            withTimeout(AWAIT_TIMEOUT_MS) { repaired.await()["call-1"] },
         )
         runtime.close()
         scope.cancel()
@@ -1996,14 +2007,14 @@ class ConversationRuntimeTest {
         )
 
         assertTrue(runtime.enqueueEnvelope(message) is SubmitResult.Accepted)
-        withTimeout(5_000) { toolStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { toolStarted.await() }
         assertTrue(runtime.enqueueEnvelope(steer) is SubmitResult.Accepted)
         // Deliberately release immediately: do not wait for pendingSteering() or any
         // internal signal. The registration/checkpoint boundary must be linearizable.
         releaseTool.complete(Unit)
 
         assertEquals(CommandOutcome.Completed, steer.result.await())
-        val delivered = withTimeout(5_000) { observed.await().single() }
+        val delivered = withTimeout(AWAIT_TIMEOUT_MS) { observed.await().single() }
         assertEquals("focus on recovery", delivered.text)
         assertEquals(runId.await(), delivered.runId)
         val appliedEntry = runtime.steeringEntries.value.getValue(steer.id)
@@ -2062,13 +2073,13 @@ class ConversationRuntimeTest {
         )
 
         assertEquals(SubmitResult.Accepted(message.id), runtime.enqueueEnvelope(message))
-        withTimeout(5_000) { runStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { runStarted.await() }
         assertEquals(SubmitResult.Accepted(steer.id), runtime.enqueueEnvelope(steer))
         assertEquals("steer", dao.row(steer.id)?.type)
         assertEquals(SubmitResult.Accepted(stop.id), runtime.replaceEmergencyEnvelope(stop))
 
-        assertEquals(CommandOutcome.Cancelled, withTimeout(5_000) { message.result.await() })
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { stop.result.await() })
+        assertEquals(CommandOutcome.Cancelled, withTimeout(AWAIT_TIMEOUT_MS) { message.result.await() })
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { stop.result.await() })
         // In-memory completion is deliberately held behind the durable terminal CAS. While
         // that transition is blocked, a scan must not recover the steer as send_message work.
         kotlinx.coroutines.delay(150)
@@ -2078,12 +2089,12 @@ class ConversationRuntimeTest {
         assertEquals(1, executions.get())
 
         terminalGate.complete(Unit)
-        assertTrue(withTimeout(5_000) { steer.result.await() } is CommandOutcome.NotApplied)
+        assertTrue(withTimeout(AWAIT_TIMEOUT_MS) { steer.result.await() } is CommandOutcome.NotApplied)
         assertEquals(
             me.rerere.rikkahub.data.ai.SteeringState.NOT_APPLIED_RUN_FINISHED,
             runtime.steeringEntries.value.getValue(steer.id).state,
         )
-        withTimeout(5_000) {
+        withTimeout(AWAIT_TIMEOUT_MS) {
             while (dao.row(steer.id)?.state != DurableCommandState.COMPLETED.name) {
                 kotlinx.coroutines.delay(10)
             }
@@ -2140,10 +2151,10 @@ class ConversationRuntimeTest {
         )
 
         assertTrue(runtime.enqueueEnvelope(message) is SubmitResult.Accepted)
-        withTimeout(5_000) { runStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { runStarted.await() }
         assertTrue(runtime.enqueueEnvelope(steer) is SubmitResult.Accepted)
         allowCheckpoint.complete(Unit)
-        withTimeout(5_000) { checkpointApplied.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { checkpointApplied.await() }
         assertEquals(CommandOutcome.Completed, steer.result.await())
 
         val appliedEntry = runtime.steeringEntries.value.getValue(steer.id)
@@ -2164,7 +2175,7 @@ class ConversationRuntimeTest {
 
         releaseRun.complete(Unit)
         assertEquals(CommandOutcome.Completed, message.result.await())
-        assertEquals(steer.id, withTimeout(5_000) { persisted.await() }.commandId)
+        assertEquals(steer.id, withTimeout(AWAIT_TIMEOUT_MS) { persisted.await() }.commandId)
         assertEquals(1, persistedCount.get())
         assertTrue(steer.id !in runtime.steeringEntries.value)
         assertTrue(!runtime.updateSteeringHistoryMode(steer.id, SteeringHistoryMode.TRANSIENT))
@@ -2214,20 +2225,20 @@ class ConversationRuntimeTest {
         )
 
         assertTrue(runtime.enqueueEnvelope(message) is SubmitResult.Accepted)
-        withTimeout(5_000) { runStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { runStarted.await() }
         assertTrue(runtime.enqueueEnvelope(steer) is SubmitResult.Accepted)
         allowCheckpoint.complete(Unit)
-        withTimeout(5_000) { checkpointApplied.await() }
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { steer.result.await() })
+        withTimeout(AWAIT_TIMEOUT_MS) { checkpointApplied.await() }
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { steer.result.await() })
         assertTrue(steer.id in runtime.steeringEntries.value)
 
         assertTrue(runtime.enqueueEnvelope(cancel) is SubmitResult.Accepted)
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { cancel.result.await() })
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { cancel.result.await() })
         assertTrue(steer.id !in runtime.steeringEntries.value)
         assertTrue(steer.id !in runtime.steeringStatus.value)
 
         releaseRun.complete(Unit)
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { message.result.await() })
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { message.result.await() })
         assertEquals(0, persistedCount.get())
         runtime.close()
         scope.cancel()
@@ -2270,7 +2281,7 @@ class ConversationRuntimeTest {
         )
 
         assertTrue(runtime.enqueueEnvelope(message) is SubmitResult.Accepted)
-        withTimeout(5_000) { runStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { runStarted.await() }
         assertTrue(runtime.enqueueEnvelope(steer) is SubmitResult.Accepted)
         allowCheckpoint.complete(Unit)
         assertEquals(CommandOutcome.Completed, steer.result.await())
@@ -2350,8 +2361,8 @@ class ConversationRuntimeTest {
             },
         )
 
-        assertEquals(restoredText, withTimeout(5_000) { executed.await() })
-        withTimeout(5_000) {
+        assertEquals(restoredText, withTimeout(AWAIT_TIMEOUT_MS) { executed.await() })
+        withTimeout(AWAIT_TIMEOUT_MS) {
             while (dao.row(commandId)?.state != DurableCommandState.COMPLETED.name) {
                 kotlinx.coroutines.delay(10)
             }
@@ -2411,7 +2422,7 @@ class ConversationRuntimeTest {
             sequence = 2,
         ).withRootLineage()
         assertTrue(runtime.enqueueEnvelope(message) is SubmitResult.Accepted)
-        withTimeout(5_000) { started.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { started.await() }
         assertTrue(runtime.enqueueEnvelope(steer) is SubmitResult.Accepted)
         assertEquals("steer", dao.row(steer.id)?.type)
         release.complete(Unit)
@@ -2419,7 +2430,7 @@ class ConversationRuntimeTest {
         assertEquals(listOf("active", "too late"), executed)
         assertTrue(steer.id !in runtime.steeringEntries.value)
 
-        withTimeout(5_000) {
+        withTimeout(AWAIT_TIMEOUT_MS) {
             while (dao.row(steer.id)?.state != DurableCommandState.COMPLETED.name) {
                 kotlinx.coroutines.delay(10)
             }
@@ -2492,13 +2503,13 @@ class ConversationRuntimeTest {
         ).withRootLineage()
 
         assertTrue(runtime.enqueueEnvelope(message) is SubmitResult.Accepted)
-        withTimeout(5_000) { started.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { started.await() }
         assertTrue(runtime.enqueueEnvelope(steer) is SubmitResult.Accepted)
         release.complete(Unit)
 
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { message.result.await() })
-        assertTrue(withTimeout(5_000) { steer.result.await() } is CommandOutcome.Failed)
-        withTimeout(5_000) {
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { message.result.await() })
+        assertTrue(withTimeout(AWAIT_TIMEOUT_MS) { steer.result.await() } is CommandOutcome.Failed)
+        withTimeout(AWAIT_TIMEOUT_MS) {
             while (dao.row(steer.id)?.state != DurableCommandState.MANUAL_CONFIRMATION.name) {
                 kotlinx.coroutines.delay(10)
             }
@@ -2576,11 +2587,11 @@ class ConversationRuntimeTest {
         ).withRootLineage()
 
         assertTrue(runtime.enqueueEnvelope(message) is SubmitResult.Accepted)
-        withTimeout(5_000) { started.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { started.await() }
         assertTrue(runtime.enqueueEnvelope(steer) is SubmitResult.Accepted)
         release.complete(Unit)
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { message.result.await() })
-        withTimeout(5_000) {
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { message.result.await() })
+        withTimeout(AWAIT_TIMEOUT_MS) {
             while (runtime.runtimeState.value != RuntimeState.Paused) {
                 kotlinx.coroutines.delay(10)
             }
@@ -2635,7 +2646,7 @@ class ConversationRuntimeTest {
         ).withRootLineage()
 
         assertTrue(runtime.enqueueEnvelope(message) is SubmitResult.Accepted)
-        withTimeout(5_000) { started.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { started.await() }
         assertTrue(runtime.enqueueEnvelope(steer) is SubmitResult.Accepted)
         assertTrue(
             transaction.finishUnclaimed(
@@ -2646,8 +2657,8 @@ class ConversationRuntimeTest {
         )
         release.complete(Unit)
 
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { message.result.await() })
-        assertTrue(withTimeout(5_000) { steer.result.await() } is CommandOutcome.Failed)
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { message.result.await() })
+        assertTrue(withTimeout(AWAIT_TIMEOUT_MS) { steer.result.await() } is CommandOutcome.Failed)
         assertEquals(DurableCommandState.MANUAL_CONFIRMATION.name, dao.row(steer.id)?.state)
         assertTrue(runtime.runtimeState.value !is RuntimeState.Fatal)
 
@@ -2696,17 +2707,17 @@ class ConversationRuntimeTest {
         ).withRootLineage()
 
         assertTrue(runtime.enqueueEnvelope(message) is SubmitResult.Accepted)
-        withTimeout(5_000) { runStarted.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { runStarted.await() }
         assertTrue(runtime.enqueueEnvelope(steer) is SubmitResult.Accepted)
         applyCheckpoint.complete(Unit)
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { steer.result.await() })
-        withTimeout(5_000) {
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { steer.result.await() })
+        withTimeout(AWAIT_TIMEOUT_MS) {
             while (dao.row(steer.id)?.state != DurableCommandState.COMPLETED.name) {
                 kotlinx.coroutines.delay(10)
             }
         }
         releaseRun.complete(Unit)
-        assertEquals(CommandOutcome.Completed, withTimeout(5_000) { message.result.await() })
+        assertEquals(CommandOutcome.Completed, withTimeout(AWAIT_TIMEOUT_MS) { message.result.await() })
         assertTrue(durableQueue.scanPending().isEmpty())
         runtime.close()
         scope.cancel()
