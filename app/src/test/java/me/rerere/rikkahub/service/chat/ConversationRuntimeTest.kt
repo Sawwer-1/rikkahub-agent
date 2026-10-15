@@ -22,6 +22,14 @@ import me.rerere.rikkahub.data.ai.tools.ToolExecutionHandle
 import me.rerere.rikkahub.data.ai.tools.ToolTerminationState
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.service.withSteeringAuditMessage
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.uuid.Uuid
 
 /**
  * 等待运行时状态迁移的阈值。
@@ -33,14 +41,6 @@ import me.rerere.rikkahub.service.withSteeringAuditMessage
  * 真挂死仍会失败，只是慢一点暴露。
  */
 private const val AWAIT_TIMEOUT_MS = 20_000L
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
-import kotlin.time.Clock
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.uuid.Uuid
 
 class ConversationRuntimeTest {
     @Test
