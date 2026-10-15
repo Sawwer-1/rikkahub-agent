@@ -33,11 +33,12 @@ class SecurityAuditLogRetentionTest {
 
     @Test
     fun `entries older than the retention window are dropped`() {
+        // 截止线 = nowMs - retentionMs = 100 - 60 = 40：只淘汰 1，保留 50 与 100。
         val parsed = listOf(entry(1L), entry(50L), entry(100L))
         val kept = selectRetainedAuditEntriesNewestFirst(
             parsed = parsed,
             nowMs = 100L,
-            retentionMs = 20L,
+            retentionMs = 60L,
             maxEntries = 10,
         )
         assertEquals(listOf(100L, 50L), kept.map { it.timestamp })
