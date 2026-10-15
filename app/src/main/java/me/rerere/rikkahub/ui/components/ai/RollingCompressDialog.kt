@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Job
@@ -115,9 +116,12 @@ fun RollingCompressDialog(
                             text = "自动滚动摘要",
                             style = MaterialTheme.typography.labelMedium
                         )
+                        // testTag 会经 RouteActivity 的 testTagsAsResourceId 变成无障碍 resource-id，
+                        // 让 read_window_tree / find_node 能定位（自检 2026-10-15 §12.4-1 反馈）。
                         Switch(
                             checked = autoCompress,
                             onCheckedChange = { autoCompress = it },
+                            modifier = Modifier.testTag("compress_dialog_auto_summary_switch"),
                         )
                     }
 
@@ -202,15 +206,22 @@ fun RollingCompressDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (showSaveConfigButton) {
-                        TextButton(onClick = {
-                            onSaveConfig(additionalPrompt, selectedTokens, keepRecentMessages, autoCompress)
-                        }) {
+                        TextButton(
+                            onClick = {
+                                onSaveConfig(additionalPrompt, selectedTokens, keepRecentMessages, autoCompress)
+                            },
+                            // 该按钮此前不在无障碍树里（自检 §12.4-1 实测 find_node no-match），补 tag。
+                            modifier = Modifier.testTag("compress_dialog_save_button"),
+                        ) {
                             Text(stringResource(R.string.chat_page_save))
                         }
                     }
-                    TextButton(onClick = {
-                        currentJob = onConfirm(additionalPrompt, selectedTokens, keepRecentMessages, autoCompress)
-                    }) {
+                    TextButton(
+                        onClick = {
+                            currentJob = onConfirm(additionalPrompt, selectedTokens, keepRecentMessages, autoCompress)
+                        },
+                        modifier = Modifier.testTag("compress_dialog_confirm_button"),
+                    ) {
                         Text(stringResource(R.string.confirm))
                     }
                 }
@@ -218,7 +229,10 @@ fun RollingCompressDialog(
         },
         dismissButton = {
             if (!isLoading) {
-                TextButton(onClick = onDismiss) {
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.testTag("compress_dialog_cancel_button"),
+                ) {
                     Text(stringResource(R.string.cancel))
                 }
             }

@@ -5,6 +5,7 @@ import android.util.Log
 import java.io.File
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -137,7 +138,11 @@ class SecurityAuditRepository(private val context: Context) {
     ) {
         runCatching {
             mutex.withLock {
-                withContext(Dispatchers.IO) {
+                // 观察者链对每个观察者套了 withTimeoutOrNull(observerTimeoutMs = 500ms)：超时即取消，
+                // 而 append 被取消会留下**半行**（自检 2026-10-15 §6 实测到「无 timestamp 的头部条目」），
+                // 那半行下次装载解析失败即被丢弃 —— 表现为「调用发生了但审计里没有」。
+                // 这里让写入不可取消：它是落盘的最后一步，慢一点也要写完。
+                withContext(NonCancellable + Dispatchers.IO) {
                     if (!loaded) loadLocked()
                     val entry = SecurityAuditEntry(
                         category = category,

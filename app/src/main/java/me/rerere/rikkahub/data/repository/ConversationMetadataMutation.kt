@@ -12,6 +12,17 @@ sealed interface ConversationMetadataMutation {
     data class Mode(val id: Uuid, val enabled: Boolean) : ConversationMetadataMutation
     data class Lorebook(val id: Uuid, val enabled: Boolean) : ConversationMetadataMutation
 
+    /**
+     * 会话级「自动滚动摘要」配置（2026-10-15 新增）。
+     *
+     * 必须走元数据写入而不是 [Conversation] 整快照：`saveConversation` 走的是
+     * `updateRuntimeConversation` → `withRuntimeGraph`，后者**只取** messageNodes / chatSuggestions /
+     * updateAt，其余字段一律以库里为准 —— `autoCompressConfig` 会在那条路上被静默丢弃。
+     * 236 实测症状：压缩弹窗点「保存」弹「未能保存，请重试」、重开开关回落关闭。
+     */
+    data class AutoCompress(val value: me.rerere.rikkahub.data.model.AutoCompressConfig?) :
+        ConversationMetadataMutation
+
     fun apply(current: Conversation): Conversation = when (this) {
         is Injections -> current.copy(modeInjectionIds = modes, lorebookIds = lorebooks)
         is GeneratedTitle -> if (force || current.title.isBlank()) current.copy(title = value) else current
@@ -20,6 +31,7 @@ sealed interface ConversationMetadataMutation {
         is Workspace -> current.copy(workspaceCwd = value)
         is Mode -> current.copy(modeInjectionIds = if (enabled) current.modeInjectionIds + id else current.modeInjectionIds - id)
         is Lorebook -> current.copy(lorebookIds = if (enabled) current.lorebookIds + id else current.lorebookIds - id)
+        is AutoCompress -> current.copy(autoCompressConfig = value)
     }
 }
 

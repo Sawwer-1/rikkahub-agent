@@ -6814,6 +6814,9 @@ class ChatService(
         }
 
         saveConversation(conversationId, newConversation)
+        // 「确认」路径同样要带上配置：saveConversation 只写图，配置必须单独走元数据写入，
+        // 否则在弹窗里打开开关、点确认后重开仍是关闭（236 实测，自检 §12.1 第 5/6 步）。
+        newConversation.autoCompressConfig?.let { persistAutoCompressConfig(conversationId, it) }
     }
 
     private suspend fun autoCompressConversationIfNeeded(
@@ -6871,15 +6874,30 @@ class ChatService(
         saveConversation(conversationId, updated)
     }
 
-    suspend fun saveConversationAutoCompressConfig(conversationId: Uuid, config: AutoCompressConfig?): Boolean {
-        // 只写一个字段，但必须先把会话水合再整快照写回：saveConversation 带一条数据保护——
-        // “已存在的行有内容、而传入快照为空时不覆盖、直接 return”。未水合时会话状态是空壳，
-        // 于是这次保存被静默吞掉，表现为“点保存没反应、关掉重开又回到关闭”（自检 2026-10-14 §7）。
-        // 水合后写回，末尾再读回实际值作为返回值，UI 可以据此给出确定的成功/失败反馈。
-        ensureHydrated(conversationId)
-        val updated = getConversationFlow(conversationId).value.copy(autoCompressConfig = config)
-        saveConversation(conversationId, updated)
-        return getConversationFlow(conversationId).value.autoCompressConfig == config
+    /**
+     * 保存会话级「自动滚动摘要」配置。
+     *
+     * 2026-10-15 二次修复（236 实测：点保存弹「未能保存，请重试」、重开回落关闭，见自检 §12）：
+     * 235 加的 `ensureHydrated` 只解决了“空快照被拒”的一半——只要走 [saveConversation]，最终都会落到
+     * `updateRuntimeConversation` → `withRuntimeGraph`，后者**只保留** messageNodes / chatSuggestions /
+     * updateAt，其余字段以库里为准，`autoCompressConfig` 于是被静默丢弃（保存与「确认」两条路都丢）。
+     * 现在改走元数据写入：基于库里的当前行 apply 后整行写回，图不受影响；写完再从库里读回实际值。
+     */
+    suspend fun saveConversationAutoCompressConfig(conversationId: Uuid, config: AutoCompressConfig?): Boolean =
+        persistAutoCompressConfig(conversationId, config)
+
+    private suspend fun persistAutoCompressConfig(conversationId: Uuid, config: AutoCompressConfig?): Boolean {
+        val applied = runCatching {
+            mutateConversationMetadata(
+                conversationId,
+                me.rerere.rikkahub.data.repository.ConversationMetadataMutation.AutoCompress(config),
+            )
+        }.isSuccess
+        if (!applied) {
+            Log.w(TAG, "persistAutoCompressConfig: metadata write failed for $conversationId")
+            return false
+        }
+        return conversationRepo.getConversationById(conversationId)?.autoCompressConfig == config
     }
 
     // ---- 压缩对话历史 ----
