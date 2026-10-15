@@ -90,8 +90,9 @@ suspend fun createWorkspaceTools(
             allowSharedStorage,
         ),
         createOffloadTool(workspaceId, ::needsApproval, workspaceRepository, allowSharedStorage),
-        createConfigTools(workspaceId, ::needsApproval, workspaceRepository, allowSharedStorage),
-    )
+        // config_* 由独立工厂返回 List<Tool>，必须整体拼接：塞进 listOf 会被推断成 List<Any>
+        // 并撞上 `:app:compileDebugKotlin` 的 Return type mismatch（243 CI 首轮实测）。
+    ) + createConfigTools(workspaceId, ::needsApproval, workspaceRepository, allowSharedStorage)
 }
 
 /**
