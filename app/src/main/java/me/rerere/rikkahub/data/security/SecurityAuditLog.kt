@@ -54,6 +54,14 @@ class SecurityAuditRepository(private val context: Context) {
     companion object {
         private const val TAG = "SecurityAudit"
         private const val MAX_ENTRIES = 500
+
+        /**
+         * 超过容量这么多条才重写整份文件（2026-10-15 修）。原实现是「文件一到 500 条，之后每条记录都
+         * 全量重写」——单次审计写要重排 500 行，而观察者链对每个观察者套了 `withTimeoutOrNull`，
+         * 慢下来就会被静默跳过、记录直接丢（自检 §26「一批调用只落了 web_fetch 一条」即此）。
+         * 现在每条记录只做一次 append，攒够 MAX+SLACK 才 compact 一次。
+         */
+        private const val COMPACT_SLACK = 40
         private const val RETAIN_DAYS = 30L
         private val RETAIN_MS = RETAIN_DAYS * 24 * 60 * 60 * 1000L
     }
@@ -61,6 +69,12 @@ class SecurityAuditRepository(private val context: Context) {
     private val json = Json { ignoreUnknownKeys = true }
     private val mutex = Mutex()
     private val _entries = MutableStateFlow<List<SecurityAuditEntry>>(emptyList())
+
+    /**
+     * 文件里的大致行数。内存镜像 [entries] 被裁到 MAX_ENTRIES，用它的 size 判断不了文件是否该压缩。
+     * 只在持锁时读写。
+     */
+    private var fileLineCount = 0
 
     /** Newest first. Backed by the in-memory mirror of the JSONL file. */
     val entries: StateFlow<List<SecurityAuditEntry>> = _entries.asStateFlow()
@@ -75,7 +89,6 @@ class SecurityAuditRepository(private val context: Context) {
     /** Loads (and lazily compacts) the file into memory. Callers hold [mutex]. */
     private fun loadLocked() {
         val file = auditFile()
-        val cutoff = System.currentTimeMillis() - RETAIN_MS
         val parsed = if (file.exists()) {
             runCatching {
                 file.readLines().mapNotNull { line ->
@@ -91,12 +104,20 @@ class SecurityAuditRepository(private val context: Context) {
         } else {
             emptyList()
         }
-        val kept = parsed.filter { it.timestamp >= cutoff }.takeLast(MAX_ENTRIES)
+        // 按 timestamp 选保留集（不信任行序：历史版本的 compaction 会把文件写成倒序）。
+        val kept = selectRetainedAuditEntriesNewestFirst(
+            parsed = parsed,
+            nowMs = System.currentTimeMillis(),
+            retentionMs = RETAIN_MS,
+            maxEntries = MAX_ENTRIES,
+        )
+        fileLineCount = parsed.size
         if (kept.size != parsed.size) {
-            runCatching { rewriteLocked(kept) }
+            runCatching { rewriteLocked(auditEntriesInFileOrder(kept)) }
                 .onFailure { Log.w(TAG, "security audit compaction failed", it) }
+            fileLineCount = kept.size
         }
-        _entries.value = kept.asReversed()
+        _entries.value = kept
         loaded = true
     }
 
@@ -127,13 +148,9 @@ class SecurityAuditRepository(private val context: Context) {
                         sensitive = sensitive,
                     )
                     auditFile().appendText(json.encodeToString(entry) + "\n")
-                    val updated = listOf(entry) + _entries.value
-                    _entries.value = if (updated.size > MAX_ENTRIES) {
-                        updated.take(MAX_ENTRIES)
-                    } else {
-                        updated
-                    }
-                    if (updated.size >= MAX_ENTRIES) compactLocked()
+                    fileLineCount++
+                    _entries.value = (listOf(entry) + _entries.value).take(MAX_ENTRIES)
+                    if (fileLineCount >= MAX_ENTRIES + COMPACT_SLACK) compactLocked()
                 }
             }
         }.onFailure { Log.w(TAG, "security audit write failed", it) }
@@ -167,13 +184,40 @@ class SecurityAuditRepository(private val context: Context) {
     }
 
     private fun compactLocked() {
-        val cutoff = System.currentTimeMillis() - RETAIN_MS
-        val kept = _entries.value.filter { it.timestamp >= cutoff }.takeLast(MAX_ENTRIES)
-        runCatching { rewriteLocked(kept) }
+        // 内存镜像已是「新在前」，按时间淘汰后仍保持「新在前」；写盘时反向成旧→新。
+        val kept = selectRetainedAuditEntriesNewestFirst(
+            parsed = _entries.value.asReversed(),
+            nowMs = System.currentTimeMillis(),
+            retentionMs = RETAIN_MS,
+            maxEntries = MAX_ENTRIES,
+        )
+        runCatching { rewriteLocked(auditEntriesInFileOrder(kept)) }
             .onFailure { Log.w(TAG, "security audit compaction failed", it) }
-        _entries.value = kept.asReversed()
+        _entries.value = kept
+        fileLineCount = kept.size
     }
 }
+
+/**
+ * 保留策略（纯函数，便于单测）：按时间窗淘汰 + 只留最近 [maxEntries] 条，返回「新在前」。
+ *
+ * [parsed] 传**文件行序**（旧→新）；本函数按 `timestamp` 自行排序，不信任行序——历史版本的
+ * compaction 会把文件写成倒序（新→旧），若按行序取尾就会丢新记录（2026-10-15 修）。
+ */
+internal fun selectRetainedAuditEntriesNewestFirst(
+    parsed: List<SecurityAuditEntry>,
+    nowMs: Long,
+    retentionMs: Long,
+    maxEntries: Int,
+): List<SecurityAuditEntry> = parsed
+    .filter { it.timestamp >= nowMs - retentionMs }
+    .sortedBy { it.timestamp }
+    .takeLast(maxEntries)
+    .asReversed()
+
+/** 写盘顺序：旧 → 新，保证 append-only 文件按时间递增，外部用 tail 也能看到最新记录。 */
+internal fun auditEntriesInFileOrder(newestFirst: List<SecurityAuditEntry>): List<SecurityAuditEntry> =
+    newestFirst.asReversed()
 
 /**
  * Tool-execution audit sink wired into [me.rerere.rikkahub.data.ai.execution.DefaultToolRuntime]'s
