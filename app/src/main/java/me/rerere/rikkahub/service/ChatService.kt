@@ -2000,7 +2000,19 @@ class ChatService(
             me.rerere.rikkahub.service.chat.CommandLineageContext.fromAuthorityRowOrNull(row)
                 ?: return rejectedTrackedCommand("Parent command lineage is unavailable")
         }
-        if ((command is ToolApprovalCommand || command is ResumeAfterApprovalCommand) && parentLineage == null) {
+        // 应用内交互式卡片的两类决策（ask_user 的「回答」、普通审批的「批准」）**本来就没有可证明的
+        // durable owner**：审批请求是由交互路径直接挂在会话图上的（审计里 ask_user 的记录只有
+        // conversation、没有 run，与普通工具执行的 `run=` 形态不同），所以
+        // findSingleWaitingForConversation 会返回 null。此前这里一律按「lineage 不可证」拒绝 ——
+        // 表现为点「确认」当场报 `Approval command lineage could not be proven`、按钮无反应、
+        // 卡片不消失、会话卡死（自检 2026-10-15 §2；226 首报、231 与 236 复现）。
+        // 这两类决策都不授予任何超出该次调用的权限，而执行器还会按 toolCallId 对该 part 做
+        // 「仍为 Pending」的复核（resolveToolApproval 只对 Pending 生效），因此 lineage 允许缺省。
+        val lineageOptional = answeredAskUserPending || legacyOrdinaryApproval
+        if ((command is ToolApprovalCommand || command is ResumeAfterApprovalCommand) &&
+            parentLineage == null &&
+            !lineageOptional
+        ) {
             return rejectedTrackedCommand("Approval command lineage could not be proven")
         }
         val admissionAssistantId = parentLineage?.assistantIdSnapshot
