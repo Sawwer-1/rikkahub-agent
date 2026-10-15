@@ -121,7 +121,11 @@ class SelfPreservationPolicy(
 
     private fun dataViolation() = Violation(
         code = "SELF_PRESERVATION_DATA",
-        reason = "The assistant cannot mutate RikkaHub's core private data.",
+        // 2026-10-15（工单「前端卡配置导出受限」§5-5）：理由要可读并给出替代通道，但**仍不回显**
+        // 调用方给的路径/命令（防把攻击者可控文本回灌进模型上下文）。
+        reason = "The assistant cannot modify or overwrite RikkaHub's core private data " +
+            "(reading it is allowed — export by copying it OUT to a workspace path, " +
+            "which touches only the destination).",
     )
 
     private fun Char.isPathCharacter(): Boolean = isLetterOrDigit() || this == '_' || this == '.' || this == '-'

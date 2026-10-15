@@ -69,6 +69,104 @@ class ToolExecutionGatePolicyTest {
     }
 
     @Test
+    fun `read direction export from protected data is allowed`() {
+        // 2026-10-15 工单 P0（前端卡配置导出受限）：copy/zip 的**源**是只读，不该按 mutation 目标拦。
+        // 此前把参数里所有字符串都当写目标，于是「从 files/datastore / databases 导出到工作区」
+        // 这条纯只读导出链整条死掉，改卡流水线断在第一步。
+        val policy = SelfPreservationPolicy.forApplication("me.rerere.rikkahub.test")
+        val datastore =
+            "/data/user/0/me.rerere.rikkahub.test/files/datastore/settings.preferences_pb"
+        val database = "/data/user/0/me.rerere.rikkahub.test/databases/rikka_hub"
+
+        assertEquals(
+            null,
+            selfPreservationBlockReason(
+                "copy_file",
+                buildJsonObject {
+                    put("src", datastore)
+                    put("dst", "/workspace/export/settings.preferences_pb")
+                },
+                policy,
+            ),
+        )
+        assertEquals(
+            null,
+            selfPreservationBlockReason(
+                "batch_copy",
+                buildJsonObject {
+                    put("sources", buildJsonArray { add(datastore); add(database) })
+                    put("dst_dir", "/workspace/export")
+                },
+                policy,
+            ),
+        )
+        assertEquals(
+            null,
+            selfPreservationBlockReason(
+                "zip_files",
+                buildJsonObject {
+                    put("sources", buildJsonArray { add(datastore) })
+                    put("destination", "/workspace/export/card.zip")
+                },
+                policy,
+            ),
+        )
+    }
+
+    @Test
+    fun `write direction into protected data is still blocked`() {
+        // 精确化只针对"读了就放行"：真正会写/覆盖/删除受保护数据的调用照旧 fail-closed。
+        val policy = SelfPreservationPolicy.forApplication("me.rerere.rikkahub.test")
+        val datastore =
+            "/data/user/0/me.rerere.rikkahub.test/files/datastore/settings.preferences_pb"
+        val databasesDir = "/data/user/0/me.rerere.rikkahub.test/databases"
+
+        assertTrue(
+            selfPreservationBlockReason(
+                "copy_file",
+                buildJsonObject {
+                    put("src", "/workspace/forged.pb")
+                    put("dst", datastore)
+                },
+                policy,
+            ) != null,
+        )
+        // move 的源会被删除 → 仍拦
+        assertTrue(
+            selfPreservationBlockReason(
+                "move_file",
+                buildJsonObject {
+                    put("src", datastore)
+                    put("dst", "/workspace/export/moved.pb")
+                },
+                policy,
+            ) != null,
+        )
+        // 单目标写入工具（未列入写入键映射）行为不变
+        assertTrue(
+            selfPreservationBlockReason(
+                "write_text_file",
+                buildJsonObject {
+                    put("path", datastore)
+                    put("content", "x")
+                },
+                policy,
+            ) != null,
+        )
+        // unzip 的落点受保护 → 拦
+        assertTrue(
+            selfPreservationBlockReason(
+                "unzip_file",
+                buildJsonObject {
+                    put("source", "/workspace/a.zip")
+                    put("destination_dir", databasesDir)
+                },
+                policy,
+            ) != null,
+        )
+    }
+
+    @Test
     fun `unrestricted does not bypass either external privilege capability`() {
         assertFalse(unrestrictedMayBypassCapability(CapabilityId.ExternalPrivilegeBridge))
         assertFalse(unrestrictedMayBypassCapability(CapabilityId.PrivilegedShell))

@@ -125,6 +125,22 @@ private val SELF_PACKAGE_MUTATION_TOOLS = setOf(
     "privileged_permission_revoke",
 )
 
+/**
+ * 每个工具**真正会被写入/覆盖**的参数键（其余参数只读，尤其 copy/zip 的源）。
+ *
+ * 只有列在这里的工具会按「写入键」做自我数据保护检查；未列出的工具沿用旧行为
+ * （参数里所有字符串都查）——所以这里只做**精确化**，不放松任何真实写入。
+ * 参数名取自各自 schema：copy_file{dst}、move_file{src,dst}（源会被删除）、
+ * batch_copy{dst_dir}、zip_files{destination}、unzip_file{destination_dir}。
+ */
+private val MUTATION_WRITE_PATH_KEYS: Map<String, Set<String>> = mapOf(
+    "copy_file" to setOf("dst"),
+    "move_file" to setOf("src", "dst"),
+    "batch_copy" to setOf("dst_dir"),
+    "zip_files" to setOf("destination"),
+    "unzip_file" to setOf("destination_dir"),
+)
+
 internal fun selfPreservationBlockReason(
     toolName: String,
     arguments: JsonObject?,
@@ -160,7 +176,18 @@ internal fun selfPreservationBlockReason(
             is JsonArray -> element.asSequence().flatMap(::strings)
             is JsonObject -> element.values.asSequence().flatMap(::strings)
         }
-        strings(arguments).forEach { path ->
+        // 2026-10-15（工单「前端卡配置导出受限」P0）：此前把参数里**所有字符串**都当 mutation 目标，
+        // 于是 copy_file / batch_copy / zip_files 的**源路径**（只读）也被拦 —— 「从 files/datastore
+        // 导出到工作区」这条纯只读的导出链整条死掉（改卡流水线断在第一步）。现在按工具声明的
+        //「真正会被写入/覆盖」的参数键来查；未声明的工具**保持原行为**（全部字符串都查），
+        // 因此没有任何真实写入被放松。
+        val writePathKeys = MUTATION_WRITE_PATH_KEYS[toolName]
+        val candidatePaths = if (writePathKeys == null) {
+            strings(arguments)
+        } else {
+            writePathKeys.asSequence().mapNotNull { key -> arguments[key] }.flatMap(::strings)
+        }
+        candidatePaths.forEach { path ->
             policy.checkAppPrivateMutation(path)?.let { return it.reason }
         }
     }

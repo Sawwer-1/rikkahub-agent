@@ -24,7 +24,7 @@ android {
         applicationId = "me.rerere.rikkahub"
         minSdk = 26
         targetSdk = 37
-        versionCode = 241
+        versionCode = 242
         versionName = "2.6.0"
 
         // Fork provenance, kept out of versionName so the upstream baseline stays greppable.
