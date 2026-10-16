@@ -166,6 +166,14 @@ class ConversationRuntime(
     private val onRunStarted: suspend (CommandEnvelope<out ChatCommand>) -> AutoCloseable? = { null },
     private val onPersistSteering: suspend (me.rerere.rikkahub.data.ai.SteeringNote) -> Unit = {},
     private val onRunFinished: (CommandEnvelope<out ChatCommand>, CommandOutcome) -> Unit = { _, _ -> },
+    /**
+     * Fired after a user interrupt cancelled a waiting-approval barrier and the replacement
+     * command is about to start as the new run (2026-10-16 "审批等待中追加消息 = 打断 + 从新
+     * 消息继续"). Callers own the audit trail; the runtime reports only the causal identity
+     * (the triggering command and the terminalized waiting commands), never message content.
+     */
+    private val onWaitingApprovalInterrupted: suspend (CommandEnvelope<out ChatCommand>, List<Uuid>) -> Unit =
+        { _, _ -> },
     private val onPetRunStarted: suspend () -> AutoCloseable? = { null },
     private val onCancellationTimeout: (CommandEnvelope<out EmergencyCommand>, Throwable) -> Unit = { _, _ -> },
     private val hydrationTimeout: Duration = 30.seconds,
@@ -1272,18 +1280,37 @@ class ConversationRuntime(
                                 cancellation.terminalizedCommandIds,
                                 CommandOutcome.Cancelled,
                             )
+                            // 审批等待中追加消息 = 打断 + 从新消息继续（2026-10-16 工单）。
+                            // 屏障取消事务只把 durable 行终态化，无法在同一事务里失效审批投影；
+                            // 但 run 槽此刻为空，可以立即做一次 durable 对账（正是 hydration
+                            // 恢复路径：重扫行、重建等待集、清 flag）。对账成功且不再有等待行时，
+                            // 替代命令按普通新消息启动；对账失败或仍有等待行才回退到固化的
+                            // 暂停 + REPLACEMENT 失败路径（须等人工恢复）。
                             approvalBarrierReconciliationRequired = true
-                            queuePaused = true
-                            complete(
-                                envelope,
-                                CommandOutcome.Failed(
-                                    StableCommandException(
-                                        "APPROVAL_BARRIER_REQUIRES_RECONCILIATION",
-                                        "Approval barrier was cancelled; replacement was not started",
+                            if (
+                                reconcileApprovalBarrierFromDurable() &&
+                                waitingCommandIds.isEmpty()
+                            ) {
+                                runSuspendCatching {
+                                    onWaitingApprovalInterrupted(
+                                        envelope,
+                                        cancellation.terminalizedCommandIds,
+                                    )
+                                }
+                                startRun(envelope)
+                            } else {
+                                queuePaused = true
+                                complete(
+                                    envelope,
+                                    CommandOutcome.Failed(
+                                        StableCommandException(
+                                            "APPROVAL_BARRIER_REQUIRES_RECONCILIATION",
+                                            "Approval barrier was cancelled; replacement was not started",
+                                        ),
                                     ),
-                                ),
-                            )
-                            _runtimeState.value = RuntimeState.Paused
+                                )
+                                _runtimeState.value = RuntimeState.Paused
+                            }
                         }
                         is CommandWaitingCancellationResult.Conflict -> {
                             approvalBarrierReconciliationRequired = true

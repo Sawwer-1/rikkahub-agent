@@ -45,6 +45,8 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Moon02
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.memory.MemoryKind
+import me.rerere.rikkahub.ui.components.ui.DialogTestTagsAsResourceId
+import me.rerere.rikkahub.ui.components.ui.testTagInDialog
 import me.rerere.rikkahub.memory.dreaming.model.DreamClaimState
 import me.rerere.rikkahub.memory.dreaming.review.DreamClaimDetail
 import me.rerere.rikkahub.memory.dreaming.review.DreamClaimMutationTarget
@@ -108,6 +110,7 @@ fun MemoryDreamTab(
                         Switch(
                             checked = generateEnabled,
                             onCheckedChange = onToggleGenerate,
+                            modifier = Modifier.testTag("dream_generate_switch"),
                         )
                     }
                     Row(
@@ -250,7 +253,9 @@ fun MemoryDreamTab(
                 OutlinedButton(
                     onClick = { clearConfirmation = true },
                     enabled = projection.claims.isNotEmpty() || projection.activeSnapshot != null,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("dream_clear_derived_button"),
                 ) {
                     Text(stringResource(R.string.memory_dream_clear_derived))
                 }
@@ -266,17 +271,25 @@ fun MemoryDreamTab(
 
     if (clearConfirmation && projection != null) {
         AlertDialog(
+            // 弹窗是独立窗口，主窗口根的 testTagsAsResourceId 不生效（见 DialogSemantics.kt）。
+            modifier = DialogTestTagsAsResourceId,
             onDismissRequest = { clearConfirmation = false },
             title = { Text(stringResource(R.string.memory_dream_clear_confirm_title)) },
             text = { Text(stringResource(R.string.memory_dream_clear_confirm_body)) },
             confirmButton = {
-                TextButton(onClick = {
-                    clearConfirmation = false
-                    onClearDerived(projection.fence)
-                }) { Text(stringResource(R.string.memory_dream_clear_confirm_action)) }
+                TextButton(
+                    onClick = {
+                        clearConfirmation = false
+                        onClearDerived(projection.fence)
+                    },
+                    modifier = Modifier.testTagInDialog("dream_clear_confirm_button"),
+                ) { Text(stringResource(R.string.memory_dream_clear_confirm_action)) }
             },
             dismissButton = {
-                TextButton(onClick = { clearConfirmation = false }) {
+                TextButton(
+                    onClick = { clearConfirmation = false },
+                    modifier = Modifier.testTagInDialog("dream_clear_cancel_button"),
+                ) {
                     Text(stringResource(R.string.cancel))
                 }
             },
@@ -584,7 +597,11 @@ private fun DreamClaimSheet(
 ) {
     var rejectConfirmation by remember(detail?.target) { mutableStateOf(false) }
     var correctionOpen by remember(detail?.target) { mutableStateOf(false) }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        // 弹窗是独立窗口，主窗口根的 testTagsAsResourceId 不生效（见 DialogSemantics.kt）。
+        modifier = DialogTestTagsAsResourceId,
+    ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             // 2026-10-13 (work order A): the sheet used to be one non-scrolling column, so a long
             // evidence list pushed 拒绝/纠正 off the screen with no way to reach them (device
@@ -658,10 +675,16 @@ private fun DreamClaimSheet(
                         .padding(horizontal = 18.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 ) {
-                    OutlinedButton(onClick = { rejectConfirmation = true }) {
+                    OutlinedButton(
+                        onClick = { rejectConfirmation = true },
+                        modifier = Modifier.testTagInDialog("dream_claim_reject_button"),
+                    ) {
                         Text(stringResource(R.string.memory_dream_reject))
                     }
-                    Button(onClick = { correctionOpen = true }) {
+                    Button(
+                        onClick = { correctionOpen = true },
+                        modifier = Modifier.testTagInDialog("dream_claim_correct_button"),
+                    ) {
                         Text(stringResource(R.string.memory_dream_correct))
                     }
                 }
@@ -670,17 +693,25 @@ private fun DreamClaimSheet(
     }
     if (rejectConfirmation && detail != null) {
         AlertDialog(
+            // 弹窗是独立窗口，主窗口根的 testTagsAsResourceId 不生效（见 DialogSemantics.kt）。
+            modifier = DialogTestTagsAsResourceId,
             onDismissRequest = { rejectConfirmation = false },
             title = { Text(stringResource(R.string.memory_dream_reject_confirm_title)) },
             text = { Text(stringResource(R.string.memory_dream_reject_confirm_body)) },
             confirmButton = {
-                TextButton(onClick = {
-                    rejectConfirmation = false
-                    onRejectClaim(detail.target)
-                }) { Text(stringResource(R.string.memory_dream_reject)) }
+                TextButton(
+                    onClick = {
+                        rejectConfirmation = false
+                        onRejectClaim(detail.target)
+                    },
+                    modifier = Modifier.testTagInDialog("dream_claim_reject_confirm_button"),
+                ) { Text(stringResource(R.string.memory_dream_reject)) }
             },
             dismissButton = {
-                TextButton(onClick = { rejectConfirmation = false }) {
+                TextButton(
+                    onClick = { rejectConfirmation = false },
+                    modifier = Modifier.testTagInDialog("dream_claim_reject_cancel_button"),
+                ) {
                     Text(stringResource(R.string.cancel))
                 }
             },
@@ -750,6 +781,8 @@ private fun DreamCorrectionDialog(
     val parsedExpiry = expiry.takeIf(String::isNotBlank)?.toLongOrNull()
     val valid = content.isNotBlank() && (expiry.isBlank() || parsedExpiry != null)
     AlertDialog(
+        // 弹窗是独立窗口，主窗口根的 testTagsAsResourceId 不生效（见 DialogSemantics.kt）。
+        modifier = DialogTestTagsAsResourceId,
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.memory_dream_correct_title)) },
         text = {
@@ -800,10 +833,14 @@ private fun DreamCorrectionDialog(
                     )
                 },
                 enabled = valid,
+                modifier = Modifier.testTagInDialog("dream_correction_save_button"),
             ) { Text(stringResource(R.string.memory_dream_save_correction)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.testTagInDialog("dream_correction_cancel_button"),
+            ) { Text(stringResource(R.string.cancel)) }
         },
     )
 }

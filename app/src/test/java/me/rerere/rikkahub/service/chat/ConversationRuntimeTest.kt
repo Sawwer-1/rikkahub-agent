@@ -35,7 +35,7 @@ import kotlin.uuid.Uuid
  * 等待运行时状态迁移的阈值。
  *
  * 原值 5_000ms 在 CI 上（2875 个用例并行、runner 负载高）偶发不够：2026-10-14 与 10-15 两次假失败，
- * 一次表现为断言竞态（`interrupt with no active run … fails closed`）、一次直接
+ * 一次表现为断言竞态（`interrupt with no active run …`）、一次直接
  * `TimeoutCancellationException: Timed out waiting for 5000 ms`（`hydration failure rejects accepted
  * commands`），都是**测试等待太短**而非产品缺陷（重跑即绿）。这里统一抬到 20s：断言内容不变，
  * 真挂死仍会失败，只是慢一点暴露。
@@ -227,7 +227,9 @@ class ConversationRuntimeTest {
     }
 
     @Test
-    fun `interrupt with no active run cancels waiting authority and fails closed`() = runBlocking {
+    fun `interrupt with no active run reconciles the approval barrier and starts the replacement`() = runBlocking {
+        // 2026-10-16 工单：审批等待中追加消息 = 打断 + 从新消息继续。取消屏障后立即对账，
+        // 替代命令作为新一轮生成启动；不再把替代判失败干等人工恢复。
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val dao = FakePendingChatCommandDao()
         val queue = DurableCommandQueue(
@@ -241,9 +243,13 @@ class ConversationRuntimeTest {
             appScope = scope,
             conversationId = conversationId,
             durableQueue = queue,
-            executor = RuntimeCommandExecutor { _, _ ->
+            executor = RuntimeCommandExecutor { envelope, _ ->
                 executions.incrementAndGet()
-                RunOutcome.WaitingApproval(setOf("tool-1"))
+                if (envelope.id == rootId) {
+                    RunOutcome.WaitingApproval(setOf("tool-1"))
+                } else {
+                    RunOutcome.Completed()
+                }
             },
         )
         val root = CommandEnvelope(
@@ -275,11 +281,92 @@ class ConversationRuntimeTest {
         )
         withTimeout(AWAIT_TIMEOUT_MS) {
             assertEquals(CommandOutcome.Cancelled, root.result.await())
-            assertTrue(interrupt.result.await() is CommandOutcome.Failed)
+            assertEquals(CommandOutcome.Completed, interrupt.result.await())
         }
         assertEquals(DurableCommandState.CANCELLED.name, dao.row(rootId)?.state)
-        assertEquals(1, executions.get())
-        assertEquals(RuntimeState.Paused, runtime.runtimeState.value)
+        assertEquals(2, executions.get())
+        withTimeout(AWAIT_TIMEOUT_MS) {
+            while (runtime.runtimeState.value != RuntimeState.Idle) {
+                kotlinx.coroutines.delay(10)
+            }
+        }
+        assertFalse(runtime.queueStatus.value.paused)
+
+        runtime.close()
+        scope.cancel()
+    }
+
+    @Test
+    fun `waiting approval interrupt restarts from the replacement and then drains the queued FIFO`() = runBlocking {
+        // 审批等待中已有排队消息：新消息打断后，替代命令先跑，既有 FIFO 在其后按序继续。
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val dao = FakePendingChatCommandDao()
+        val queue = DurableCommandQueue(
+            dao = dao,
+            commandStateTransaction = CommandStateTransaction(dao),
+        )
+        val conversationId = Uuid.random()
+        val rootId = Uuid.random()
+        val queuedId = Uuid.random()
+        val executionOrder = java.util.Collections.synchronizedList(mutableListOf<Uuid>())
+        val runtime = ConversationRuntime(
+            appScope = scope,
+            conversationId = conversationId,
+            durableQueue = queue,
+            executor = RuntimeCommandExecutor { envelope, _ ->
+                executionOrder += envelope.id
+                if (envelope.id == rootId) {
+                    RunOutcome.WaitingApproval(setOf("tool-1"))
+                } else {
+                    RunOutcome.Completed()
+                }
+            },
+        )
+        val root = CommandEnvelope(
+            id = rootId,
+            conversationId = conversationId,
+            command = messageCommand("root"),
+            origin = CommandOrigin.APP_UI,
+            sequence = 1L,
+        ).withRootLineage()
+        val queued = CommandEnvelope(
+            id = queuedId,
+            conversationId = conversationId,
+            command = messageCommand("queued"),
+            origin = CommandOrigin.APP_UI,
+            sequence = 2L,
+        ).withRootLineage()
+        assertEquals(SubmitResult.Accepted(rootId), runtime.enqueueEnvelope(root))
+        withTimeout(AWAIT_TIMEOUT_MS) {
+            while (
+                dao.row(rootId)?.state != DurableCommandState.WAITING_APPROVAL.name ||
+                runtime.queueStatus.value.activeCommandId != null
+            ) {
+                kotlinx.coroutines.delay(10)
+            }
+        }
+
+        // 等待期间到达的普通消息先进入 FIFO：不启动、不丢弃。
+        assertEquals(SubmitResult.Accepted(queuedId), runtime.enqueueEnvelope(queued))
+        kotlinx.coroutines.delay(200)
+        assertFalse(queued.result.isCompleted)
+        assertEquals(listOf(rootId), executionOrder.toList())
+
+        val interrupt = CommandEnvelope(
+            conversationId = conversationId,
+            command = InterruptCommand(messageCommand("replacement")),
+            origin = CommandOrigin.APP_UI,
+            sequence = 3L,
+        )
+        assertEquals(SubmitResult.Accepted(interrupt.id), runtime.replaceEmergencyEnvelope(interrupt))
+        withTimeout(AWAIT_TIMEOUT_MS) {
+            assertEquals(CommandOutcome.Cancelled, root.result.await())
+            assertEquals(CommandOutcome.Completed, interrupt.result.await())
+            assertEquals(CommandOutcome.Completed, queued.result.await())
+        }
+        assertEquals(DurableCommandState.CANCELLED.name, dao.row(rootId)?.state)
+        // 顺序：被取消的等待 → 新消息先跑 → 既有排队继续；无重复派发。
+        assertEquals(listOf(rootId, interrupt.id, queuedId), executionOrder.toList())
 
         runtime.close()
         scope.cancel()

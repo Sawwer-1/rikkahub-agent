@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -102,6 +103,7 @@ fun AssistantDetailPage(id: String) {
                 ) {
                     item(
                         onClick = { navController.navigate(Screen.AssistantBasic(id)) },
+                        modifier = Modifier.testTag("assistant_detail_basic_entry"),
                         leadingContent = { Icon(HugeIcons.Settings03, null) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_basic_desc)) },
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_basic)) },
@@ -109,6 +111,7 @@ fun AssistantDetailPage(id: String) {
                     )
                     item(
                         onClick = { navController.navigate(Screen.AssistantPrompt(id)) },
+                        modifier = Modifier.testTag("assistant_detail_prompt_entry"),
                         leadingContent = { Icon(HugeIcons.Message02, null) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_prompt_desc)) },
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_prompt)) },
@@ -116,6 +119,7 @@ fun AssistantDetailPage(id: String) {
                     )
                     item(
                         onClick = { navController.navigate(Screen.AssistantInjections(id)) },
+                        modifier = Modifier.testTag("assistant_detail_extensions_entry"),
                         leadingContent = { Icon(HugeIcons.Puzzle, null) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_extensions_desc)) },
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_extensions)) },
@@ -123,6 +127,7 @@ fun AssistantDetailPage(id: String) {
                     )
                     item(
                         onClick = { navController.navigate(Screen.AssistantMemory(id)) },
+                        modifier = Modifier.testTag("assistant_detail_memory_entry"),
                         leadingContent = { Icon(HugeIcons.Brain02, null) },
                         supportingContent = {
                             Column {
@@ -144,6 +149,7 @@ fun AssistantDetailPage(id: String) {
                     )
                     item(
                         onClick = { navController.navigate(Screen.AssistantRequest(id)) },
+                        modifier = Modifier.testTag("assistant_detail_request_entry"),
                         leadingContent = { Icon(HugeIcons.Code, null) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_request_desc)) },
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_request)) },
@@ -151,6 +157,7 @@ fun AssistantDetailPage(id: String) {
                     )
                     item(
                         onClick = { navController.navigate(Screen.AssistantMcp(id)) },
+                        modifier = Modifier.testTag("assistant_detail_mcp_entry"),
                         leadingContent = { Icon(HugeIcons.Wrench01, null) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_mcp_desc)) },
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_mcp)) },
@@ -158,6 +165,7 @@ fun AssistantDetailPage(id: String) {
                     )
                     item(
                         onClick = { navController.navigate(Screen.AssistantLocalTool(id)) },
+                        modifier = Modifier.testTag("assistant_detail_local_tools_entry"),
                         leadingContent = { Icon(HugeIcons.BookOpen01, null) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_local_tools_desc)) },
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_local_tools)) },
@@ -165,6 +173,7 @@ fun AssistantDetailPage(id: String) {
                     )
                     item(
                         onClick = { showPetSettings = true },
+                        modifier = Modifier.testTag("assistant_detail_pet_entry"),
                         leadingContent = { Icon(HugeIcons.Puzzle, null) },
                         supportingContent = {
                             Text(

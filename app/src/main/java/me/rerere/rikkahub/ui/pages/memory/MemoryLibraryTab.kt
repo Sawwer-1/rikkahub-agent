@@ -219,6 +219,8 @@ fun MemoryLibraryTab(
     }
     deleting?.let { memory ->
         AlertDialog(
+            // 弹窗是独立窗口，主窗口根的 testTagsAsResourceId 不生效（见 DialogSemantics.kt）。
+            modifier = DialogTestTagsAsResourceId,
             onDismissRequest = { deleting = null },
             title = { Text("删除这条记忆？") },
             text = {
@@ -228,15 +230,21 @@ fun MemoryLibraryTab(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    onDelete(memory)
-                    deleting = null
-                }) {
+                TextButton(
+                    onClick = {
+                        onDelete(memory)
+                        deleting = null
+                    },
+                    modifier = Modifier.testTagInDialog("memory_delete_confirm_button"),
+                ) {
                     Text("删除", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { deleting = null }) { Text(stringResource(R.string.cancel)) }
+                TextButton(
+                    onClick = { deleting = null },
+                    modifier = Modifier.testTagInDialog("memory_delete_cancel_button"),
+                ) { Text(stringResource(R.string.cancel)) }
             },
         )
     }
@@ -593,6 +601,8 @@ private fun MemoryDetailDialog(
 ) {
     val history by revisions.collectAsState(initial = emptyList())
     AlertDialog(
+        // 弹窗是独立窗口，主窗口根的 testTagsAsResourceId 不生效（见 DialogSemantics.kt）。
+        modifier = DialogTestTagsAsResourceId,
         onDismissRequest = onDismiss,
         title = { Text(memory.title?.let(narrativeNames::readableText) ?: "#${memory.id}") },
         text = {
@@ -638,18 +648,35 @@ private fun MemoryDetailDialog(
         },
         confirmButton = {
             Row {
-                TextButton(onClick = onEdit) { Text(stringResource(R.string.memory_v2_edit_memory)) }
+                TextButton(
+                    onClick = onEdit,
+                    modifier = Modifier.testTagInDialog("memory_detail_edit_button"),
+                ) { Text(stringResource(R.string.memory_v2_edit_memory)) }
                 if (memory.lifecycleStatus == "ARCHIVED") {
-                    TextButton(onClick = onRestore) { Text(stringResource(R.string.memory_v2_restore)) }
+                    TextButton(
+                        onClick = onRestore,
+                        modifier = Modifier.testTagInDialog("memory_detail_restore_button"),
+                    ) { Text(stringResource(R.string.memory_v2_restore)) }
                 } else {
-                    TextButton(onClick = onArchive) { Text(stringResource(R.string.memory_v2_archive)) }
+                    TextButton(
+                        onClick = onArchive,
+                        modifier = Modifier.testTagInDialog("memory_detail_archive_button"),
+                    ) { Text(stringResource(R.string.memory_v2_archive)) }
                 }
-                TextButton(onClick = onDelete) {
+                TextButton(
+                    onClick = onDelete,
+                    modifier = Modifier.testTagInDialog("memory_detail_delete_button"),
+                ) {
                     Text("删除", color = MaterialTheme.colorScheme.error)
                 }
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.testTagInDialog("memory_detail_close_button"),
+            ) { Text(stringResource(R.string.cancel)) }
+        },
     )
 }
 

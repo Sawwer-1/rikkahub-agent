@@ -1860,6 +1860,13 @@ class ChatService(
                             ),
                         )
                     },
+                    onWaitingApprovalInterrupted = { envelope, waitingCommandIds ->
+                        recordWaitingApprovalInterruptedAudit(
+                            conversationId = id,
+                            interruptCommandId = envelope.id,
+                            waitingCommandIds = waitingCommandIds,
+                        )
+                    },
                 )
                 createdRuntime
             }
@@ -4455,6 +4462,31 @@ class ChatService(
                 if (reason.isNotBlank()) append(" reason=").append(reason.take(120))
             },
             status = status,
+        )
+    }
+
+    /**
+     * 等待审批被新消息打断时的审计留痕（2026-10-16 工单：审批等待中追加消息应中断并从该消息继续）。
+     *
+     * 与 [recordApprovalDecisionAudit]（用户对审批卡的决策，status=submitted / rejected:*）区分：
+     * 本事件里用户没有对任何审批卡做决策，而是用一条新消息作废了整个等待链。只记因果标识与
+     * 计数，绝不记录消息内容或工具参数，保证审计可导出。
+     */
+    private suspend fun recordWaitingApprovalInterruptedAudit(
+        conversationId: Uuid,
+        interruptCommandId: Uuid,
+        waitingCommandIds: List<Uuid>,
+    ) {
+        val audit = securityAudit ?: return
+        audit.record(
+            category = "approval",
+            action = "interrupted",
+            detail = buildString {
+                append("conversation=").append(conversationId)
+                append(" waitingCount=").append(waitingCommandIds.size)
+                append(" interrupt=").append(interruptCommandId)
+            },
+            status = "interrupted:new_message",
         )
     }
 

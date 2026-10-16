@@ -26,9 +26,11 @@ internal enum class RunningSendChoice {
  * 停下、已生成内容保留，并把这条消息作为最新用户消息从它之下重新起一轮；不再是"当提醒注入
  * 当前上下文"。只想提醒不断当前轮的走长按选单（[RunningSendChoice.CONTINUE_WITH_GUIDANCE]）。
  *
- * 等待审批时仍走 [ChatSendAction.QUEUE]：运行时要先取消审批屏障并对账，才允许启动替代命令
- * （`APPROVAL_BARRIER_REQUIRES_RECONCILIATION`，见 ConversationRuntime 的 InterruptCommand
- * 分支），自动打断会把队列按暂停、消息判失败。先批准/拒绝（或取消）那张审批卡即可继续。
+ * 等待审批时也走 [ChatSendAction.INTERRUPT]（2026-10-16 工单）：审批等待是"run 槽已空、
+ * 只剩审批屏障站着"的挂起态，短按发送会取消屏障（走既有 cancelWaitingApprovalBarrier 语义、
+ * 留审计 interrupted:new_message）并对账后把这新条消息作为新一轮生成起点；历史与已排队
+ * 消息不动。仅当取消无法提交/对账失败时，运行时才回退为暂停待恢复（见 ConversationRuntime
+ * 的 InterruptCommand 分支）。
  */
 internal fun resolveShortSendAction(
     runtimeState: RuntimeState,
@@ -38,6 +40,7 @@ internal fun resolveShortSendAction(
     runtimeState == RuntimeState.Running && hasGuidanceText -> ChatSendAction.INTERRUPT
     runtimeState == RuntimeState.Running && !hasInput -> ChatSendAction.STOP
     runtimeState == RuntimeState.Running -> ChatSendAction.SHOW_RUNNING_CHOICES
+    runtimeState == RuntimeState.WaitingApproval && hasInput -> ChatSendAction.INTERRUPT
     else -> ChatSendAction.QUEUE
 }
 

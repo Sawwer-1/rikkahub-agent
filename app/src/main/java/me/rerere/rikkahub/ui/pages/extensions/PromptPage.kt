@@ -75,6 +75,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -262,7 +263,10 @@ private fun ModeInjectionTab(
                 .align(Alignment.BottomCenter)
                 .offset(y = -ScreenOffset),
             leadingContent = {
-                IconButton(onClick = { importer.importFromFile() }) {
+                IconButton(
+                    onClick = { importer.importFromFile() },
+                    modifier = Modifier.testTag("prompt_page_mode_injection_import_button"),
+                ) {
                     Icon(HugeIcons.FileImport, null)
                 }
             },
@@ -674,7 +678,10 @@ private fun LorebookTab(
                 .align(Alignment.BottomCenter)
                 .offset(y = -ScreenOffset),
             leadingContent = {
-                IconButton(onClick = { importer.importFromFile() }) {
+                IconButton(
+                    onClick = { importer.importFromFile() },
+                    modifier = Modifier.testTag("prompt_page_lorebook_import_button"),
+                ) {
                     Icon(HugeIcons.FileImport, null)
                 }
             },

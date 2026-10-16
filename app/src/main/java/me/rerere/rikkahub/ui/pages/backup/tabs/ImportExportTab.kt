@@ -21,6 +21,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.dokar.sonner.ToastType
@@ -189,6 +190,7 @@ fun ImportExportTab(
                             createDocumentLauncher.launch("rikkahub_backup_$timestamp.zip")
                         }
                     } else null,
+                    modifier = Modifier.testTag("backup_export_button"),
                     headlineContent = { Text(stringResource(R.string.backup_page_local_backup_export)) },
                     supportingContent = {
                         Text(
@@ -215,6 +217,7 @@ fun ImportExportTab(
                             openDocumentLauncher.launch(arrayOf("application/zip"))
                         }
                     } else null,
+                    modifier = Modifier.testTag("backup_import_local_button"),
                     headlineContent = { Text(stringResource(R.string.backup_page_local_backup_import)) },
                     supportingContent = {
                         Text(
@@ -251,6 +254,7 @@ fun ImportExportTab(
                             openDocumentLauncher.launch(arrayOf("application/json"))
                         }
                     } else null,
+                    modifier = Modifier.testTag("backup_import_chatbox_button"),
                     headlineContent = { Text(stringResource(R.string.backup_page_import_from_chatbox)) },
                     supportingContent = { Text(stringResource(R.string.backup_page_import_chatbox_desc)) },
                     leadingContent = {
@@ -269,6 +273,7 @@ fun ImportExportTab(
                             openDocumentLauncher.launch(arrayOf("application/zip"))
                         }
                     } else null,
+                    modifier = Modifier.testTag("backup_import_cherry_button"),
                     headlineContent = { Text(stringResource(R.string.backup_page_import_from_cherry_studio)) },
                     supportingContent = { Text(stringResource(R.string.backup_page_import_cherry_studio_desc)) },
                     leadingContent = {

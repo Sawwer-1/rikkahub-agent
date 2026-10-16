@@ -33,17 +33,31 @@ class ChatSendDecisionTest {
     }
 
     @Test
-    fun `idle and approval states keep ordinary messages queued`() {
+    fun `approval waiting short send interrupts the barrier and restarts from the new message`() {
+        // 2026-10-16 需求：审批等待中追加消息 = 取消审批屏障 + 从这条消息继续（与生成中短按
+        // 发送同一套 INTERRUPT 语义）。仅当取消提交失败/对账失败时运行时才回退为
+        // 暂停待恢复（ConversationRuntime 的 InterruptCommand 分支）。
+        assertEquals(
+            ChatSendAction.INTERRUPT,
+            resolveShortSendAction(RuntimeState.WaitingApproval, hasInput = true, hasGuidanceText = true),
+        )
+        // 纯附件也按“立即换到这条消息”处理：审批等待没有“当前轮”可提醒，不存在引导选项。
+        assertEquals(
+            ChatSendAction.INTERRUPT,
+            resolveShortSendAction(RuntimeState.WaitingApproval, hasInput = true, hasGuidanceText = false),
+        )
+        // 空输入不构成消息，落回 QUEUE（no-op），不得误触打断。
+        assertEquals(
+            ChatSendAction.QUEUE,
+            resolveShortSendAction(RuntimeState.WaitingApproval, hasInput = false, hasGuidanceText = false),
+        )
+    }
+
+    @Test
+    fun `idle keeps ordinary messages queued`() {
         assertEquals(
             ChatSendAction.QUEUE,
             resolveShortSendAction(RuntimeState.Idle, hasInput = true, hasGuidanceText = true),
-        )
-        // WaitingApproval 不自动打断：运行时取消审批屏障后要求先对账再启动替代
-        // （APPROVAL_BARRIER_REQUIRES_RECONCILIATION，ConversationRuntime 约 :1268），
-        // 自动打断会把队列按暂停、消息被判失败。先处理或取消那张审批卡即可继续。
-        assertEquals(
-            ChatSendAction.QUEUE,
-            resolveShortSendAction(RuntimeState.WaitingApproval, hasInput = true, hasGuidanceText = true),
         )
     }
 

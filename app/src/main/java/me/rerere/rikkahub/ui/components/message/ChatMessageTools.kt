@@ -57,7 +57,9 @@ import me.rerere.rikkahub.ui.components.message.tools.ToolUIContext
 import me.rerere.rikkahub.ui.components.message.tools.ToolUIRegistry
 import me.rerere.rikkahub.ui.components.richtext.ZoomableAsyncImage
 import me.rerere.rikkahub.ui.components.ui.ChainOfThoughtScope
+import me.rerere.rikkahub.ui.components.ui.DialogTestTagsAsResourceId
 import me.rerere.rikkahub.ui.components.ui.DotLoading
+import me.rerere.rikkahub.ui.components.ui.testTagInDialog
 import me.rerere.rikkahub.ui.modifier.shimmer
 import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.rikkahub.utils.jsonPrimitiveOrNull
@@ -257,7 +259,7 @@ internal fun ChainOfThoughtScope.ChatMessageToolStep(
                                 )
                             },
                             enabled = !inFlight,
-                            modifier = Modifier.size(28.dp),
+                            modifier = Modifier.size(28.dp).testTag("chat_tool_approval_approve_button"),
                         ) {
                             Icon(
                                 imageVector = HugeIcons.Tick01,
@@ -277,7 +279,7 @@ internal fun ChainOfThoughtScope.ChatMessageToolStep(
                                     )
                                 },
                                 enabled = !inFlight,
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(28.dp).testTag("chat_tool_approval_always_allow_button"),
                             ) {
                                 Text("∞", style = MaterialTheme.typography.labelMedium)
                             }
@@ -293,7 +295,7 @@ internal fun ChainOfThoughtScope.ChatMessageToolStep(
                                 )
                             },
                             enabled = !inFlight,
-                            modifier = Modifier.size(28.dp),
+                            modifier = Modifier.size(28.dp).testTag("chat_tool_approval_chat_scope_button"),
                         ) {
                             Text("💬", style = MaterialTheme.typography.labelSmall)
                         }
@@ -303,7 +305,7 @@ internal fun ChainOfThoughtScope.ChatMessageToolStep(
                                 showDenyDialog = true
                             },
                             enabled = !inFlight,
-                            modifier = Modifier.size(28.dp),
+                            modifier = Modifier.size(28.dp).testTag("chat_tool_approval_deny_button"),
                         ) {
                             Icon(
                                 imageVector = HugeIcons.Cancel01,
@@ -641,6 +643,8 @@ private fun ToolDenyReasonDialog(
     var reason by remember { mutableStateOf("") }
 
     AlertDialog(
+        // 弹窗是独立窗口，主窗口根的 testTagsAsResourceId 不生效（见 DialogSemantics.kt）。
+        modifier = DialogTestTagsAsResourceId,
         onDismissRequest = onDismiss,
         title = {
             Text(stringResource(R.string.chat_message_tool_deny_dialog_title))
@@ -650,19 +654,27 @@ private fun ToolDenyReasonDialog(
                 value = reason,
                 onValueChange = { reason = it },
                 label = { Text(stringResource(R.string.chat_message_tool_deny_dialog_hint)) },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTagInDialog("chat_tool_deny_reason_input"),
                 singleLine = false,
                 minLines = 2,
                 maxLines = 4
             )
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(reason) }) {
+            TextButton(
+                onClick = { onConfirm(reason) },
+                modifier = Modifier.testTagInDialog("chat_tool_deny_confirm_button"),
+            ) {
                 Text(stringResource(R.string.chat_message_tool_deny))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.testTagInDialog("chat_tool_deny_cancel_button"),
+            ) {
                 Text(stringResource(android.R.string.cancel))
             }
         }

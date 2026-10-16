@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -343,7 +344,8 @@ private fun AssistantLocalToolContent(
                 trailingContent = {
                     Switch(
                         checked = assistant.localTools.contains(LocalToolOption.Clipboard),
-                        onCheckedChange = { toggleLocalTool(LocalToolOption.Clipboard, it) }
+                        onCheckedChange = { toggleLocalTool(LocalToolOption.Clipboard, it) },
+                        modifier = Modifier.testTag("assistant_local_tools_clipboard_switch"),
                     )
                 }
             )
@@ -788,7 +790,8 @@ private fun AssistantLocalToolContent(
                                     }
                                 )
                             }
-                        }
+                        },
+                        modifier = Modifier.testTag("assistant_local_tools_screen_time_switch"),
                     )
                 }
             )
@@ -1098,6 +1101,7 @@ private fun AssistantLocalToolContent(
                         // File.listFiles() on shared storage paths only returns subdirectories
                         // and the app's own creations — every pre-existing file is hidden.
                         requiresAllFilesAccess = true,
+                        modifier = Modifier.testTag("assistant_local_tools_files_switch"),
                     )
                 }
             )
@@ -1450,6 +1454,7 @@ private fun AssistantLocalToolContent(
                         checked = assistant.localTools.contains(LocalToolOption.ScreenAutomation),
                         onCheckedChange = { toggleLocalTool(LocalToolOption.ScreenAutomation, it) },
                         requiresAccessibilityService = true,
+                        modifier = Modifier.testTag("assistant_local_tools_screen_automation_switch"),
                     )
                 }
             )
@@ -1464,6 +1469,7 @@ private fun AssistantLocalToolContent(
                     PermissionedSwitch(
                         checked = assistant.localTools.contains(LocalToolOption.AppLauncher),
                         onCheckedChange = { toggleLocalTool(LocalToolOption.AppLauncher, it) },
+                        modifier = Modifier.testTag("assistant_local_tools_app_launcher_switch"),
                     )
                 }
             )
@@ -1497,6 +1503,7 @@ private fun AssistantLocalToolContent(
                         // pops the system dialog so termux_run_command works without an adb
                         // grant. If Termux is not installed the request silently no-ops.
                         requiredRuntimePerms = listOf("com.termux.permission.RUN_COMMAND"),
+                        modifier = Modifier.testTag("assistant_local_tools_termux_switch"),
                     )
                 }
             )
@@ -1530,6 +1537,7 @@ private fun AssistantLocalToolContent(
                                 showKeyboardSetupDialog = true
                             }
                         },
+                        modifier = Modifier.testTag("assistant_local_tools_keyboard_control_switch"),
                     )
                 }
             )
@@ -1649,6 +1657,7 @@ private fun PermissionedSwitch(
     requiresAllFilesAccess: Boolean = false,
     requiresExactAlarm: Boolean = false,
     enabled: Boolean = true,
+    modifier: Modifier = Modifier,
 ) {
     val ctx = LocalContext.current
     val toaster = LocalToaster.current
@@ -1871,7 +1880,8 @@ private fun PermissionedSwitch(
                 }
                 // Turning ON
                 requestPermission()
-            }
+            },
+            modifier = modifier,
         )
         if (permissionMissing) {
             Text(

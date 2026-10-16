@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -265,7 +266,9 @@ private fun GenerationBudgetSettingItem(settings: Settings, vm: SettingVM) {
                                 )
                             )
                         },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("model_settings_auto_compaction_percent_input"),
                         maxLines = 1,
                     )
                     OutlinedTextField(
@@ -295,7 +298,9 @@ private fun GenerationBudgetSettingItem(settings: Settings, vm: SettingVM) {
                         supportingText = {
                             Text(stringResource(R.string.setting_model_page_auto_compaction_trigger_tokens_k_desc))
                         },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("model_settings_auto_compaction_tokens_k_input"),
                         maxLines = 1,
                     )
                 }
@@ -330,7 +335,9 @@ private fun GenerationBudgetSettingItem(settings: Settings, vm: SettingVM) {
                             )
                         )
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("model_settings_final_answer_max_tokens_input"),
                     maxLines = 1,
                 )
             },
@@ -365,7 +372,9 @@ private fun GenerationBudgetSettingItem(settings: Settings, vm: SettingVM) {
                                 )
                             )
                         },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("model_settings_tool_output_max_chars_input"),
                         maxLines = 1,
                     )
                     OutlinedTextField(
@@ -394,7 +403,9 @@ private fun GenerationBudgetSettingItem(settings: Settings, vm: SettingVM) {
                                 )
                             )
                         },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("model_settings_tool_output_preview_chars_input"),
                         maxLines = 1,
                     )
                 }
