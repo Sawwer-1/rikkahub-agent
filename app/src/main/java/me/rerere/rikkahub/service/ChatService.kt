@@ -790,14 +790,32 @@ internal suspend fun runRegenerationTransaction(
 ): RunOutcome {
     return try {
         val outcome = operation()
-        if (outcome !is RunOutcome.Completed && outcome !is RunOutcome.WaitingApproval) {
+        // 2026-10-17（真机验收 P0-1b）：**用户主动中断/停止不算失败，不得回滚整图**。
+        // 旧判据把 Interrupted/Stopped 与 Failed 一起丢进 restore，于是「编辑成新版本 → 重发 →
+        // 中途中断」会把会话图回滚到操作前的快照：新版本那半截回复被丢掉，界面上摆回来的是
+        // 上一个版本的中断记录（真机现象：B 生成的记录不保存，显示的是 A 版的中断记录）。
+        // 与 246 的非重生成路径同一原则：只停生成，已存内容不动。
+        val userStopped = outcome is RunOutcome.Interrupted || outcome is RunOutcome.Stopped
+        if (!userStopped &&
+            outcome !is RunOutcome.Completed &&
+            outcome !is RunOutcome.WaitingApproval
+        ) {
             withContext(NonCancellable) { restore() }
         }
         outcome
     } catch (error: Throwable) {
-        runCatching {
-            withContext(NonCancellable) { restore() }
-        }.exceptionOrNull()?.let(error::addSuppressed)
+        // 2026-10-17（真机验收 P0-1b 的关键一半）：用户中断/停止**不是走 outcome 分支**——
+        // 运行时对活动 run 执行 job.cancel(...)，于是 operation() 以 CancellationException 抛出，
+        // 落在这里。旧代码无条件 restore()，等于把会话图回滚到操作前快照：编辑成新版本后重发、
+        // 中途点停止时，新版本那半截回复被丢掉，界面摆回来的是上一个版本的中断记录
+        // （真机现象："B 生成的记录不保存，显示的是 A 版的中断记录，整条摆回来直到暂停点"）。
+        // 同一条规则也避免「旧 run 的收尾把新 run 刚写进去的用户消息整段抹掉」（A1 打断重开）。
+        // 只有真正的失败（超时/网络/解析/内部异常）才恢复操作前快照。
+        if (error !is CancellationException) {
+            runCatching {
+                withContext(NonCancellable) { restore() }
+            }.exceptionOrNull()?.let(error::addSuppressed)
+        }
         throw error
     }
 }
@@ -2962,7 +2980,13 @@ class ChatService(
                 val alreadyHasAssistantResult = currentConversation.messageNodes
                     .drop(existingAnchorIndex + 1)
                     .any { node -> node.messages.any { it.role == MessageRole.ASSISTANT } }
-                if (alreadyHasAssistantResult) {
+                // 2026-10-17（真机验收 P0-1b 的第二道闸）：后面那条 assistant 可能是**上一个用户
+                // 版本**的回复。节点里已经有多个用户版本（编辑过 = 消息下方那个 2/2）时，
+                // 「重发新版本」属于必须重新生成的场景，不能走"已有结果"的短路返回——否则新版本
+                // 什么都不发生，界面直接摆出旧版本（含它的中断记录）。
+                val anchorNodeHasMultipleVersions =
+                    currentConversation.messageNodes[existingAnchorIndex].messages.size > 1
+                if (alreadyHasAssistantResult && !anchorNodeHasMultipleVersions) {
                     val resultAssistant = currentConversation.messageNodes
                         .drop(existingAnchorIndex + 1)
                         .asSequence()

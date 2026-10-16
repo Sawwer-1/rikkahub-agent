@@ -1,7 +1,9 @@
 package me.rerere.rikkahub.service
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import me.rerere.rikkahub.memory.MemorySourceVersion
+import me.rerere.rikkahub.service.chat.InterruptCleanupResult
 import me.rerere.rikkahub.service.chat.InterruptRegenerateCommand
 import me.rerere.rikkahub.service.chat.RegenerateCommand
 import me.rerere.rikkahub.service.chat.RegeneratePolicy
@@ -75,6 +77,54 @@ class DurableRegenerationReconciliationTest {
         )
         assertTrue(success is RunOutcome.Completed)
         assertFalse(successfulRestoreCalled)
+    }
+
+    @Test
+    fun `user stopped regeneration keeps the new partial graph instead of rolling back`() = runBlocking {
+        // 真机验收 P0-1b（2026-10-17）：编辑成新版本 → 重发 → 中途中断。旧判据把 Interrupted/
+        // Stopped 与 Failed 一起送进 restore，会话图被回滚到操作前的快照，于是新版本那半截回复
+        // 消失、界面摆回上一个版本的中断记录（"B 生成的记录不保存，显示的是 A 版的中断记录"）。
+        var stoppedRestoreCalled = false
+        val stopped = runRegenerationTransaction(
+            restore = { stoppedRestoreCalled = true },
+            operation = { RunOutcome.Stopped(InterruptCleanupResult.Completed) },
+        )
+        assertTrue(stopped is RunOutcome.Stopped)
+        assertFalse(stoppedRestoreCalled)
+
+        var interruptedRestoreCalled = false
+        val interrupted = runRegenerationTransaction(
+            restore = { interruptedRestoreCalled = true },
+            operation = { RunOutcome.Interrupted(InterruptCleanupResult.Completed) },
+        )
+        assertTrue(interrupted is RunOutcome.Interrupted)
+        assertFalse(interruptedRestoreCalled)
+    }
+
+    @Test
+    fun `cancelled regeneration keeps the partial graph while a real failure still restores`() = runBlocking {
+        // 用户中断的真实路径：运行时 cancel 这个 run 的 job → operation() 以 CancellationException
+        // 抛出。真机验收 P0-1b 就是被这条旧的无条件 restore 吃掉新版本的半截回复。
+        var restoreCalledOnCancel = false
+        val cancelled = runCatching {
+            runRegenerationTransaction(
+                restore = { restoreCalledOnCancel = true },
+                operation = { throw CancellationException("Interrupted by user") },
+            )
+        }.exceptionOrNull()
+        assertTrue(cancelled is CancellationException)
+        assertFalse(restoreCalledOnCancel)
+
+        // 真正的失败仍然要回滚（异常侧）。
+        var restoreCalledOnFailure = false
+        val failure = runCatching {
+            runRegenerationTransaction(
+                restore = { restoreCalledOnFailure = true },
+                operation = { throw IllegalStateException("provider blew up") },
+            )
+        }.exceptionOrNull()
+        assertTrue(failure is IllegalStateException)
+        assertTrue(restoreCalledOnFailure)
     }
 
     private fun regeneration(
