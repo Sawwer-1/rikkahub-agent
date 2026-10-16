@@ -381,19 +381,7 @@ private fun ChatPageContent(
 
     fun submitRunningChoice(choice: RunningSendChoice) {
         val contents = inputState.getContents()
-        val text = contents.filterIsInstance<UIMessagePart.Text>()
-            .joinToString("\n") { it.text }
         when (choice.toSendAction()) {
-            ChatSendAction.SOFT_STEER -> {
-                if (text.isBlank()) {
-                    toaster.show(
-                        "这类补充目前需要包含文字；附件可以选择稍后处理或立即改做。",
-                        type = ToastType.Warning,
-                    )
-                    return
-                }
-                vm.handleSteer(text)
-            }
             ChatSendAction.QUEUE -> vm.handleMessageSend(contents)
             ChatSendAction.INTERRUPT -> vm.handleInterrupt(contents)
             ChatSendAction.STOP -> vm.stopGeneration()
@@ -692,15 +680,11 @@ private fun ChatPageContent(
                             )
                         } else {
                             val contents = inputState.getContents()
-                            val text = contents.filterIsInstance<UIMessagePart.Text>()
-                                .joinToString("\n") { it.text }
                             val action = resolveShortSendAction(
                                 runtimeState = runtimeState,
                                 hasInput = !inputState.isEmpty(),
-                                hasGuidanceText = text.isNotBlank(),
                             )
                             when (action) {
-                                ChatSendAction.SOFT_STEER -> vm.handleSteer(text)
                                 ChatSendAction.QUEUE -> vm.handleMessageSend(contents)
                                 ChatSendAction.INTERRUPT -> vm.handleInterrupt(contents)
                                 ChatSendAction.STOP -> vm.stopGeneration()
@@ -747,9 +731,6 @@ private fun ChatPageContent(
                                     }
                                 }
                                 ChatSendAction.STOP -> vm.stopGeneration()
-                                ChatSendAction.SOFT_STEER -> submitRunningChoice(
-                                    RunningSendChoice.CONTINUE_WITH_GUIDANCE
-                                )
                                 ChatSendAction.INTERRUPT -> submitRunningChoice(
                                     RunningSendChoice.STOP_AND_REPLACE
                                 )
@@ -922,14 +903,6 @@ private fun ChatPageContent(
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        SendModeOption(
-                            title = "继续做，下一步参考这条",
-                            description = "不打断正在执行的工具；做完当前这一步后，AI 会按你的补充调整后续操作。",
-                            color = Color(0xFFE4C7FF),
-                            onClick = {
-                                submitRunningChoice(RunningSendChoice.CONTINUE_WITH_GUIDANCE)
-                            },
-                        )
                         SendModeOption(
                             title = "做完当前任务，再处理这条",
                             description = "把它放到下一条，不改变现在这项任务。",

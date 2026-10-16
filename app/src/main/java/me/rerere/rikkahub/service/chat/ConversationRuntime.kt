@@ -1629,10 +1629,17 @@ class ConversationRuntime(
             }
             else -> complete(envelope, CommandOutcome.Rejected("Unsupported queue control"))
         }
-        _runtimeState.value = when {
-            activeRun != null -> RuntimeState.Running
-            queuePaused -> RuntimeState.Paused
-            else -> RuntimeState.Idle
+        // 2026-10-17：这里曾自行判一套"运行态收窄"（activeRun → Running，queuePaused → Paused，
+        // 否则 Idle），**漏掉了 waitingCommandIds**。于是审批卡片还挂着、或审批屏障待对账时，
+        // 只要期间发生过一次队列控制（取消/编辑排队消息、升格引导等），UI 拿到的 runtimeState
+        // 就被写成 Idle——发送分流据此判定"没有活干"，追加消息只会排队，既不打断也不重开
+        // （用户侧表现："审批等待中补一条消息 → 什么都没发生"）。
+        // 统一走 restingRuntimeState()（单一事实来源：待对账/队列暂停 → Paused，有等待审批 →
+        // WaitingApproval），只在真有 run 在跑时保留 Running 优先。
+        _runtimeState.value = if (activeRun != null) {
+            RuntimeState.Running
+        } else {
+            restingRuntimeState()
         }
         refreshQueueStatus()
         return true

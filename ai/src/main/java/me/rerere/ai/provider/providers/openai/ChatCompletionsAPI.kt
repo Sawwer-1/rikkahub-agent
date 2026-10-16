@@ -42,6 +42,7 @@ import me.rerere.ai.provider.ToolResultReplayItem
 import me.rerere.ai.provider.ToolResultReplayPlan
 import me.rerere.ai.provider.bufferProviderStream
 import me.rerere.ai.provider.deliverProviderChunk
+import me.rerere.ai.provider.isDeepSeekV4Family
 import me.rerere.ai.provider.providers.PartGroup
 import me.rerere.ai.provider.providers.groupPartsByToolBoundary
 import me.rerere.ai.ui.MessageChunk
@@ -1296,7 +1297,7 @@ internal fun parseChatCompletionsTokenUsage(jsonObject: JsonObject?): TokenUsage
 }
 
 /**
- * 2026-10-16（工单 CB · 思考链降智 · 待确认项 4）：该判据此前是
+ * 2026-10-16（工单 CB · 思考链降智 · 待确认项 4，2026-10-17 归一）：该判据此前是
  * `"deepseek-v4-" in modelId.lowercase()`，只认「连字符」一种拼写。于是同一上游的两种写法
  * 行为不一致：
  *   - `DeepSeek-V4-Flash`（连字符、大写）→ 小写后含 `deepseek-v4-` → 命中；
@@ -1304,13 +1305,11 @@ internal fun parseChatCompletionsTokenUsage(jsonObject: JsonObject?): TokenUsage
  * 命不命中会同时改变 `reasoning_effort` 的写法与「工具轮强制回传 reasoning_content」这条路径，
  * 也就是同一个模型会因为名字里一个标点的差别而时开时关（用户侧表现为「有时降智有时正常」）。
  *
- * 这里把大小写与分隔符（`-` `.` `_` 空格等一切非字母数字）一并归一，只按「deepseek + v4」
- * 这个家族特征判定，拼写差异不再改变行为。
+ * 判据已统一到 [isDeepSeekV4Family]（同一套家族判定也被 Dream 预算与超时复用），
+ * 拼写差异不再改变行为。
  *
  * 判据本身**保留**（未取消）：ExTV 分支没有这条逻辑，但 DeepSeek 系兼容端点可能对含 tool_calls
  * 的 assistant 消息校验 `reasoning_content`，硬删有 400 风险，需要设备 A/B 验证后再定。
  */
-internal fun requiresToolReasoningContent(modelId: String): Boolean {
-    val normalized = modelId.lowercase().filter { it.isLetterOrDigit() }
-    return "deepseekv4" in normalized
-}
+internal fun requiresToolReasoningContent(modelId: String): Boolean =
+    isDeepSeekV4Family(modelId)

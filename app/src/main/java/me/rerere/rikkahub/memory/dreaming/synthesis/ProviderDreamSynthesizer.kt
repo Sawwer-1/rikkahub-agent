@@ -13,6 +13,7 @@ import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
+import me.rerere.ai.provider.isDeepSeekV4Family
 import me.rerere.ai.ui.FinishCategory
 import me.rerere.ai.ui.UIMessage
 import me.rerere.rikkahub.data.datastore.SettingsStore
@@ -257,7 +258,10 @@ private fun isOpenCodeDeepSeekV4Reasoning(
 ): Boolean = providerSetting is ProviderSetting.OpenAI &&
     providerSetting.baseUrl.isOpenCodeHost() &&
     ModelAbility.REASONING in model.abilities &&
-    "deepseek-v4-" in model.modelId.lowercase()
+    // 2026-10-17：判据统一到 isDeepSeekV4Family。此前这里写的是 `"deepseek-v4-" in modelId.lowercase()`，
+    // 只认连字符，于是 `deepseek-v4.1-flash` 这类点号写法漏判 → 拿不到下面这套扩容预算/超时
+    // （小预算被隐藏思考吃光、长任务提前超时）。与工具轮 reasoning 判据同一处根因。
+    isDeepSeekV4Family(model.modelId)
 
 private fun String.isOpenCodeHost(): Boolean = runCatching {
     URI(this).host?.lowercase()?.let { host ->
