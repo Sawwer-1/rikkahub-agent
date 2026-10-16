@@ -20,6 +20,14 @@ const val ABSOLUTE_CONTEXT_WINDOW_TOKENS: Int = 1_000_000
 /** Conservative, fixed allocation offered to the atomic memory prompt compiler. */
 const val MAX_ATOMIC_MEMORY_PROMPT_TOKENS: Int = 1_024
 
+/**
+ * 调用方**没有**声明输出上限时，闸门用于校验「窗口装不装得下」的保守预留值。
+ *
+ * 重要（2026-10-16）：它只是校验侧的预留，**不是**用户意图，因此**不得**被当作请求参数
+ * `max_tokens` 发出去。发出去会替用户隐式钉死输出上限（思考链与正文共用该上限 → 长思考链被
+ * 截断，表现为「降智」；模型未声明输出上限的网关还会直接 400）。调用方带没带上限，
+ * 由 `GenerationHandler` 依据助手/最终答复配置决定，见该处注释。
+ */
 private const val DEFAULT_REQUESTED_OUTPUT_TOKENS: Int = 4_096
 private const val MINIMUM_USEFUL_OUTPUT_TOKENS: Int = 64
 private const val BUILT_IN_TOOL_RESERVE_TOKENS: Int = 128

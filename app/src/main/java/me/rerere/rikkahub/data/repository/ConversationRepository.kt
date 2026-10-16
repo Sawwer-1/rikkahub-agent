@@ -583,6 +583,21 @@ class ConversationRepository(
         var commits: List<ConversationSourceAuthorityCommit> = emptyList()
         val updated = database.withTransaction {
             val stored = getConversationById(incoming.id) ?: return@withTransaction null
+            // 2026-10-16 只读观测（工单 CB 问题三：取消生成丢历史）：
+            // 运行时整图写入是「以调用方的图为准」的语义（withRuntimeGraph 整段替换 messageNodes），
+            // 调用方只要递进来一份更短的图，库侧节点就会静默消失。这里**只记日志、不改行为**，
+            // 目的是设备侧复现时能从 logcat 取回「是哪一次写入把历史写短了」的一手证据。
+            val incomingNodeIds = incoming.messageNodes.mapTo(hashSetOf()) { it.id }
+            val droppedNodes = stored.messageNodes.count { it.id !in incomingNodeIds }
+            if (droppedNodes > 0) {
+                Log.w(
+                    TAG,
+                    "updateRuntimeConversation: runtime graph drops stored nodes — " +
+                        "conversation=${incoming.id} " +
+                        "storedNodes=${stored.messageNodes.size} " +
+                        "incomingNodes=${incoming.messageNodes.size} dropped=$droppedNodes"
+                )
+            }
             val merged = stored.withRuntimeGraph(incoming)
             persistConversationInCurrentTransaction(merged, false, sourceInvalidationMode, sourceInvalidationNowMs)
             if (sourceInvalidationMode != ConversationSourceInvalidationMode.SKIP_TRANSIENT_WRITE) {

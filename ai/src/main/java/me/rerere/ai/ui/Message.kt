@@ -650,6 +650,49 @@ fun UIMessage.finishPendingTools(
 }
 
 /**
+ * 2026-10-16（工单 CB 问题三）：把「未执行且不可恢复」的工具调用就地标记为已放弃。
+ *
+ * 背景：取消 / 停止生成后，assistant 消息里可能残留 `!isExecuted` 的工具（Pending 审批态，
+ * 或 Approved 但执行被中断）。此前的收尾做法是把整条消息从图里移除，于是该消息携带的
+ * 思考链（Reasoning）与已生成正文一并消失——用户可见的「取消就把思考链 / 历史清掉」。
+ *
+ * 这里改为不删消息：写入取消回执（output 非空 ⇒ isExecuted = true）并把审批态置为
+ * Denied，使该工具既不会再阻塞下一轮，也不会再让这条消息被判定为「无效」，
+ * 而消息的所有内容（思考链、正文、工具卡片）原样保留。
+ *
+ * 与 [finishPendingTools] 保持同一豁免口径：已经是终止态（Denied / Answered）的工具
+ * 原样保留，避免覆盖掉安全闸门给出的原因。
+ */
+fun UIMessage.abandonUnresolvedToolCalls(): UIMessage {
+    val updatedParts = parts.map { part ->
+        if (part is UIMessagePart.Tool && part.canBeAbandoned) {
+            part.copy(
+                output = listOf(UIMessagePart.Text(ABANDONED_TOOL_CALL_OUTPUT)),
+                approvalState = ToolApprovalState.Denied(ABANDONED_TOOL_CALL_REASON),
+            )
+        } else {
+            part
+        }
+    }
+
+    if (updatedParts == parts) {
+        return this
+    }
+
+    return copy(parts = updatedParts)
+}
+
+/** 未执行、且尚未处于终止态的工具调用：可以被就地放弃。 */
+val UIMessagePart.Tool.canBeAbandoned: Boolean
+    get() = !isExecuted &&
+        approvalState !is ToolApprovalState.Denied &&
+        approvalState !is ToolApprovalState.Answered
+
+internal const val ABANDONED_TOOL_CALL_REASON = "Abandoned after generation was stopped"
+internal const val ABANDONED_TOOL_CALL_OUTPUT =
+    """{"status":"abandoned","error":"Generation was stopped before this tool call completed."}"""
+
+/**
  * Migrate legacy ToolCall parts to new Tool type within a single message.
  * This converts ToolCall parts to Tool parts with empty output.
  */

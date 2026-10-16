@@ -787,11 +787,9 @@ class ChatCompletionsAPI(
         return JsonObject(this + ("content" to newContent))
     }
 
-    // NOTE: ExTV 分支无此逻辑（工单 CB 差分定位：对方不按模型名强塞工具轮 reasoning 回传）。
-    // 保留原因：DeepSeek 系及兼容端点可能对含 tool_calls 的 assistant 消息校验
-    // reasoning_content 字段，硬删有 400 风险。关闭它需要设备 A/B 验证后再定，勿直接删。
-    private fun requiresToolReasoningContent(modelId: String): Boolean =
-        "deepseek-v4-" in modelId.lowercase()
+    // requiresToolReasoningContent 已提到文件末尾的顶层函数（便于单测覆盖）：
+    // 这里的判据只按「deepseek + v4」家族特征归一判定，不再随 `-` / `.` 等拼写差异时开时关。
+    // 保留逻辑本身的原因见顶层函数注释（ExTV 无此逻辑，硬删需要设备 A/B 验证后再定）。
 
     private fun buildMessages(
         messages: List<UIMessage>,
@@ -1295,4 +1293,24 @@ internal fun parseChatCompletionsTokenUsage(jsonObject: JsonObject?): TokenUsage
         // providers omit it, so retaining null distinguishes "not reported" from zero cost.
         cost = jsonObject["cost"]?.jsonPrimitive?.doubleOrNull,
     )
+}
+
+/**
+ * 2026-10-16（工单 CB · 思考链降智 · 待确认项 4）：该判据此前是
+ * `"deepseek-v4-" in modelId.lowercase()`，只认「连字符」一种拼写。于是同一上游的两种写法
+ * 行为不一致：
+ *   - `DeepSeek-V4-Flash`（连字符、大写）→ 小写后含 `deepseek-v4-` → 命中；
+ *   - `deepseek-v4.1-flash`（点号）→ 不含 `deepseek-v4-` → 漏判。
+ * 命不命中会同时改变 `reasoning_effort` 的写法与「工具轮强制回传 reasoning_content」这条路径，
+ * 也就是同一个模型会因为名字里一个标点的差别而时开时关（用户侧表现为「有时降智有时正常」）。
+ *
+ * 这里把大小写与分隔符（`-` `.` `_` 空格等一切非字母数字）一并归一，只按「deepseek + v4」
+ * 这个家族特征判定，拼写差异不再改变行为。
+ *
+ * 判据本身**保留**（未取消）：ExTV 分支没有这条逻辑，但 DeepSeek 系兼容端点可能对含 tool_calls
+ * 的 assistant 消息校验 `reasoning_content`，硬删有 400 风险，需要设备 A/B 验证后再定。
+ */
+internal fun requiresToolReasoningContent(modelId: String): Boolean {
+    val normalized = modelId.lowercase().filter { it.isLetterOrDigit() }
+    return "deepseekv4" in normalized
 }

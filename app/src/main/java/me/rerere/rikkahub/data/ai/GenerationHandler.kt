@@ -3364,6 +3364,17 @@ class GenerationHandler(
                 }
                 ?.compilerRevision,
         )
+        // 2026-10-16（工单 CB 问题一 / 思考链降智）：
+        // `contextPreparation.effectiveMaxOutputTokens` 是**上下文闸门的保守预留**——调用方
+        // 没给上限时它按 DEFAULT_REQUESTED_OUTPUT_TOKENS(4096) 兜底，用来校验窗口装不装得下。
+        // 把它直接发成请求参数 `max_tokens` 等于替用户隐式设了一个 4096 上限：
+        //   1) DeepSeek 等网关上模型未声明输出上限（`max_output_tokens: null`）时会直接拒绝请求
+        //      （`The requested max_tokens (4096) exceeds the maximum output tokens allowed …`）；
+        //   2) 思考链与正文共用这个上限，长思考链会被截断，表现为「思考链降智」。
+        // 因此只有用户**真的配了**上限（助手 maxTokens 或最终答复上限）时才带上，并且带的是
+        // 闸门夹取后的值（窗口吃紧时仍会下调）。未配置时留空，交由上游默认——与 extv 版一致。
+        // 闸门侧仍用 4096 做预留，校验口径不变。
+        val configuredOutputCap = requestedMaxTokens?.takeIf { it > 0 }
         val params = agentTiming.timedAgentStage(
             AgentTimingEventKind.REQUEST_BUILD_STARTED,
             AgentTimingEventKind.REQUEST_BUILD_FINISHED,
@@ -3372,8 +3383,7 @@ class GenerationHandler(
             model = model,
             temperature = assistant.temperature,
             topP = assistant.topP,
-            // The exact reserve used by the final hard gate is the value sent on the wire.
-            maxTokens = contextPreparation.effectiveMaxOutputTokens,
+            maxTokens = configuredOutputCap?.let { contextPreparation.effectiveMaxOutputTokens },
             tools = tools,
             providerCacheIdentity = providerCacheIdentity,
             reasoningLevel = if (requestPurpose == GenerationRequestPurpose.FINAL_ANSWER_RECOVERY) {

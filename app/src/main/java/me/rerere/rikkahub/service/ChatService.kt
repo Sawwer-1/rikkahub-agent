@@ -63,6 +63,7 @@ import me.rerere.ai.ui.isEmptyUIMessage
 import me.rerere.ai.ui.FinalAnswerRecoveryStatus
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.UIMessageState
+import me.rerere.ai.ui.abandonUnresolvedToolCalls
 import me.rerere.ai.ui.canResumeToolExecution
 import me.rerere.ai.ui.finishPendingTools
 import me.rerere.ai.ui.finishReasoning
@@ -6580,33 +6581,34 @@ class ChatService(
         val conversation = getConversationFlow(conversationId).value
         var messagesNodes = conversation.messageNodes
 
-        // 移除无效 tool (未执行的 Tool)
-        messagesNodes = messagesNodes.mapIndexed { _, node ->
-            // Check for Tool type with non-executed tools
-            val hasPendingTools = node.currentMessage.getTools().any { !it.isExecuted }
-
-            if (hasPendingTools) {
-                // Keep messages that are ready to resume, such as approved/denied/answered tools.
-                val hasResumableTool = node.currentMessage.getTools().any {
-                    !it.isExecuted && it.approvalState.canResumeToolExecution()
-                }
-                if (hasResumableTool) {
-                    return@mapIndexed node
-                }
-
-                // If all tools are executed, it's valid
-                val allToolsExecuted = node.currentMessage.getTools().all { it.isExecuted }
-                if (allToolsExecuted && node.currentMessage.getTools().isNotEmpty()) {
-                    return@mapIndexed node
-                }
-
-                // Remove messages that still have unresolved tool approvals.
-                return@mapIndexed node.copy(
-                    messages = node.messages.filter { it.id != node.currentMessage.id },
-                    selectIndex = node.selectIndex - 1
+        // 2026-10-16 P0（工单 CB 问题三：取消生成丢思考链 / 历史）：
+        // 这里**不再删除整条消息**。旧逻辑对「含未执行工具且不可 resume」的消息执行
+        // `messages.filter { it.id != currentMessage.id }`，于是取消 / 停止后残留的
+        // assistant 消息（连同它的思考链与已生成正文）会在下一轮生成开始时被整条抹掉，
+        // 看起来就是「一点取消，思考链就被清掉 / 历史被清空」。
+        // 现在改为就地放弃这些工具调用（写入取消回执 + Denied），消息内容全部保留；
+        // 工具因此变成已执行，既不会再阻塞下一轮，也不会再次被判为无效（幂等）。
+        messagesNodes = messagesNodes.map { node ->
+            val message = node.currentMessage
+            val unresolvedTools = message.getTools().filter { !it.isExecuted }
+            if (unresolvedTools.isEmpty()) {
+                return@map node
+            }
+            // Keep messages that are ready to resume, such as approved/denied/answered tools.
+            val hasResumableTool = unresolvedTools.any { it.approvalState.canResumeToolExecution() }
+            if (hasResumableTool) {
+                return@map node
+            }
+            val abandoned = message.abandonUnresolvedToolCalls()
+            if (abandoned == message) {
+                node
+            } else {
+                node.copy(
+                    messages = node.messages.map { branch ->
+                        if (branch.id == message.id) abandoned else branch
+                    }
                 )
             }
-            node
         }
 
         // 更新index
@@ -6618,10 +6620,13 @@ class ChatService(
             }
         }
 
-        // 移除无效消息
+        // 移除无效消息（空节点防御）
         messagesNodes = messagesNodes.filter { it.messages.isNotEmpty() }
 
-        updateConversation(conversationId, conversation.copy(messageNodes = messagesNodes))
+        // 图没变就不要整图回写内存态（withRuntimeGraph 是整段替换，冗余写入只会制造竞态窗口）。
+        if (messagesNodes != conversation.messageNodes) {
+            updateConversation(conversationId, conversation.copy(messageNodes = messagesNodes))
+        }
     }
 
     private fun cancelToolByUser(
