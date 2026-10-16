@@ -134,19 +134,26 @@ import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 private const val TAG = "GenerationHandler"
-private const val MAX_TOOL_OUTPUT_CHARS = 32 * 1024
-private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
+// 工具输出上限 / 预览字符数由 Settings.toolOutputMaxChars / toolOutputPreviewChars 提供，
+// 均可由用户设置；未设置（null）= 不截断。UI 建议值见
+// data.datastore.SUGGESTED_TOOL_OUTPUT_MAX_CHARS / SUGGESTED_TOOL_OUTPUT_PREVIEW_CHARS。
 private const val MEMORY_TOOL_SCOPE_METADATA_KEY = "rikkahub_memory_scope_id"
 private const val MEMORY_TOOL_ASSISTANT_METADATA_KEY = "rikkahub_memory_assistant_id"
 private val SCOPE_BOUND_MEMORY_TOOL_NAMES = setOf("memory_tool", "memory_query")
 
+/**
+ * [maxToolOutputChars] 取自 Settings.toolOutputMaxChars；`null` = 未设置 = 不截断（永不落盘）。
+ * 默认参数 null 表示"未设置"，与生产路径的未设置语义一致。
+ */
 internal fun shouldSpillToolOutputToFile(
     toolName: String,
     totalChars: Int,
     hasShellAccess: Boolean,
+    maxToolOutputChars: Int? = null,
 ): Boolean = toolName !in TRANSIENT_CONVERSATION_READER_TOOL_NAMES &&
-    totalChars > MAX_TOOL_OUTPUT_CHARS && hasShellAccess
-private const val FINAL_ANSWER_MAX_TOKENS = 4096
+    maxToolOutputChars != null && totalChars > maxToolOutputChars && hasShellAccess
+// 最终答复恢复输出上限由 Settings.finalAnswerMaxTokens 提供；null = 未设置 = 不覆盖助手 maxTokens。
+// UI 建议值见 data.datastore.SUGGESTED_FINAL_ANSWER_MAX_TOKENS。
 private const val FINAL_ANSWER_MAX_ATTEMPTS = 3
 private const val FINAL_ANSWER_CONTEXT_TOOL_OUTPUT_BUDGET = 24 * 1024
 private const val FINAL_ANSWER_CONTEXT_TOOL_OUTPUT_MAX = 2 * 1024
@@ -2149,6 +2156,7 @@ class GenerationHandler(
                                         tool.toolName,
                                         result,
                                         hasShellAccess,
+                                        settings,
                                         agentTiming,
                                         currentTimingRound,
                                         timingBinding?.first,
@@ -2341,6 +2349,7 @@ class GenerationHandler(
                                 ready.tool.toolName,
                                 runtimeResult.output,
                                 hasShellAccess,
+                                settings,
                                 agentTiming,
                                 currentTimingRound,
                                 timingBinding?.first,
@@ -2950,7 +2959,9 @@ class GenerationHandler(
         val useAnchoredVolatileContext = provider is ProviderSetting.OpenAI && !provider.useResponseApi
         val contextPreparer = GenerationProviderContextPreparer()
         val requestedMaxTokens = if (requestPurpose == GenerationRequestPurpose.FINAL_ANSWER_RECOVERY) {
-            FINAL_ANSWER_MAX_TOKENS
+            // Settings.finalAnswerMaxTokens：非 null 使用该显式上限；null = 未设置 = 不覆盖，
+            // 跟随助手 maxTokens（助手未设置则沿用 provider 默认）。
+            settings.finalAnswerMaxTokens ?: assistant.maxTokens
         } else {
             assistant.maxTokens
         }
@@ -3704,6 +3715,7 @@ class GenerationHandler(
         toolName: String,
         output: List<UIMessagePart>,
         hasShellAccess: Boolean,
+        settings: Settings,
         agentTiming: AgentTimingHandle? = null,
         round: AgentTimingRoundRef? = null,
         tool: AgentTimingToolRef? = null,
@@ -3714,12 +3726,16 @@ class GenerationHandler(
 
         // Cross-conversation excerpts are memory-only. Their Reader enforces a 40k text budget,
         // and the generic /tool_outputs spill would violate the single-command lifetime.
-        if (!shouldSpillToolOutputToFile(toolName, totalChars, hasShellAccess)) return output
+        // 上限/预览均由设置提供；<未设置=null> 表示不截断。
+        if (!shouldSpillToolOutputToFile(toolName, totalChars, hasShellAccess, settings.toolOutputMaxChars)) {
+            return output
+        }
 
         Log.i(TAG, "maybeTruncateToolOutput: truncating tool $toolCallId output ($totalChars chars)")
 
         val fullText = textParts.joinToString("\n") { it.text }
-        val preview = fullText.take(TOOL_OUTPUT_PREVIEW_CHARS)
+        // 预览未设置（null）→ 不截断预览，保留全文。
+        val preview = settings.toolOutputPreviewChars?.let { fullText.take(it.coerceAtLeast(0)) } ?: fullText
 
         val fileName = "${toolCallId}.txt"
         agentTiming.timedAgentStage(

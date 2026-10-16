@@ -76,9 +76,8 @@ fun WorkspaceTerminalPage(id: String) {
     )
     var pendingCloseTabId by remember(root) { mutableStateOf<Long?>(null) }
 
-    // fork adaptation: fork's WorkspaceEntity has no shellCompatibilityMode column yet,
-    // so the session is always created with the default (seccomp enabled) mode.
-    val shellCompatibilityMode = false
+    // 兼容模式来自工作区设置 (关闭 proot seccomp 加速); 新标签页按当前设置创建
+    val shellCompatibilityMode = state.workspace?.shellCompatibilityMode ?: false
     LaunchedEffect(root, shellCompatibilityMode) {
         root?.let { sessionManager.ensureSession(it, shellCompatibilityMode) }
     }

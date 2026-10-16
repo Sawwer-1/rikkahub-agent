@@ -198,7 +198,9 @@ import me.rerere.rikkahub.owner.db.HostOperationEventEntity
     // Migration_52_53 (registered in DataSourceModule).
     // v54 adds the lightweight learned_policy table (Part B rebuild, 2.4.0): hand-written as
     // Migration_53_54 (registered in DataSourceModule).
-    version = 54,
+    // v55 adds workspaces.shell_compatibility_mode (ExTV port): hand-written as Migration_54_55
+    // (registered in DataSourceModule).
+    version = 55,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),

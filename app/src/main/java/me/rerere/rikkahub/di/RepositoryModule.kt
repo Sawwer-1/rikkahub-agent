@@ -120,6 +120,12 @@ val repositoryModule = module {
             persistence = get(),
             host = get(),
             scope = get<AppScope>(),
+            // 后台常驻进程也要吃 PROOT_NO_SECCOMP: 启动时按 workspaceId 读取该 workspace 实体的
+            // shellCompatibilityMode 透传进 context。此处延后解析 (lambda 内 get), 避免与
+            // WorkspaceRepository 形成构造期循环依赖 (WorkspaceRepository 依赖本 manager)。
+            shellCompatibilityModeResolver = { workspaceId ->
+                get<WorkspaceRepository>().getById(workspaceId)?.shellCompatibilityMode == true
+            },
         )
     }
 

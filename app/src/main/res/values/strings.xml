@@ -832,6 +832,18 @@
   <string name="setting_model_page_fast_model">Fast Model</string>
   <string name="setting_model_page_fast_model_desc">Model for fast or background tasks, also used as fallback for title and suggestion models when not set</string>
   <string name="setting_model_page_compress_model_desc">Model for compressing conversation history</string>
+  <string name="setting_model_page_generation_budget">Generation Budget</string>
+  <string name="setting_model_page_generation_budget_suggested">Suggested %1$d</string>
+  <string name="setting_model_page_auto_compaction_trigger_percent">Auto-compaction trigger (% of context)</string>
+  <string name="setting_model_page_auto_compaction_trigger_percent_desc">Rolling auto-compression fires when estimated context usage reaches this share of the model context window. Leave blank to disable the percentage trigger (only the message-count trigger applies).</string>
+  <string name="setting_model_page_auto_compaction_trigger_tokens_k">Or absolute trigger (K tokens)</string>
+  <string name="setting_model_page_auto_compaction_trigger_tokens_k_desc">Optional. When set, triggers at this many thousand tokens, taking precedence over the percentage. Leave blank for no absolute cap.</string>
+  <string name="setting_model_page_final_answer_max_tokens">Final answer max output tokens</string>
+  <string name="setting_model_page_final_answer_max_tokens_desc">Output cap for the final-answer recovery request. Leave blank to keep the assistant maxTokens setting unchanged.</string>
+  <string name="setting_model_page_tool_output_max_chars">Max tool output characters</string>
+  <string name="setting_model_page_tool_output_max_chars_desc">Tool output larger than this is spilled to a file and truncated. Leave blank to never truncate.</string>
+  <string name="setting_model_page_tool_output_preview_chars">Tool output preview characters</string>
+  <string name="setting_model_page_tool_output_preview_chars_desc">Characters of a spilled tool output kept inline as a preview. Leave blank to keep the full text (no preview truncation).</string>
   <string name="setting_model_page_compress_prompt_vars">Variables: {content}, {target_tokens}, {additional_context}</string>
   <string name="setting_model_page_compress_separate_api_title">Compression OpenAI API</string>
   <string name="setting_model_page_compress_separate_api_desc">When enabled, rolling summary and manual compression use this OpenAI-compatible API instead of the current chat model\'s provider.</string>
@@ -1805,6 +1817,8 @@
   <string name="workspace_detail_tab_basic">Basic</string>
   <string name="workspace_detail_tab_files">Files</string>
   <string name="workspace_detail_import_file">Import File</string>
+  <string name="workspace_detail_compatibility_mode">Compatibility mode</string>
+  <string name="workspace_detail_compatibility_mode_desc">Disables proot seccomp acceleration for ROMs or kernels where the accelerated path fails to start. The shell becomes slower but more compatible. Applies to new terminal tabs and later commands.</string>
   <string name="workspace_detail_rootfs_install_failed">Rootfs Installation Failed</string>
   <string name="workspace_detail_delete_directory">Delete Directory</string>
   <string name="workspace_detail_delete_file">Delete File</string>

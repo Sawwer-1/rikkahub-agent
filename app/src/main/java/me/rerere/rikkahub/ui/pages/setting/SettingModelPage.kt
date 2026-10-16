@@ -51,6 +51,10 @@ import me.rerere.hugeicons.stroke.AiEditing
 import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.datastore.SUGGESTED_AUTO_COMPACTION_THRESHOLD_PERCENT
+import me.rerere.rikkahub.data.datastore.SUGGESTED_FINAL_ANSWER_MAX_TOKENS
+import me.rerere.rikkahub.data.datastore.SUGGESTED_TOOL_OUTPUT_MAX_CHARS
+import me.rerere.rikkahub.data.datastore.SUGGESTED_TOOL_OUTPUT_PREVIEW_CHARS
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.ui.components.ai.ModelListSheet
 import me.rerere.rikkahub.ui.components.ai.rememberModelListState
@@ -181,6 +185,221 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 vm = vm,
             )
         }
+        item {
+            // 生成预算（jude 移植）：把过去写死的三处上限交给用户自己设，默认值与历史一致。
+            GenerationBudgetSettingItem(
+                settings = settings,
+                vm = vm,
+            )
+        }
+    }
+}
+
+/**
+ * 生成预算设置项。三处上限过去写死、对用户不可见；现在全部**默认为未设置（留空）**，
+ * 即不再截断 / 不再按 token 触发自动压缩，输入框 placeholder 给出建议值引导用户填写：
+ *  ① 自动压缩 token 触发百分比（留空 = 不启用百分比触发，建议 80）；
+ *  ② 最终答复恢复请求的输出上限（留空 = 不覆盖助手 maxTokens，建议 4096）；
+ *  ③ 单次工具输出字符上限 / 溢出预览字符数（留空 = 不截断，建议 32768 / 4096）。
+ * 默认行为因此与历史"静默截断"不同：留空即不设上限。
+ */
+@Composable
+private fun GenerationBudgetSettingItem(settings: Settings, vm: SettingVM) {
+    var thresholdPercent by remember(settings.autoCompactionThresholdPercent) {
+        mutableStateOf(settings.autoCompactionThresholdPercent?.toString().orEmpty())
+    }
+    var thresholdTokensK by remember(settings.autoCompactionThresholdTokensK) {
+        mutableStateOf(settings.autoCompactionThresholdTokensK?.toString().orEmpty())
+    }
+    var finalAnswerMaxTokens by remember(settings.finalAnswerMaxTokens) {
+        mutableStateOf(settings.finalAnswerMaxTokens?.toString().orEmpty())
+    }
+    var toolOutputMaxChars by remember(settings.toolOutputMaxChars) {
+        mutableStateOf(settings.toolOutputMaxChars?.toString().orEmpty())
+    }
+    var toolOutputPreviewChars by remember(settings.toolOutputPreviewChars) {
+        mutableStateOf(settings.toolOutputPreviewChars?.toString().orEmpty())
+    }
+
+    // 留空 = 未设置（null）：清空输入框即恢复"不设上限 / 不启用"；非空则解析并按范围收敛。
+    fun commitNullableInt(raw: String, range: IntRange, current: Int?, apply: (Int?) -> Unit) {
+        if (raw.isBlank()) {
+            if (current != null) apply(null)
+            return
+        }
+        val parsed = raw.toIntOrNull() ?: return
+        val normalized = parsed.coerceIn(range.first, range.last)
+        if (normalized != current) apply(normalized)
+    }
+
+    CardGroup(title = { Text(stringResource(R.string.setting_model_page_generation_budget)) }) {
+        // ① 自动压缩 token 触发百分比 (+ 可选的千 token 绝对上限)
+        item(
+            headlineContent = {
+                Text(stringResource(R.string.setting_model_page_auto_compaction_trigger_percent))
+            },
+            supportingContent = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    OutlinedTextField(
+                        value = thresholdPercent,
+                        onValueChange = { value ->
+                            thresholdPercent = value.filter(Char::isDigit).take(3)
+                            commitNullableInt(
+                                raw = thresholdPercent,
+                                range = 5..95,
+                                current = settings.autoCompactionThresholdPercent,
+                            ) { normalized ->
+                                vm.updateSettings(
+                                    settings.copy(autoCompactionThresholdPercent = normalized)
+                                )
+                            }
+                        },
+                        supportingText = {
+                            Text(stringResource(R.string.setting_model_page_auto_compaction_trigger_percent_desc))
+                        },
+                        placeholder = {
+                            Text(
+                                stringResource(
+                                    R.string.setting_model_page_generation_budget_suggested,
+                                    SUGGESTED_AUTO_COMPACTION_THRESHOLD_PERCENT,
+                                )
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 1,
+                    )
+                    OutlinedTextField(
+                        value = thresholdTokensK,
+                        onValueChange = { value ->
+                            thresholdTokensK = value.filter(Char::isDigit).take(7)
+                            if (thresholdTokensK.isBlank()) {
+                                if (settings.autoCompactionThresholdTokensK != null) {
+                                    vm.updateSettings(
+                                        settings.copy(autoCompactionThresholdTokensK = null)
+                                    )
+                                }
+                            } else {
+                                thresholdTokensK.toIntOrNull()?.let { parsed ->
+                                    val normalized = parsed.coerceIn(1, Int.MAX_VALUE / 1_000)
+                                    if (normalized != settings.autoCompactionThresholdTokensK) {
+                                        vm.updateSettings(
+                                            settings.copy(autoCompactionThresholdTokensK = normalized)
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        label = {
+                            Text(stringResource(R.string.setting_model_page_auto_compaction_trigger_tokens_k))
+                        },
+                        supportingText = {
+                            Text(stringResource(R.string.setting_model_page_auto_compaction_trigger_tokens_k_desc))
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 1,
+                    )
+                }
+            },
+        )
+        // ② 最终答复恢复请求的输出上限（留空 = 不覆盖助手 maxTokens）
+        item(
+            headlineContent = {
+                Text(stringResource(R.string.setting_model_page_final_answer_max_tokens))
+            },
+            supportingContent = {
+                OutlinedTextField(
+                    value = finalAnswerMaxTokens,
+                    onValueChange = { value ->
+                        finalAnswerMaxTokens = value.filter(Char::isDigit).take(9)
+                        commitNullableInt(
+                            raw = finalAnswerMaxTokens,
+                            range = 1..Int.MAX_VALUE,
+                            current = settings.finalAnswerMaxTokens,
+                        ) { normalized ->
+                            vm.updateSettings(settings.copy(finalAnswerMaxTokens = normalized))
+                        }
+                    },
+                    supportingText = {
+                        Text(stringResource(R.string.setting_model_page_final_answer_max_tokens_desc))
+                    },
+                    placeholder = {
+                        Text(
+                            stringResource(
+                                R.string.setting_model_page_generation_budget_suggested,
+                                SUGGESTED_FINAL_ANSWER_MAX_TOKENS,
+                            )
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 1,
+                )
+            },
+        )
+        // ③ 单次工具输出上限 + 溢出预览字符数（留空 = 不截断）
+        item(
+            headlineContent = {
+                Text(stringResource(R.string.setting_model_page_tool_output_max_chars))
+            },
+            supportingContent = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    OutlinedTextField(
+                        value = toolOutputMaxChars,
+                        onValueChange = { value ->
+                            toolOutputMaxChars = value.filter(Char::isDigit).take(9)
+                            commitNullableInt(
+                                raw = toolOutputMaxChars,
+                                range = 1..Int.MAX_VALUE,
+                                current = settings.toolOutputMaxChars,
+                            ) { normalized ->
+                                vm.updateSettings(settings.copy(toolOutputMaxChars = normalized))
+                            }
+                        },
+                        supportingText = {
+                            Text(stringResource(R.string.setting_model_page_tool_output_max_chars_desc))
+                        },
+                        placeholder = {
+                            Text(
+                                stringResource(
+                                    R.string.setting_model_page_generation_budget_suggested,
+                                    SUGGESTED_TOOL_OUTPUT_MAX_CHARS,
+                                )
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 1,
+                    )
+                    OutlinedTextField(
+                        value = toolOutputPreviewChars,
+                        onValueChange = { value ->
+                            toolOutputPreviewChars = value.filter(Char::isDigit).take(9)
+                            commitNullableInt(
+                                raw = toolOutputPreviewChars,
+                                range = 1..Int.MAX_VALUE,
+                                current = settings.toolOutputPreviewChars,
+                            ) { normalized ->
+                                vm.updateSettings(settings.copy(toolOutputPreviewChars = normalized))
+                            }
+                        },
+                        label = {
+                            Text(stringResource(R.string.setting_model_page_tool_output_preview_chars))
+                        },
+                        supportingText = {
+                            Text(stringResource(R.string.setting_model_page_tool_output_preview_chars_desc))
+                        },
+                        placeholder = {
+                            Text(
+                                stringResource(
+                                    R.string.setting_model_page_generation_budget_suggested,
+                                    SUGGESTED_TOOL_OUTPUT_PREVIEW_CHARS,
+                                )
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 1,
+                    )
+                }
+            },
+        )
     }
 }
 

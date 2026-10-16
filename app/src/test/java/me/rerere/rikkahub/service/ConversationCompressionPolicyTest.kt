@@ -79,14 +79,6 @@ class ConversationCompressionPolicyTest {
     }
 
     @Test
-    fun `recommended keep count leaves something to compress`() {
-        assertEquals(0, recommendedManualCompressionKeepRecentMessages(0))
-        assertEquals(0, recommendedManualCompressionKeepRecentMessages(1))
-        assertEquals(5, recommendedManualCompressionKeepRecentMessages(6))
-        assertEquals(8, recommendedManualCompressionKeepRecentMessages(100))
-    }
-
-    @Test
     fun `manual compression keeps requested tail in addition to marked summaries`() {
         val kept = List(512) { index -> UIMessage.user("kept-$index") }
         val result = buildManualCompressionMessages(

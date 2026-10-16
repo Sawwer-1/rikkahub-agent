@@ -38,12 +38,26 @@ class ConversationSession(
 
     val isHydrated: Boolean get() = hydrated
 
-    fun hydrateIfNeeded(snapshot: Conversation): Boolean = synchronized(stateLock) {
-        if (hydrated) return@synchronized false
-        state.value = snapshot
-        hydrated = true
-        true
-    }
+    /**
+     * Installs [snapshot] while no authoritative state has been loaded yet.
+     *
+     * [isHydrated] is latched only when [snapshot] really came from a durable source
+     * ([authoritative] = true). A synthetic initial/preset snapshot ([authoritative] = false,
+     * e.g. the preset of a brand-new conversation) is installed without latching, so the
+     * stored message nodes can still be hydrated over it once the row becomes readable.
+     *
+     * A user-created draft ([Conversation.newConversation]) is live local state: an
+     * authoritative snapshot must not overwrite it (the draft is committed by the send
+     * path, at which point it stops being a draft).
+     */
+    fun hydrateIfNeeded(snapshot: Conversation, authoritative: Boolean = true): Boolean =
+        synchronized(stateLock) {
+            if (hydrated) return@synchronized false
+            if (authoritative && state.value.newConversation) return@synchronized false
+            state.value = snapshot
+            if (authoritative) hydrated = true
+            true
+        }
 
     fun replaceState(snapshot: Conversation) {
         synchronized(stateLock) {

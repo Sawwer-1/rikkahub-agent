@@ -65,9 +65,15 @@ class TransientConversationToolSanitizerTest {
 
     @Test
     fun `oversized transient conversation output is never spilled to disk`() {
-        assertFalse(shouldSpillToolOutputToFile("conversation_read_recent", 100_000, true))
-        assertFalse(shouldSpillToolOutputToFile("conversation_search", 100_000, true))
-        assertTrue(shouldSpillToolOutputToFile("workspace_shell", 100_000, true))
+        // Transient readers are excluded regardless of the configured cap.
+        assertFalse(shouldSpillToolOutputToFile("conversation_read_recent", 100_000, true, 32 * 1024))
+        assertFalse(shouldSpillToolOutputToFile("conversation_search", 100_000, true, 32 * 1024))
+        // Unset cap (null, the new default) = no truncation at all.
+        assertFalse(shouldSpillToolOutputToFile("workspace_shell", 100_000, true))
+        // An explicit cap smaller than the output is what triggers the spill.
+        assertTrue(shouldSpillToolOutputToFile("workspace_shell", 100_000, true, 32 * 1024))
+        // A cap larger than the output never spills.
+        assertFalse(shouldSpillToolOutputToFile("workspace_shell", 1_000, true, 32 * 1024))
     }
 
     @Test

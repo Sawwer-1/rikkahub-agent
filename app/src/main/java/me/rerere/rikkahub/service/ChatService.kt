@@ -74,6 +74,7 @@ import me.rerere.rikkahub.CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.RouteActivity
 import me.rerere.rikkahub.assistant.SecondUserAuthorityRegistry
+import me.rerere.rikkahub.data.ai.ContextBudgetPlanner
 import me.rerere.rikkahub.data.ai.GenerationChunk
 import me.rerere.rikkahub.data.ai.GenerationHandler
 import me.rerere.rikkahub.data.ai.group.GroupChatEngine
@@ -114,6 +115,7 @@ import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
 import me.rerere.rikkahub.data.datastore.getChatModelForAssistant
 import me.rerere.rikkahub.data.datastore.CompressOpenAIConfig
+import me.rerere.rikkahub.data.datastore.SUGGESTED_AUTO_COMPACTION_THRESHOLD_PERCENT
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.AutoCompressConfig
@@ -284,6 +286,15 @@ private const val TOOL_HISTORY_HEADER = "[Tool execution history — authoritati
 private const val TOOL_HISTORY_FOOTER = "[End tool execution history]"
 private const val TOOL_RECORD_HEADER = "[Retained tool execution record]"
 private const val TOOL_RECORD_FOOTER = "[End retained tool execution record]"
+
+// Token-budget auto-compression trigger (OR-ed with the message-count trigger): fraction of the
+// model context window at/above which rolling auto-compression fires even when the
+// `assistant.contextMessageSize` count threshold has not been reached yet.
+//
+// 该百分比现由 Settings.autoCompactionThresholdPercent 提供、用户可在「模型设置」页调整；
+// **null = 未设置 = 不启用百分比触发**（只保留消息条数触发），UI 建议值见
+// data.datastore.SUGGESTED_AUTO_COMPACTION_THRESHOLD_PERCENT（80）。
+// 另可选的绝对上限由 Settings.autoCompactionThresholdTokensK 提供（null=未设置）。
 
 internal fun backgroundTextGenerationParams(
     model: Model,
@@ -1440,12 +1451,32 @@ class ChatService(
      * after a process restart with an empty session map �?without this they read an
      * empty Conversation, mutate it, and `saveConversation` then OVERWRITES the persisted
      * state with empty content (silent data loss). Idempotent and cheap after hydration.
+     *
+     * @return true when the session graph is usable as a write source: it is already hydrated,
+     * the DB row was hydrated, or the DB confirmed there is no row / the session is a live
+     * local draft. false when the DB read itself failed — the caller must treat the in-memory
+     * graph as untrusted and must NOT persist it over the stored row.
      */
-    suspend fun ensureHydrated(conversationId: Uuid) {
+    suspend fun ensureHydrated(conversationId: Uuid): Boolean {
         val session = getOrCreateSession(conversationId)
-        if (session.isHydrated) return
-        val fromDb = conversationRepo.getConversationById(conversationId) ?: return
+        if (session.isHydrated) return true
+        val fromDb = try {
+            conversationRepo.getConversationById(conversationId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Do NOT latch or install anything on a failed read: the next call must be able
+            // to retry the DB read and hydrate the stored message nodes.
+            Log.w(TAG, "ensureHydrated: conversation read failed for $conversationId", e)
+            return false
+        }
+        if (fromDb == null) {
+            // No stored row: nothing to hydrate, and nothing that could be overwritten.
+            // (A brand-new draft session may legitimately have no row yet.)
+            return true
+        }
         session.hydrateIfNeeded(fromDb)
+        return session.isHydrated || session.state.value.newConversation
     }
 
     /** True when the conversation graph still carries the exact tool call (any approval state). */
@@ -1761,7 +1792,11 @@ class ChatService(
                         executeRuntimeCommand(envelope, control)
                     },
                     hydrator = RuntimeHydrator {
-                        ensureHydrated(id)
+                        // A failed hydrate must fail the runtime (which then rejects accepted
+                        // commands), not silently proceed against a possibly empty graph.
+                        if (!ensureHydrated(id)) {
+                            error("Conversation hydration failed for $id")
+                        }
                     },
                     repairer = object : me.rerere.rikkahub.service.chat.RuntimeRepairer {
                         override suspend fun repair(
@@ -1896,8 +1931,12 @@ class ChatService(
         }
         val resolvedCommandId = commandId ?: Uuid.random()
         if (command is SendMessageCommand && !conversationRepo.existsConversationById(conversationId)) {
-            val draft = sessions[conversationId]?.takeIf { it.isHydrated }?.state?.value
-            if (draft?.newConversation == true) {
+            // The draft marker (newConversation) is the authority here, not hydration:
+            // a preset-initialized draft is intentionally left unhydrated so the DB row can
+            // still hydrate over it later — requiring isHydrated here would reject the very
+            // first message of a new conversation with "Conversation not found".
+            val draft = sessions[conversationId]?.state?.value?.takeIf { it.newConversation }
+            if (draft != null) {
                 conversationRepo.insertConversation(draft.copy(newConversation = false))
                 updateConversation(conversationId, draft.copy(newConversation = false))
             }
@@ -2441,18 +2480,32 @@ class ChatService(
     suspend fun initializeConversation(conversationId: Uuid) {
         val session = getOrCreateSession(conversationId)
         if (!session.isHydrated) {
-            val conversation = conversationRepo.getConversationById(conversationId)
+            val conversation = try {
+                conversationRepo.getConversationById(conversationId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // A failed read must not pin the session into a synthetic initial state:
+                // keep it unhydrated so a later call can still load the stored message nodes.
+                Log.w(TAG, "initializeConversation: conversation read failed for $conversationId", e)
+                return
+            }
             if (conversation != null) {
+                // The row exists: the stored graph is authoritative — never fall back to
+                // the initial/preset state here.
                 session.hydrateIfNeeded(conversation)
             } else {
                 val currentSettings = settingsStore.settingsFlowRaw.first()
                 val assistant = currentSettings.getCurrentAssistant()
+                // No row: brand-new conversation. Install the preset as a non-authoritative
+                // snapshot so a real hydrate can still replace it later.
                 session.hydrateIfNeeded(
                     Conversation.ofId(
                         id = conversationId,
                         assistantId = assistant.id,
                         newConversation = true,
-                    ).updateCurrentMessages(effectivePresetMessages(assistant.presetMessages))
+                    ).updateCurrentMessages(effectivePresetMessages(assistant.presetMessages)),
+                    authoritative = false,
                 )
             }
         }
@@ -6566,7 +6619,34 @@ class ChatService(
         conversationId: Uuid,
         cancellationResults: Map<String, CancelRequestResult> = emptyMap(),
     ) {
-        val currentConversation = getConversationFlow(conversationId).value
+        // Hydrate first (post-restart path): reading an unhydrated initial graph here and
+        // saving below would rewrite the stored message nodes from that empty snapshot.
+        // A failed hydrate means the in-memory graph is untrustworthy — do not persist.
+        if (!ensureHydrated(conversationId)) {
+            Log.w(
+                TAG,
+                "finishInterruptedPendingTools: hydrate failed for $conversationId; skip persistence",
+            )
+            return
+        }
+        val session = sessions[conversationId]
+        // Whole-graph rewrite guard: only a session backed by a hydrated graph may be
+        // persisted here; an unhydrated initial graph would erase stored message nodes.
+        if (session == null || !session.isHydrated) {
+            Log.w(
+                TAG,
+                "finishInterruptedPendingTools: session not hydrated for $conversationId; skip whole-graph rewrite",
+            )
+            return
+        }
+        val currentConversation = session.state.value
+        if (currentConversation.messageNodes.isEmpty()) {
+            Log.w(
+                TAG,
+                "finishInterruptedPendingTools: empty graph for $conversationId; skip whole-graph rewrite",
+            )
+            return
+        }
         val lastMessageId = currentConversation.messageNodes.lastOrNull()?.currentMessage?.id
         var changed = false
         val updatedNodes = currentConversation.messageNodes.map { node ->
@@ -6913,11 +6993,41 @@ class ChatService(
         val config = conversation.autoCompressConfig ?: return
         if (!config.enabled) return
 
-        val triggerMessageCount = assistant?.contextMessageSize ?: return
-        if (triggerMessageCount <= 0) return
+        // 条数判据的输入：assistant.contextMessageSize = 0 表示助手不限制条数（AssistantBasicPage
+        // 的 "unlimited"）。0 时该判据只是不参与，**不再提前 return 阻断 token 预算判据**（三判据
+        // 彼此独立，收口统一在下方 `!messageCountTriggered && !tokenBudgetTriggered`）。
+        val triggerMessageCount = assistant?.contextMessageSize ?: 0
 
         val keepRecentMessages = config.keepRecentMessages.coerceAtLeast(1)
-        if (conversation.visibleMessageNodes.size < keepRecentMessages + triggerMessageCount) return
+
+        // 判据 1/3：条数触发（保留原语义）——可见节点数达到 keepRecentMessages + contextMessageSize
+        // 即压缩；只在 contextMessageSize > 0 时参与。
+        val messageCountTriggered = triggerMessageCount > 0 &&
+            conversation.visibleMessageNodes.size >= keepRecentMessages + triggerMessageCount
+
+        // 判据 2/3 与 3/3：token 预算触发（OR 条件）——窗口占用达到阈值即压缩。
+        // 两个预算项**任一非空即生效**：tokensK 非空走绝对上限（优先）；仅 percent 非空走窗口
+        // 百分比；两者都空、或模型未声明正数上下文窗口（contextLength = 0）时该判据不生效，
+        // 此时完全维持原条数语义。
+        val contextLength = settings.getChatModelForAssistant(conversation.assistantId)
+            ?.let { model -> model.contextLength?.takeIf { it > 0 } ?: model.userContextWindowTokens }
+            ?: 0
+        // 注意：下面 `?.let` 提供的只是 ContextBudgetPlanner.plan(thresholdPercent: Int) 必填签名的
+        // 占位值，**不参与计算**——tokensK 非空时 plan 内部只走
+        // `thresholdTokensK?.let { tokensK * 1000 } ?: 百分比`（ContextBudgetPlanner.kt:35-39 的 `?:`）
+        // 的左支；仅当 percent 已设置时使用其真实值。
+        val autoCompactionPercent = settings.autoCompactionThresholdPercent
+            ?: settings.autoCompactionThresholdTokensK?.let { SUGGESTED_AUTO_COMPACTION_THRESHOLD_PERCENT }
+        val tokenBudgetTriggered = autoCompactionPercent != null && contextLength > 0 &&
+            ContextBudgetPlanner.plan(
+                messages = conversation.currentMessages,
+                contextLength = contextLength,
+                thresholdPercent = autoCompactionPercent,
+                thresholdTokensK = settings.autoCompactionThresholdTokensK,
+            ).shouldCompact
+
+        // 三个判据各自独立、任一成立即触发；这里统一收口。
+        if (!messageCountTriggered && !tokenBudgetTriggered) return
 
         compressConversationRolling(
             conversationId = conversationId,
@@ -6990,7 +7100,9 @@ class ChatService(
         conversation: Conversation,
         additionalPrompt: String,
         targetTokens: Int,
-        keepRecentMessages: Int = 32
+        // 完全没传参时的兜底由 ConversationCompressionPolicy 提供（与会话配置默认值对齐）；
+        // 有传参一律用传参（ChatVM.handleCompressContext 显式传递）。
+        keepRecentMessages: Int = DEFAULT_MANUAL_COMPRESSION_KEEP_RECENT_MESSAGES
     ): Result<CompressionOutcome> {
         return try {
         require(targetTokens in 100..32_000) { "Compression target must be between 100 and 32,000 tokens." }
@@ -7278,18 +7390,31 @@ class ChatService(
         if (!exists && conversation.title.isBlank() && conversation.messageNodes.isEmpty()) {
             return // 新会话且为空时不保存
         }
-        // Refuse to overwrite a non-empty stored row with an empty in-memory snapshot.
+        // Refuse to overwrite a non-empty stored row with an untrusted in-memory graph.
         // This is the silent-data-loss guard: handleToolApproval / stopGeneration / etc.
-        // could be called against an unhydrated session (post-restart), build an empty
-        // updatedConversation, and call saveConversation. Without this guard we'd wipe
-        // the Pending tool the user was trying to approve.
-        if (exists && conversation.messageNodes.isEmpty()) {
-            val storedHasContent = runCatching {
-                conversationRepo.getConversationById(conversation.id)?.messageNodes?.isNotEmpty() == true
-            }.getOrDefault(false)
-            if (storedHasContent) {
-                Log.w(TAG, "saveConversation: refusing to overwrite non-empty $conversationId with empty snapshot �?likely an unhydrated session")
-                return
+        // could be called against an unhydrated session (post-restart), build an empty or
+        // stale updatedConversation, and call saveConversation. Without this guard we'd
+        // wipe the Pending tool the user was trying to approve (or the history behind it).
+        // An unhydrated session that is not a live local draft (newConversation) can never
+        // vouch for the graph it holds, regardless of its size.
+        if (exists) {
+            val sessionForGuard = sessions[conversationId]
+            val unhydratedGraphSource = sessionForGuard != null &&
+                !sessionForGuard.isHydrated &&
+                !sessionForGuard.state.value.newConversation
+            if (conversation.messageNodes.isEmpty() || unhydratedGraphSource) {
+                val storedHasContent = runCatching {
+                    conversationRepo.getConversationById(conversation.id)?.messageNodes?.isNotEmpty() == true
+                }.getOrDefault(false)
+                if (storedHasContent) {
+                    Log.w(
+                        TAG,
+                        "saveConversation: refusing to overwrite non-empty $conversationId " +
+                            "(nodes=${conversation.messageNodes.size}, " +
+                            "unhydratedSession=$unhydratedGraphSource)"
+                    )
+                    return
+                }
             }
         }
 
@@ -7313,7 +7438,12 @@ class ChatService(
         session.metadataMutationMutex.withLock {
             ensureHydrated(conversationId)
             val committed = conversationRepo.mutateMetadata(conversationId, mutation)
-            check(session.isHydrated) { "Conversation not initialized" }
+            // A brand-new draft is intentionally left unhydrated (the preset install is
+            // non-authoritative); it is still an initialized target for the in-memory
+            // metadata application below.
+            check(session.isHydrated || session.state.value.newConversation) {
+                "Conversation not initialized"
+            }
             if (committed != null || session.state.value.newConversation) {
                 session.updateState { mutation.apply(it) }
             } else {

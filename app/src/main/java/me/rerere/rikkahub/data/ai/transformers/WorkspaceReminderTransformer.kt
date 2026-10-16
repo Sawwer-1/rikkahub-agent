@@ -11,9 +11,14 @@ import me.rerere.workspace.WorkspaceShellStatus
 /**
  * Workspace 系统提示注入转换器
  *
- * 助手绑定 workspace 时在系统提示词中追加一段引导：rootfs 就绪（READY）时给出完整的环境与
- * 工具清单；**未就绪时只给一小段状态说明**——此时工作区工具只剩 `workspace_list`（只读枚举），
- * 提示里必须提到它，否则模型会忘记这个工具或反复试不存在的工具（P1，2026-10-15）。
+ * 按 workspace 状态向系统提示词追加引导：
+ * - 已绑定且 rootfs 就绪（READY）：完整的环境与工具清单。
+ * - 已绑定但未就绪：一小段状态说明（P1，2026-10-15）。
+ * - 未绑定但存在可选 workspace：教用户绑定（P2，2026-10-16，迁移自 ExTV）。
+ * - 一个 workspace 都没有：不注入。
+ *
+ * 后两档里工作区工具都不可用，只剩 `workspace_list`（只读枚举），提示里必须提到它，
+ * 否则模型会忘记这个工具或反复试不存在的工具。
  */
 class WorkspaceReminderTransformer(
     private val workspaceRepository: WorkspaceRepository,
@@ -24,18 +29,27 @@ class WorkspaceReminderTransformer(
         ctx: TransformerContext,
         messages: List<UIMessage>,
     ): List<UIMessage> {
-        val workspaceId = ctx.assistant.workspaceId?.toString() ?: return messages
-        val workspace = workspaceRepository.getById(workspaceId) ?: return messages
+        val workspaceId = ctx.assistant.workspaceId?.toString()
+        val workspace = workspaceId?.let { workspaceRepository.getById(it) }
+        // 仅在未解析到绑定的 workspace 时才需要查询是否存在其它 workspace（短路，避免多余查询）
+        val hasAnyWorkspace = workspace != null || workspaceRepository.getAll().isNotEmpty()
+
         val prompt = buildList {
-            if (workspace.shellStatus == WorkspaceShellStatus.READY.name) {
-                add(buildWorkspacePrompt(workspace, ctx.workspaceCwd))
-            } else {
-                add(buildWorkspaceNotReadyPrompt(workspace))
+            when {
+                // 未绑定但存在可选 workspace：教用户绑定（P2，2026-10-16）
+                workspace == null && hasAnyWorkspace -> add(buildWorkspaceUnboundPrompt())
+                workspace != null -> {
+                    if (workspace.shellStatus == WorkspaceShellStatus.READY.name) {
+                        add(buildWorkspacePrompt(workspace, ctx.workspaceCwd))
+                    } else {
+                        add(buildWorkspaceNotReadyPrompt(workspace))
+                    }
+                    rulesResolver.resolve(workspace.id, ctx.workspaceCwd)
+                        .toPrompt()
+                        .takeIf(String::isNotBlank)
+                        ?.let(::add)
+                }
             }
-            rulesResolver.resolve(workspace.id, ctx.workspaceCwd)
-                .toPrompt()
-                .takeIf(String::isNotBlank)
-                ?.let(::add)
         }.joinToString("\n\n")
         if (prompt.isBlank()) return messages
 
@@ -91,7 +105,9 @@ private fun buildWorkspacePrompt(workspace: WorkspaceEntity, cwd: String? = null
  * 把这件事写清楚，模型才不会忘记这个工具、或反复尝试不存在的工具。
  */
 private fun buildWorkspaceNotReadyPrompt(workspace: WorkspaceEntity): String = buildString {
-    appendLine("<workspace>")
+    // tag 统一口径（2026-10-16）：READY 档用 <workspace>；"没准备好"的两档（未绑定 / 未就绪）
+    // 统一用 <workspace-setup>，与 ExTV 的语义一致。
+    appendLine("<workspace-setup>")
     appendLine(
         "A Linux workspace named \"${escapeXmlText(workspace.name)}\" is bound to this assistant, " +
             "but its rootfs is not ready yet (status=${escapeXmlText(workspace.shellStatus)}).",
@@ -103,7 +119,38 @@ private fun buildWorkspaceNotReadyPrompt(workspace: WorkspaceEntity): String = b
             "config_* tools) are not available until the rootfs is installed and ready — do not call them " +
             "in this state; if the task needs them, tell the user to finish the rootfs installation first.",
     )
-    append("</workspace>")
+    append("</workspace-setup>")
+}
+
+/**
+ * 存在 workspace 但未绑定到当前助手时的引导（P2，2026-10-16，迁移自 ExTV WorkspaceReminderTransformer）。
+ *
+ * 此时助手未绑定任何 workspace，工作区工具全部不会注入，只有 `workspace_list`（只读枚举、不依赖绑定）
+ * 可用。写清"怎样绑定"和"绑定后仍要就绪"，模型才不会谎称自己有工具、或反复调用不存在的工具。
+ */
+private fun buildWorkspaceUnboundPrompt(): String = buildString {
+    appendLine("<workspace-setup>")
+    appendLine(
+        "The user has a workspace, but none is bound to this assistant, so the workspace tools " +
+            "(workspace_read_file, workspace_write_file, workspace_edit_file, workspace_create_folder, " +
+            "workspace_read_folder, workspace_shell, workspace_offload, and the config_* tools) are NOT " +
+            "available right now.",
+    )
+    appendLine("- `workspace_list` is available even now: it lists the available workspaces and their ids.")
+    appendLine(
+        "If the user asks to save files or run shell / Linux commands in a workspace, explain in the " +
+            "user's language how to enable it:",
+    )
+    appendLine("1. Tap the + button in the chat input bar and select a workspace to bind it to this assistant.")
+    appendLine(
+        "2. If that workspace's shell is not Ready yet, open Extensions > Workspace, open the workspace, " +
+            "and install its rootfs until the shell status shows Ready.",
+    )
+    appendLine(
+        "Do not claim to have workspace tools or attempt to call them until a workspace is bound " +
+            "and its shell is Ready.",
+    )
+    append("</workspace-setup>")
 }
 
 private fun UIMessage.appendText(extra: String): UIMessage {

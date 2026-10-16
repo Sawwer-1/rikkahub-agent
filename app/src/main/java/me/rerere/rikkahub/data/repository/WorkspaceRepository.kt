@@ -151,6 +151,17 @@ class WorkspaceRepository(
         return dao.getAll().any { it.id != excludeId && it.name.trim() == target }
     }
 
+    /** 切换兼容模式 (关闭 proot seccomp 加速); 仅更新该列, 不触碰其它字段 */
+    suspend fun setShellCompatibilityMode(id: String, enabled: Boolean): Boolean {
+        dao.getById(id) ?: return false
+        dao.setShellCompatibilityMode(
+            id = id,
+            enabled = enabled,
+            updatedAt = System.currentTimeMillis(),
+        )
+        return true
+    }
+
     suspend fun setToolApproval(id: String, toolName: String, needsApproval: Boolean): Boolean {
         val workspace = dao.getById(id) ?: return false
         val overrides = workspace.toolApprovalOverrides() + (toolName to needsApproval)
@@ -388,6 +399,7 @@ class WorkspaceRepository(
                 timeoutMillis,
                 stdin,
                 allowSharedStorage,
+                shellCompatibilityMode = workspace.shellCompatibilityMode,
             )
         }
     }

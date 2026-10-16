@@ -20,6 +20,8 @@ data class WorkspaceShellContext(
     val timeoutMillis: Long,
     val stdin: ByteArray? = null,
     val allowSharedStorage: Boolean = false,
+    // 兼容模式: 见 ProotShellRunner, enabled 时注入 PROOT_NO_SECCOMP=1
+    val shellCompatibilityMode: Boolean = false,
 )
 
 class HostShellRunner : WorkspaceShellRunner {

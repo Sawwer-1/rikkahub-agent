@@ -101,4 +101,42 @@ class ConversationSessionTest {
         scope.coroutineContext[Job]?.cancel()
         Unit
     }
+
+    @Test
+    fun `non-authoritative install does not latch hydration and can be replaced by the stored row`() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val id = Uuid.random()
+        val session = ConversationSession(id, Conversation.ofId(id), scope, {})
+
+        // 合成初始态装载（无库行时的初始/preset 路径）：不得置位 hydrated。
+        val synthetic = Conversation.ofId(id).copy(title = "synthetic-initial")
+        assertTrue(session.hydrateIfNeeded(synthetic, authoritative = false))
+        assertFalse(session.isHydrated)
+        assertEquals("synthetic-initial", session.state.value.title)
+
+        // 之后库行可达（取消/重启恢复路径）：真实来源必须能覆盖并置位。
+        val stored = Conversation.ofId(id).copy(title = "stored-from-db")
+        assertTrue(session.hydrateIfNeeded(stored))
+        assertEquals("stored-from-db", session.state.value.title)
+        assertTrue(session.isHydrated)
+
+        scope.coroutineContext[Job]?.cancel()
+    }
+
+    @Test
+    fun `user created draft is not overwritten by the stored graph`() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val id = Uuid.random()
+        val session = ConversationSession(id, Conversation.ofId(id), scope, {})
+
+        val draft = Conversation.ofId(id, newConversation = true).copy(title = "user-draft")
+        assertTrue(session.hydrateIfNeeded(draft, authoritative = false))
+
+        val stored = Conversation.ofId(id).copy(title = "stale-db")
+        assertFalse(session.hydrateIfNeeded(stored))
+        assertEquals("user-draft", session.state.value.title)
+        assertFalse(session.isHydrated)
+
+        scope.coroutineContext[Job]?.cancel()
+    }
 }

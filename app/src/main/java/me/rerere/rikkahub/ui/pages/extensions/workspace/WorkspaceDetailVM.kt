@@ -173,6 +173,14 @@ class WorkspaceDetailVM(
         }
     }
 
+    /** 兼容模式: 关闭 proot seccomp 加速, 供部分机型/内核使用; 开启后命令更慢但更兼容 */
+    fun setShellCompatibilityMode(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setShellCompatibilityMode(id, enabled)
+            loadWorkspace()
+        }
+    }
+
     fun installRootfs(url: String) {
         viewModelScope.launch {
             _installError.value = null

@@ -78,6 +78,18 @@ import kotlin.time.Clock
 private const val TAG = "ChatCompletionsAPI"
 
 /**
+ * 「工具轮强制回传」路径（requireToolReasoningContent 命中、且用户未显式开启
+ * includeHistoryReasoning）回传 reasoning_content 时保留的**尾部**字符数上限。
+ *
+ * 该路径会把上一轮思考逐轮喂回模型；一旦出现「好。」式重复退化，完整回传会自我强化
+ * 重复片段并挤占输出预算。因此回传副本先折叠重复、再截到此上限（尾部承载结论与
+ * 下一步动作等决策信息）。只作用于请求副本，不改内存中保存的 reasoning。
+ * 取值 2000 为保守初值：正常轮次的决定性内容集中在尾部且远小于此；退化轮会数倍超限。
+ * 用户显式全量回传（includeHistoryReasoning=true）不走此上限，见 [prepareToolTurnReasoningForReplay]。
+ */
+internal const val MAX_TOOL_TURN_REASONING_CHARS = 2000
+
+/**
  * Error bodies are provider-controlled and may echo credentials. Keep the useful detail for the
  * caller while making this adapter the single seam that bounds and redacts it.
  */
@@ -775,6 +787,9 @@ class ChatCompletionsAPI(
         return JsonObject(this + ("content" to newContent))
     }
 
+    // NOTE: ExTV 分支无此逻辑（工单 CB 差分定位：对方不按模型名强塞工具轮 reasoning 回传）。
+    // 保留原因：DeepSeek 系及兼容端点可能对含 tool_calls 的 assistant 消息校验
+    // reasoning_content 字段，硬删有 400 风险。关闭它需要设备 A/B 验证后再定，勿直接删。
     private fun requiresToolReasoningContent(modelId: String): Boolean =
         "deepseek-v4-" in modelId.lowercase()
 
@@ -818,11 +833,15 @@ class ChatCompletionsAPI(
                 val isActiveToolTurn = requireToolReasoningContent &&
                     index > latestUserIndex &&
                     message.getTools().isNotEmpty()
+                // 只有「工具轮强制回传」的 reasoning 副本才套护栏（折叠重复 + 尾部截断）；
+                // includeHistoryReasoning=true 是用户显式全量回传，保持原样不缩水。
+                val guardToolTurnReplay = isActiveToolTurn && !includeHistoryReasoning
                 addAssistantMessages(
                     message = message,
                     includeReasoning = includeHistoryReasoning || isActiveToolTurn,
                     requireToolReasoningContent = requireToolReasoningContent,
                     toolResultInputModalities = toolResultInputModalities,
+                    guardToolTurnReplay = guardToolTurnReplay,
                 )
             } else {
                 addNonAssistantMessage(message, openRouterCache = openRouterCache)
@@ -846,6 +865,7 @@ class ChatCompletionsAPI(
         includeReasoning: Boolean,
         requireToolReasoningContent: Boolean,
         toolResultInputModalities: Collection<Modality>,
+        guardToolTurnReplay: Boolean = false,
     ) {
         val groups = groupPartsByToolBoundary(message.parts)
         val contentBuffer = mutableListOf<UIMessagePart>()
@@ -872,6 +892,7 @@ class ChatCompletionsAPI(
                         tools = group.tools,
                         reasoningPart = reasoningPart,
                         requireToolReasoningContent = requireToolReasoningContent,
+                        guardToolTurnReplay = guardToolTurnReplay,
                     )?.let { assistantMessage ->
                         add(assistantMessage)
                     }
@@ -936,6 +957,7 @@ class ChatCompletionsAPI(
                 tools = emptyList(),
                 reasoningPart = reasoningPart,
                 requireToolReasoningContent = false,
+                guardToolTurnReplay = guardToolTurnReplay,
             )?.let { assistantMessage ->
                 add(assistantMessage)
             }
@@ -958,6 +980,7 @@ class ChatCompletionsAPI(
         tools: List<UIMessagePart.Tool>,
         reasoningPart: UIMessagePart.Reasoning?,
         requireToolReasoningContent: Boolean,
+        guardToolTurnReplay: Boolean = false,
     ): JsonObject? {
         val hasUsableContent = contentParts.any { part ->
             when (part) {
@@ -976,7 +999,17 @@ class ChatCompletionsAPI(
 
             // reasoning_content
             if (hasReasoning || (requireToolReasoningContent && tools.isNotEmpty())) {
-                put("reasoning_content", reasoningPart?.reasoning.orEmpty())
+                val reasoningContent = reasoningPart?.reasoning.orEmpty()
+                put(
+                    "reasoning_content",
+                    // 工具轮强制回传的副本先折叠重复、只保留尾部上限（护栏）；
+                    // 用户显式全量回传（includeHistoryReasoning=true）不走此净化。
+                    if (guardToolTurnReplay) {
+                        prepareToolTurnReasoningForReplay(reasoningContent)
+                    } else {
+                        reasoningContent
+                    },
+                )
             }
 
             // content

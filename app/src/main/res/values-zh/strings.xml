@@ -1853,6 +1853,18 @@
   <string name="setting_model_page_chat_model_desc">全局默认的聊天模型</string>
   <string name="setting_model_page_compress_model">压缩模型</string>
   <string name="setting_model_page_compress_model_desc">用于压缩对话历史的模型</string>
+  <string name="setting_model_page_generation_budget">生成预算</string>
+  <string name="setting_model_page_generation_budget_suggested">建议 %1$d</string>
+  <string name="setting_model_page_auto_compaction_trigger_percent">自动压缩触发百分比（占上下文）</string>
+  <string name="setting_model_page_auto_compaction_trigger_percent_desc">预估上下文占用达到模型上下文窗口的该比例时触发滚动自动压缩。留空 = 不启用百分比触发（仅按消息条数触发）。</string>
+  <string name="setting_model_page_auto_compaction_trigger_tokens_k">或绝对触发阈值（千 token）</string>
+  <string name="setting_model_page_auto_compaction_trigger_tokens_k_desc">可选。填写后按此千 token 数触发，优先于百分比；留空 = 不设绝对上限。</string>
+  <string name="setting_model_page_final_answer_max_tokens">最终答复输出上限（tokens）</string>
+  <string name="setting_model_page_final_answer_max_tokens_desc">最终答复恢复请求的输出上限。留空 = 不覆盖助手的 maxTokens 设置。</string>
+  <string name="setting_model_page_tool_output_max_chars">单次工具输出字符上限</string>
+  <string name="setting_model_page_tool_output_max_chars_desc">超过该字符数的工具输出会落盘并截断。留空 = 不截断。</string>
+  <string name="setting_model_page_tool_output_preview_chars">工具输出预览字符数</string>
+  <string name="setting_model_page_tool_output_preview_chars_desc">落盘的工具输出在内联保留的预览字符数。留空 = 不截断预览（保留全文）。</string>
   <string name="setting_model_page_compress_prompt_vars">变量：{content}、{target_tokens}、{additional_context}</string>
   <string name="setting_model_page_compress_separate_api_title">压缩专用 OpenAI 接口</string>
   <string name="setting_model_page_compress_separate_api_desc">开启后，滚动摘要与手动压缩将使用这里的 OpenAI 兼容接口，不影响当前对话模型的接口。</string>
@@ -2588,6 +2600,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_detail_enable_shell_desc">允许此工作区使用本地Rootfs运行终端环境</string>
   <string name="workspace_detail_extracting">提取 %1$d 个项目%2$s</string>
   <string name="workspace_detail_import_file">导入文件</string>
+  <string name="workspace_detail_compatibility_mode">兼容模式</string>
+  <string name="workspace_detail_compatibility_mode_desc">关闭 proot 的 seccomp 加速，适用于加速路径无法启动的机型或内核。开启后命令更慢但更兼容。仅对新终端标签页及后续命令生效。</string>
   <string name="workspace_detail_install_complete">安装完成</string>
   <string name="workspace_detail_install_rootfs">安装 Rootfs</string>
   <string name="workspace_detail_install_rootfs_desc">将下载 tar.gz 并解压到 %s 的 Linux 目录。</string>

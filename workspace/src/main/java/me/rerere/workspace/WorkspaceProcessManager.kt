@@ -27,6 +27,9 @@ class WorkspaceProcessManager(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val clockMillis: () -> Long = System::currentTimeMillis,
     private val processIdFactory: () -> String = { "wp_${UUID.randomUUID()}" },
+    // 后台常驻进程同样需要兼容模式 (PROOT_NO_SECCOMP): 启动时按 workspaceId 解析该 workspace 的
+    // shellCompatibilityMode 并透传进 context, 不写入持久化的 process definition (避免加列/迁移)
+    private val shellCompatibilityModeResolver: suspend (workspaceId: String) -> Boolean = { false },
 ) {
     private data class RuntimeEntry(
         val workspaceRoot: String,
@@ -465,6 +468,11 @@ class WorkspaceProcessManager(
             )
         }
 
+        // 每次启动都按 workspace 实体现读兼容模式: 恢复/自动重启路径没有启动请求, 只能从这里拿
+        val shellCompatibilityMode = runCatching {
+            shellCompatibilityModeResolver(reservation.definition.workspaceId)
+        }.getOrDefault(false)
+
         val process = try {
             withContext(Dispatchers.IO + NonCancellable) {
                 launcher.startManagedProcess(
@@ -476,6 +484,7 @@ class WorkspaceProcessManager(
                         linuxDir = workspaceManager.linuxDir(reservation.workspaceRoot),
                         tempDir = persistence.processTempDirectory(reservation.workspaceRoot, processId),
                         allowSharedStorage = reservation.definition.allowSharedStorage,
+                        shellCompatibilityMode = shellCompatibilityMode,
                     ),
                 )
             }

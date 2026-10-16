@@ -82,6 +82,22 @@ import me.rerere.usagetracker.UsageReminderState
 private const val TAG = "PreferencesStore"
 
 /**
+ * 生成预算（jude 移植）三处上限的 **UI 建议值**。历史实现把这几个数字写死在
+ * ChatService / GenerationHandler 内部、对用户不可见；现在改为 Settings 的**可选**字段：
+ * 用户在「模型设置」页**留空 = 不设上限 / 不启用**（见 SettingModelPage 的 GenerationBudgetSettingItem），
+ * 下列常量只在 UI 上作为 placeholder / supporting text 引导，**不再是默认值**（默认值是 null = 未设置）。
+ * 保留常量即保留"建议值"的单一来源，避免在 UI 里再抄一份字面量（两条真相）。
+ */
+/** 自动压缩 token 触发百分比的 UI 建议值（5..95）。 */
+const val SUGGESTED_AUTO_COMPACTION_THRESHOLD_PERCENT = 80
+/** 最终答复恢复请求输出上限的 UI 建议值。 */
+const val SUGGESTED_FINAL_ANSWER_MAX_TOKENS = 4096
+/** 单次工具输出字符上限的 UI 建议值。 */
+const val SUGGESTED_TOOL_OUTPUT_MAX_CHARS = 32 * 1024
+/** 工具输出溢出到文件时保留的预览字符数的 UI 建议值。 */
+const val SUGGESTED_TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
+
+/**
  * Per-entry tolerant decode for the persisted `providers` list.
  *
  * Why this exists: the providers list is stored in DataStore as a single JSON array of
@@ -206,6 +222,14 @@ class SettingsStore(
         // 网络
         val NETWORK_SETTING = stringPreferencesKey("network_setting")
         val RESPONSE_STREAM_MAX_RETRIES = intPreferencesKey("response_stream_max_retries")
+
+        // 生成预算（jude 移植）：自动压缩触发 / 最终答复输出上限 / 工具输出截断
+        val AUTO_COMPACTION_THRESHOLD_PERCENT = intPreferencesKey("auto_compaction_threshold_percent")
+        // 可选的绝对触发上限（千 token）。缺键 = 未设置 = 沿用百分比路径。
+        val AUTO_COMPACTION_THRESHOLD_TOKENS_K = intPreferencesKey("auto_compaction_threshold_tokens_k")
+        val FINAL_ANSWER_MAX_TOKENS = intPreferencesKey("final_answer_max_tokens")
+        val TOOL_OUTPUT_MAX_CHARS = intPreferencesKey("tool_output_max_chars")
+        val TOOL_OUTPUT_PREVIEW_CHARS = intPreferencesKey("tool_output_preview_chars")
 
         // WebDAV
         val WEBDAV_CONFIG = stringPreferencesKey("webdav_config")
@@ -390,6 +414,17 @@ class SettingsStore(
                 },
                 responseStreamMaxRetries = (preferences[RESPONSE_STREAM_MAX_RETRIES] ?: 5)
                     .coerceIn(0, 10),
+                // 生成预算：缺键 = 未设置（null）= 不设上限 / 不启用（与历史"静默截断"默认不同）。
+                autoCompactionThresholdPercent = preferences[AUTO_COMPACTION_THRESHOLD_PERCENT]
+                    ?.coerceIn(5, 95),
+                autoCompactionThresholdTokensK = preferences[AUTO_COMPACTION_THRESHOLD_TOKENS_K]
+                    ?.coerceIn(1, Int.MAX_VALUE / 1_000),
+                finalAnswerMaxTokens = preferences[FINAL_ANSWER_MAX_TOKENS]
+                    ?.coerceIn(1, Int.MAX_VALUE),
+                toolOutputMaxChars = preferences[TOOL_OUTPUT_MAX_CHARS]
+                    ?.coerceIn(1, Int.MAX_VALUE),
+                toolOutputPreviewChars = preferences[TOOL_OUTPUT_PREVIEW_CHARS]
+                    ?.coerceIn(1, Int.MAX_VALUE),
                 webDavConfig = preferences[WEBDAV_CONFIG]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: WebDavConfig(),
@@ -708,6 +743,23 @@ class SettingsStore(
             preferences[MINI_APPS] = JsonInstant.encodeToString(settings.miniApps)
             preferences[NETWORK_SETTING] = JsonInstant.encodeToString(settings.networkSetting)
             preferences[RESPONSE_STREAM_MAX_RETRIES] = settings.responseStreamMaxRetries.coerceIn(0, 10)
+            // 生成预算：null = 未设置 → 移除键；非 null 写入前统一 coerce，非法值不会污染持久化。
+            settings.autoCompactionThresholdPercent?.let {
+                preferences[AUTO_COMPACTION_THRESHOLD_PERCENT] = it.coerceIn(5, 95)
+            } ?: preferences.remove(AUTO_COMPACTION_THRESHOLD_PERCENT)
+            settings.autoCompactionThresholdTokensK?.let { tokensK ->
+                preferences[AUTO_COMPACTION_THRESHOLD_TOKENS_K] =
+                    tokensK.coerceIn(1, Int.MAX_VALUE / 1_000)
+            } ?: preferences.remove(AUTO_COMPACTION_THRESHOLD_TOKENS_K)
+            settings.finalAnswerMaxTokens?.let {
+                preferences[FINAL_ANSWER_MAX_TOKENS] = it.coerceIn(1, Int.MAX_VALUE)
+            } ?: preferences.remove(FINAL_ANSWER_MAX_TOKENS)
+            settings.toolOutputMaxChars?.let {
+                preferences[TOOL_OUTPUT_MAX_CHARS] = it.coerceIn(1, Int.MAX_VALUE)
+            } ?: preferences.remove(TOOL_OUTPUT_MAX_CHARS)
+            settings.toolOutputPreviewChars?.let {
+                preferences[TOOL_OUTPUT_PREVIEW_CHARS] = it.coerceIn(1, Int.MAX_VALUE)
+            } ?: preferences.remove(TOOL_OUTPUT_PREVIEW_CHARS)
             preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
             preferences[S3_CONFIG] = JsonInstant.encodeToString(settings.s3Config)
             preferences[TTS_PROVIDERS] = JsonInstant.encodeToString(settings.ttsProviders)
@@ -1077,6 +1129,32 @@ data class Settings(
     val networkSetting: NetworkSetting = NetworkSetting(),
     /** 流式请求失败重试上限。目标仓暂无消费点, 先持久化, 见 SettingPreferencesNetworkPage。 */
     val responseStreamMaxRetries: Int = 5,
+    /**
+     * 自动压缩 token 触发百分比 (5..95)。null = 未设置 → **不使用百分比触发**（仅按消息条数触发）。
+     * UI 建议值见 SUGGESTED_AUTO_COMPACTION_THRESHOLD_PERCENT (80)。
+     * 消费点：ChatService.autoCompressConversationIfNeeded → ContextBudgetPlanner.plan。
+     */
+    val autoCompactionThresholdPercent: Int? = null,
+    /**
+     * 可选的绝对触发上限（千 token）。null = 未设置。
+     * 非 null 时优先于 [autoCompactionThresholdPercent]（见 ContextBudgetPlanner.plan）。
+     */
+    val autoCompactionThresholdTokensK: Int? = null,
+    /**
+     * 最终答复恢复（FINAL_ANSWER_RECOVERY）请求的输出上限。null = 未设置 → **不覆盖助手的 maxTokens**。
+     * UI 建议值见 SUGGESTED_FINAL_ANSWER_MAX_TOKENS (4096)。
+     */
+    val finalAnswerMaxTokens: Int? = null,
+    /**
+     * 单次工具输出字符上限。null = 未设置 → **不截断**（永不落盘、不做预览截断）。
+     * UI 建议值见 SUGGESTED_TOOL_OUTPUT_MAX_CHARS (32768)。
+     */
+    val toolOutputMaxChars: Int? = null,
+    /**
+     * 工具输出溢出到文件时保留的预览字符数。null = 未设置 → 预览**不截断**（保留全文）。
+     * UI 建议值见 SUGGESTED_TOOL_OUTPUT_PREVIEW_CHARS (4096)。
+     */
+    val toolOutputPreviewChars: Int? = null,
     val sponsorAlertDismissedAt: Int = 0,
 ) {
     companion object {

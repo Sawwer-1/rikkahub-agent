@@ -8,19 +8,16 @@ import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessageAnnotation
 
-internal const val DEFAULT_MANUAL_COMPRESSION_TARGET_TOKENS = 2_000
-private const val DEFAULT_MANUAL_COMPRESSION_KEEP_RECENT_MESSAGES = 8
 private const val COMPRESSION_PROMPT_OVERHEAD_TOKENS = 4_096
 
 /**
- * Keeps a useful tail when possible, without making manual compression unavailable for short
- * conversations. At least one message remains eligible for compression unless the conversation
- * is empty.
+ * 手动压缩**未显式传参**时的保留条数兜底。
+ *
+ * 2026-10-16 由 8 收敛为 32：会话级 `AutoCompressConfig` 的默认 `keepRecentMessages` 就是 32，
+ * 弹窗的保留条数选项也是 1/16/32/64——旧的 8 既与它们不一致、也不在选项集合里。有传参时一律
+ * 用传参（`ChatVM.handleCompressContext` 显式传递）。
  */
-internal fun recommendedManualCompressionKeepRecentMessages(messageCount: Int): Int = minOf(
-    DEFAULT_MANUAL_COMPRESSION_KEEP_RECENT_MESSAGES,
-    (messageCount - 1).coerceAtLeast(0),
-)
+internal const val DEFAULT_MANUAL_COMPRESSION_KEEP_RECENT_MESSAGES = 32
 
 /** Builds the new history while recording the explicit user-owned compression boundary. */
 internal fun buildManualCompressionMessages(
