@@ -1,5 +1,6 @@
 package me.rerere.ai.ui
 
+import me.rerere.ai.core.MessageRole
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
