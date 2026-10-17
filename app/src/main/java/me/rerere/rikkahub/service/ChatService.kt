@@ -122,6 +122,7 @@ import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.AutoCompressConfig
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
+import me.rerere.rikkahub.data.model.abandonUnresolvedToolsIfNotResumable
 import me.rerere.rikkahub.data.model.messagesForGeneration
 import me.rerere.rikkahub.personal.heartbeat.HeartbeatUserActivity
 import me.rerere.rikkahub.data.model.AssistantAffectScope
@@ -6612,28 +6613,9 @@ class ChatService(
         // 看起来就是「一点取消，思考链就被清掉 / 历史被清空」。
         // 现在改为就地放弃这些工具调用（写入取消回执 + Denied），消息内容全部保留；
         // 工具因此变成已执行，既不会再阻塞下一轮，也不会再次被判为无效（幂等）。
-        messagesNodes = messagesNodes.map { node ->
-            val message = node.currentMessage
-            val unresolvedTools = message.getTools().filter { !it.isExecuted }
-            if (unresolvedTools.isEmpty()) {
-                return@map node
-            }
-            // Keep messages that are ready to resume, such as approved/denied/answered tools.
-            val hasResumableTool = unresolvedTools.any { it.approvalState.canResumeToolExecution() }
-            if (hasResumableTool) {
-                return@map node
-            }
-            val abandoned = message.abandonUnresolvedToolCalls()
-            if (abandoned == message) {
-                node
-            } else {
-                node.copy(
-                    messages = node.messages.map { branch ->
-                        if (branch.id == message.id) abandoned else branch
-                    }
-                )
-            }
-        }
+        // 逐节点放弃未完成工具（判据与多版本处理见 `MessageNode.abandonUnresolvedToolsIfNotResumable`，
+        // 2026-10-17 B01 / R25 把它抽出来以便覆盖「当前激活版本非原始版本」这条路径）。
+        messagesNodes = messagesNodes.map { it.abandonUnresolvedToolsIfNotResumable() }
 
         // 更新index
         messagesNodes = messagesNodes.map { node ->

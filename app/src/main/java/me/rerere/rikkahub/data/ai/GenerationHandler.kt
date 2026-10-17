@@ -3374,7 +3374,8 @@ class GenerationHandler(
         // 因此只有用户**真的配了**上限（助手 maxTokens 或最终答复上限）时才带上，并且带的是
         // 闸门夹取后的值（窗口吃紧时仍会下调）。未配置时留空，交由上游默认——与 extv 版一致。
         // 闸门侧仍用 4096 做预留，校验口径不变。
-        val configuredOutputCap = requestedMaxTokens?.takeIf { it > 0 }
+        // 判据已抽成纯函数 `resolveWireMaxTokens`（2026-10-17 B01 / R11），便于单测钉住
+        // 「未配置 ⇒ 不带」这条分支；这里的语义与注释完全一致。
         val params = agentTiming.timedAgentStage(
             AgentTimingEventKind.REQUEST_BUILD_STARTED,
             AgentTimingEventKind.REQUEST_BUILD_FINISHED,
@@ -3383,7 +3384,10 @@ class GenerationHandler(
             model = model,
             temperature = assistant.temperature,
             topP = assistant.topP,
-            maxTokens = configuredOutputCap?.let { contextPreparation.effectiveMaxOutputTokens },
+            maxTokens = resolveWireMaxTokens(
+                requestedMaxTokens = requestedMaxTokens,
+                gatedEffectiveMaxTokens = contextPreparation.effectiveMaxOutputTokens,
+            ),
             tools = tools,
             providerCacheIdentity = providerCacheIdentity,
             reasoningLevel = if (requestPurpose == GenerationRequestPurpose.FINAL_ANSWER_RECOVERY) {

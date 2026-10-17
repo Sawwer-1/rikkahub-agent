@@ -163,7 +163,9 @@ class AppDatabaseEveryAdjacentMigrationTest {
     }
 
     private companion object {
-        const val CURRENT_APP_DATABASE_VERSION = 50
+        // 2026-10-17 B01 / R10：与 `AppDatabase.version` 对齐（此前停在 50，51–55 的相邻迁移
+        // 因此从未被这个用例覆盖）。以后改 AppDatabase 版本时，这里必须同步。
+        const val CURRENT_APP_DATABASE_VERSION = 55
         const val ADJACENT_FIXTURE_STREAM_ID = "10000000-0000-4000-8000-000000000001"
     }
 }
