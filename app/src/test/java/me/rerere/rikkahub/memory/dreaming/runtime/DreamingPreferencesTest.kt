@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.memory.dreaming.runtime
 
 import me.rerere.rikkahub.memory.dreaming.model.DreamScopeId
+import kotlin.uuid.Uuid
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -45,6 +46,23 @@ class DreamingPreferencesTest {
             DreamingScopePreferences(generate = true, shadow = true),
             decoded.forScope(DreamScopeId.Global),
         )
+    }
+
+    @Test
+    fun `legacy assistant scope sees the pair scope switch instead of failing closed`() {
+        // 2026-10-17 真机「立即做梦偶发报未开启」：排期 scope 来自 DB 脏行（历史上存的是裸 assistantId），
+        // 而用户已经在 pair scope 上打开 generate。原来的桥只从 pair 往旧 key 找，反方向 fail-closed →
+        // 同一时刻开关显示 ON、扫描却判 FEATURE_DISABLED。
+        val assistantId = Uuid.random()
+        val configured = DreamingPreferencesV1().withScopeMutation(
+            DreamScopeId.pairScope(assistantId),
+            DreamingScopePreferenceMutation.SetGenerate(true),
+        )
+
+        assertTrue(configured.forScope(DreamScopeId.privateScope(assistantId)).generate)
+        assertTrue(configured.forScope(DreamScopeId.pairScope(assistantId)).generate)
+        // 没配过的助手仍然全关：反向桥只回查同一个 assistantId，不得放宽成"任何助手都开"。
+        assertFalse(configured.forScope(DreamScopeId.privateScope(Uuid.random())).generate)
     }
 
     @Test

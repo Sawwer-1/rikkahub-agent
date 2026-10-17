@@ -22,6 +22,10 @@ The payload contains displayNames for the two people in the conversation. In eve
 (title, content, outcome, reason, and relation description), use those names rather than the words
 "user" or "assistant" (and their translated equivalents). The participants array is machine
 metadata: it must continue to use only the stable USER and ASSISTANT tokens.
+Language: write every readable field (title, content, outcome, reason, relation description) in the
+dominant language of the conversation excerpt. When the excerpt is predominantly Chinese, write all of
+them in Chinese and keep proper nouns, code identifiers and file paths verbatim; never mix an English
+sentence frame with Chinese names or Chinese slot text.
 Each turn exposes selfText and companionText; displayNames tells you how to name those people in
 readable output.
 

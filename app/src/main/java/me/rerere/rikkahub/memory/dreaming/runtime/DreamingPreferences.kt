@@ -8,6 +8,7 @@ import kotlinx.serialization.json.JsonObject
 import me.rerere.rikkahub.memory.dreaming.model.DreamScopeId
 import me.rerere.rikkahub.memory.dreaming.model.DreamPairScopeId
 import me.rerere.rikkahub.memory.dreaming.model.DreamingFeatureFlags
+import kotlin.uuid.Uuid
 
 const val DREAMING_PREFERENCES_SCHEMA_VERSION = 1
 const val MAX_DREAMING_PREFERENCES_JSON_CHARS = 256 * 1024
@@ -152,6 +153,15 @@ data class DreamingPreferencesV1(
             val assistantId = scopeId.value.substringAfterLast(':')
             base.scopes[assistantId]?.let { return it }
             base.scopes[DreamScopeId.GLOBAL_VALUE]?.let { return it }
+        } else if (scopeId.value != DreamScopeId.GLOBAL_VALUE) {
+            // 2026-10-17 反向桥（真机「立即做梦」偶发报「未开启」）：
+            // 上面那座桥只从 pair scope 往旧 key 找。反方向找不到——而**脏行/旧行**里仍可能存着裸
+            // assistantId（Dream 排期 scope 来自 dream_experience_state.pair_scope_id），用户却已经把
+            // 开关写在 pair scope 上。于是同一时刻：开关 UI 显示 ON，扫描按旧 scope 判成 FEATURE_DISABLED
+            // → 弹「未开启」。这里补上 legacy assistantId → pair scope 的回查，两侧读同一处设置。
+            runCatching { Uuid.parse(scopeId.value) }.getOrNull()?.let { assistantId ->
+                base.scopes[DreamPairScopeId.forAssistant(assistantId).value]?.let { return it }
+            }
         }
         return DreamingScopePreferences()
     }

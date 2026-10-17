@@ -92,12 +92,15 @@ fun MemoryCenterPage(id: String) {
     }
 
     val appliedMessage = stringResource(R.string.memory_v2_action_completed)
+    val queuedMessage = stringResource(R.string.memory_v2_action_queued)
     val conflictMessage = stringResource(R.string.memory_v2_action_conflict)
     val failedMessage = stringResource(R.string.memory_v2_action_failed)
     val dreamAuthorityPendingMessage = stringResource(R.string.memory_dream_authority_applied_rebuild_pending)
     LaunchedEffect(actionMessage) {
         val message = when (actionMessage) {
             null -> return@LaunchedEffect
+            // 2026-10-17：「现在整理」只是入队，不能报「已完成」（会和「还有 N 段等着整理」同屏冲突）。
+            "queued" -> queuedMessage
             "conflict" -> conflictMessage
             "failed", "not_found" -> failedMessage
             "dream_authority_applied_rebuild_pending" -> dreamAuthorityPendingMessage

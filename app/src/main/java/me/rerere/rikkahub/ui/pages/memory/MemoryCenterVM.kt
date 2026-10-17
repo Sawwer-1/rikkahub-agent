@@ -499,6 +499,9 @@ class MemoryCenterVM(
     /** 手动「立即做梦」：跳过空闲等待（用户在界面点了就说明此刻要做），其余成本/条件门照常。 */
     fun dreamNow() {
         if (dreamNowRunning.value) return
+        // 2026-10-17（真机「偶发报未开启」）：上一次点击的结果文案会一直留在卡片上（没有过期/清除机制），
+        // 于是「点了一次 → 看到旧的那句未开启」被当成偶发。每次点击先清空，结果只反映这一次扫描。
+        dreamNowMessage.value = null
         viewModelScope.launch(Dispatchers.IO) {
             dreamNowRunning.value = true
             try {
@@ -512,9 +515,29 @@ class MemoryCenterVM(
                     result.deferredScopes.values.any {
                         it == DreamSynthesisScheduleDeferral.DAILY_BUDGET_EXHAUSTED
                     } -> "今日额度已用尽（UTC 00:00 重置）"
-                    result.deferredScopes.values.any {
+                    // 2026-10-17：只有**全部**推迟原因都是「功能未开启」时才说未开启。
+                    // 以前用 any，会把 RUN_CONFLICT / OBSERVER_NOT_CAUGHT_UP 这类真实原因盖成
+                    // 「未开启」（真机就是开着开关却反复看到这句）。
+                    result.deferredScopes.isNotEmpty() && result.deferredScopes.values.all {
                         it == DreamSynthesisScheduleDeferral.FEATURE_DISABLED
                     } -> "「生成 Dream 概览」未开启"
+                    result.deferredScopes.isNotEmpty() -> buildString {
+                        append("本次没有开始：")
+                        append(
+                            when (result.deferredScopes.values.first()) {
+                                DreamSynthesisScheduleDeferral.RUN_CONFLICT -> "已有一次做梦在进行"
+                                DreamSynthesisScheduleDeferral.OBSERVER_NOT_CAUGHT_UP -> "记忆整理还没追平"
+                                DreamSynthesisScheduleDeferral.POLICY_BLOCKED -> "当前成本/设备条件不满足"
+                                DreamSynthesisScheduleDeferral.POLICY_UNAVAILABLE -> "读取不到做梦策略"
+                                DreamSynthesisScheduleDeferral.USAGE_UNMEASURED -> "用量还统计不出来"
+                                DreamSynthesisScheduleDeferral.STORE_FAILURE -> "读取记忆状态失败"
+                                DreamSynthesisScheduleDeferral.DAILY_BUDGET_EXHAUSTED -> "今日额度已用尽"
+                                DreamSynthesisScheduleDeferral.FEATURE_DISABLED -> "「生成 Dream 概览」未开启"
+                                else -> result.deferredScopes.values.first().name
+                            }
+                        )
+                        append("（${result.deferredScopes.size} 个范围被推迟）")
+                    }
                     else -> "当前没有待整理的记忆积压"
                 }
             } catch (cancelled: CancellationException) {
@@ -764,10 +787,17 @@ class MemoryCenterVM(
 
     fun processNow(retryFailed: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
             val scope = currentCommandScopeId()
-            if (retryFailed) memoryV2Dao.retryScope(scope, System.currentTimeMillis())
+            // 2026-10-17（真机「正在整理 6 长期不动」）：僵尸 PROCESSING 行（租约过期）此前只在
+            // coordinator claim 时才回收。用户点「现在整理」时先回收一次，卡住的计数立刻能降下来，
+            // 否则进度看起来永远停在同一个数字。
+            runCatching { memoryV2Dao.recoverExpiredLeases(now) }
+            if (retryFailed) memoryV2Dao.retryScope(scope, now)
             scheduler.schedule(MemoryWorkRequest(scope, 0L))
-            lastActionMessage.value = "scheduled"
+            // 原来这里写 "scheduled"，页面把它翻成「已完成」→ 与「还有 N 段等着整理」同屏冲突。
+            // 单独一个键，如实说"已提交"，批次是否跑完由上方进度卡负责。
+            lastActionMessage.value = "queued"
         }
     }
 

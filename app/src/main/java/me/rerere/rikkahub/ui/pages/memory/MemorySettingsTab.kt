@@ -714,6 +714,17 @@ fun MemorySettingsTab(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // 2026-10-17（真机「137 ≠ 103 + 12」）：缺口 = PROCESSED ∧ outcome=CANDIDATES_CREATED，
+                // 也就是这批产出了可审查条目/已记住的段。补一行把口径补齐，不再让 22 段凭空消失。
+                val candidateCaptures =
+                    (stats.processedCaptures - stats.noLongTermSignalCaptures).coerceAtLeast(0)
+                if (candidateCaptures > 0) {
+                    Text(
+                        stringResource(R.string.memory_v2_queue_candidates, candidateCaptures),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 latestFailure?.let { failure ->
                     Text(
                         text = stringResource(R.string.memory_v2_latest_failure, failure),
