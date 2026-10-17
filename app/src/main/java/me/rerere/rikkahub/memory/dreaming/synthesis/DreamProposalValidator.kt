@@ -56,6 +56,12 @@ enum class DreamProposalValidationFailure {
     HOST_INVALIDATION_CONFLICT,
     INVALID_TEMPORAL_EXPRESSION,
     UNSAFE_TEXT,
+
+    /**
+     * 2026-10-17（真机 Dream 中英混排）：产出是「英文句式骨架 + 中文专名」形态。
+     * 由 [DreamLanguageGuard] 判定；命中后走既有 repair 重写一次，仍命中则整批终局失败（不入库）。
+     */
+    LANGUAGE_MISMATCH,
 }
 
 sealed interface DreamProposalValidationResult {
@@ -263,6 +269,14 @@ class DreamProposalValidator(
     ): DreamValidatedClaimVersion {
         val normalizedKey = normalizeClaimKey(claim.claimKeyHint)
             ?: reject(DreamProposalValidationFailure.CLAIM_KEY_INVALID)
+        // 2026-10-17 语言守卫（真机 Dream 中英混排）：只拦「英文骨架 + 中文槽位」形态，
+        // 纯英文/纯中文都放行，不做语言偏好假设。命中 → repair 重写一次 → 仍中则终局失败。
+        rejectUnless(
+            listOfNotNull(claim.title, claim.statement)
+                .none { DreamLanguageGuard.isMixedLanguageOutput(it) }
+        ) {
+            DreamProposalValidationFailure.LANGUAGE_MISMATCH
+        }
         val evidence = validateEvidence(request, claim.evidence)
         rejectUnless(evidence.any {
             it.supportType == DreamSupportType.SUPPORTS || it.supportType == DreamSupportType.SUPERSEDES

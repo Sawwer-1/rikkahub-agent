@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 import me.rerere.rikkahub.data.db.entity.DreamRunEntity
 import me.rerere.rikkahub.data.db.entity.MemoryScopeChangeEntity
 import me.rerere.rikkahub.data.db.entity.MemoryScopeStateEntity
@@ -232,6 +233,18 @@ interface DreamDao {
             "LIMIT CASE WHEN :limit < 0 THEN 0 ELSE :limit END",
     )
     suspend fun listRecentRuns(scopeId: String, limit: Int): List<DreamRunEntity>
+
+    /**
+     * 2026-10-17：做梦状态卡的观察通道。此前只有 `init` / 点「立即做梦」后 / 点击后 90 秒内的
+     * 3 秒轮询会刷新，后台自动跑完的那一次永远不自己进 UI。这里给同一段 SQL 的 Flow 版本，
+     * VM 收到变化后重算状态卡（复用既有的纯格式化逻辑，不改口径）。
+     */
+    @Query(
+        "SELECT * FROM dream_runs WHERE scope_id = :scopeId " +
+            "ORDER BY created_at_ms DESC, run_id ASC " +
+            "LIMIT CASE WHEN :limit < 0 THEN 0 ELSE :limit END",
+    )
+    fun observeRecentRuns(scopeId: String, limit: Int): Flow<List<DreamRunEntity>>
 
     @Query(
         "SELECT MIN(base_observer_checkpoint_epoch) FROM dream_runs " +

@@ -337,9 +337,11 @@ fun MemorySettingsTab(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // 2026-10-17：与 Dream 页那个按钮对齐——开关没开就置灰。
+                // 以前这里不看开关，点了必然被运行时拦下并弹「未开启」，看着像 bug。
                 Button(
                     onClick = onDreamNow,
-                    enabled = !dreamNowRunning,
+                    enabled = !dreamNowRunning && dreamingScopePreferences.generate,
                 ) {
                     Text(if (dreamNowRunning) "做梦进行中…" else "立即做梦")
                 }
@@ -684,6 +686,14 @@ fun MemorySettingsTab(
                 // confusing part of the page.
                 Text(
                     text = stringResource(R.string.memory_v2_queue_explain),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // 2026-10-17（真机「整理的选择标准不明」）：判据此前只在抽取 prompt 里，
+                // 界面上一个字都没有。这里把代码里**实际生效**的规则原样翻给用户看，
+                // 不是新造标准（来源：MEMORY_EXTRACTION_SYSTEM_PROMPT）。
+                Text(
+                    text = stringResource(R.string.memory_v2_queue_criteria),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

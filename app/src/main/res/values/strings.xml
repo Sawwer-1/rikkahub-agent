@@ -2118,6 +2118,7 @@
   <string name="memory_v2_action_completed">Done (see Memory organisation progress above)</string>
   <string name="memory_v2_action_queued">Queued — see Memory organisation progress above</string>
   <string name="memory_v2_queue_candidates">%1$d of them produced reviewable items</string>
+  <string name="memory_v2_queue_criteria">Rule: only durable things are kept — stated facts, preferences, commitments, decisions, relationship norms, and episodes with a real state change. Ordinary Q&amp;A, greetings, repeated explanations and tool lookups are skipped; secrets, credentials, tool output and account data are filtered locally and never leave the device.</string>
   <string name="memory_v2_action_conflict">The memory changed. Review the latest version before applying.</string>
   <string name="memory_v2_action_failed">The memory action failed</string>
   <string name="memory_v2_title">Memory Center</string>

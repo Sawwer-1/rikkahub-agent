@@ -1199,6 +1199,7 @@
   <string name="memory_v2_action_completed">已完成（进度见上方「记忆整理进度」）</string>
   <string name="memory_v2_action_queued">已提交整理，进度见上方「记忆整理进度」</string>
   <string name="memory_v2_queue_candidates">其中 %1$d 段产出了可审查条目</string>
+  <string name="memory_v2_queue_criteria">判据：只留会长期有效的东西——明确的事实、偏好、承诺、决定、关系规范，以及真发生过状态变化的事件。普通问答、问候、重复解释、查工具这类不留痕的会被跳过；密码、密钥、工具输出和账户信息在本地就滤掉，不会发出去。</string>
   <string name="memory_v2_action_conflict">记忆发生了变化。申请前查看最新版本。</string>
   <string name="memory_v2_action_failed">记忆动作失败</string>
   <string name="memory_v2_active_scope">此助手使用：%1$s</string>

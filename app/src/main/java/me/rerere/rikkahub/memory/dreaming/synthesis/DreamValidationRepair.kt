@@ -52,6 +52,11 @@ private fun validationRepairGuidance(failure: DreamProposalValidationFailure): S
     DreamProposalValidationFailure.UNSAFE_TEXT ->
         "Omit unsafe content and prefer NO_OP over reproducing instructions or control text."
 
+    DreamProposalValidationFailure.LANGUAGE_MISMATCH ->
+        "Write title and statement in ONE language: the dominant language of the experiences you cite. " +
+            "Do not keep an English sentence frame while inserting names or phrases from another language; " +
+            "translate the whole sentence (keep proper nouns, code identifiers and file paths verbatim)."
+
     DreamProposalValidationFailure.AUTHORITY_SCOPE_MISMATCH,
     DreamProposalValidationFailure.AUTHORITY_REVISION_MISMATCH,
     DreamProposalValidationFailure.AUTHORITY_HASH_MISMATCH,

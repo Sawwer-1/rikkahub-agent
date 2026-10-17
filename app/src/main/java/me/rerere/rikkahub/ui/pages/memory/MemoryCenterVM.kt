@@ -491,9 +491,25 @@ class MemoryCenterVM(
     val dreamRuntimeStatus = MutableStateFlow<DreamRuntimeStatus?>(null)
 
     private var dreamStatusPollingJob: Job? = null
+    private var dreamStatusObservationJob: Job? = null
 
     init {
         refreshDreamRuntimeStatus()
+        startDreamStatusObservation()
+    }
+
+    /**
+     * 2026-10-17（真机：后台自动跑完的那次梦永远不进 UI）：给 `dream_runs` 挂一条 DB→UI 观察通道。
+     * 表一变就重算状态卡（复用既有 `buildDreamRuntimeStatus` 口径，不改统计方式）；
+     * 原来「点击后 90 秒内每 3 秒」的短轮询保留，只作为点击后立即可见的补充。
+     */
+    private fun startDreamStatusObservation() {
+        dreamStatusObservationJob?.cancel()
+        dreamStatusObservationJob = viewModelScope.launch(Dispatchers.IO) {
+            dreamDao.observeRecentRuns(currentDreamScopeId().value, 10)
+                .map { runs -> runs.firstOrNull()?.status to runs.size }
+                .collect { refreshDreamRuntimeStatus() }
+        }
     }
 
     /** 手动「立即做梦」：跳过空闲等待（用户在界面点了就说明此刻要做），其余成本/条件门照常。 */
