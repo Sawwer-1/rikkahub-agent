@@ -78,6 +78,60 @@ class ChatSendDecisionTest {
     }
 
     @Test
+    fun `soft steer needs both the setting and real text`() {
+        // B02 / R1：默认（开关关）仍是硬打断——与 2026-10-17 定版一致，不允许设置缺省就把
+        // 老行为翻掉。
+        assertEquals(
+            ChatSendAction.INTERRUPT,
+            resolveShortSendAction(
+                RuntimeState.Running,
+                hasInput = true,
+                hasGuidanceText = true,
+            ),
+        )
+        // 开关打开 + 有文字 → 软引导：不打断当前轮，文字注入当前上下文。
+        assertEquals(
+            ChatSendAction.SOFT_STEER,
+            resolveShortSendAction(
+                RuntimeState.Running,
+                hasInput = true,
+                hasGuidanceText = true,
+                softSteerEnabled = true,
+            ),
+        )
+        // 纯附件承载不了引导（SteerCommand 只有 text），开关打开也必须打断。
+        assertEquals(
+            ChatSendAction.INTERRUPT,
+            resolveShortSendAction(
+                RuntimeState.Running,
+                hasInput = true,
+                hasGuidanceText = false,
+                softSteerEnabled = true,
+            ),
+        )
+        // 没有在跑的时候不产生引导，普通消息照常排队。
+        assertEquals(
+            ChatSendAction.QUEUE,
+            resolveShortSendAction(
+                RuntimeState.Idle,
+                hasInput = true,
+                hasGuidanceText = true,
+                softSteerEnabled = true,
+            ),
+        )
+        // 等待审批的屏障不能靠引导绕过：仍按打断处理（取消屏障 + 从新消息继续）。
+        assertEquals(
+            ChatSendAction.INTERRUPT,
+            resolveShortSendAction(
+                RuntimeState.WaitingApproval,
+                hasInput = true,
+                hasGuidanceText = true,
+                softSteerEnabled = true,
+            ),
+        )
+    }
+
+    @Test
     fun `idle keeps ordinary messages queued`() {
         assertEquals(
             ChatSendAction.QUEUE,

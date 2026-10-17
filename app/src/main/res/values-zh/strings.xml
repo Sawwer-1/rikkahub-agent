@@ -660,6 +660,9 @@
   <string name="chat_compress_succeeded_counts">历史已压缩：折叠 %1$d 条进摘要，保留 %2$d 条。</string>
   <string name="chat_compress_nothing_to_fold">没有可折叠的内容：会话已在目标范围内，保持原样。</string>
   <string name="chat_interrupted_and_restarted">已停掉上一轮回复，正在从这条消息继续。</string>
+  <string name="setting_send_behavior_title">回复进行中的发送</string>
+  <string name="setting_display_page_append_message_steer_title">追加消息按“软引导”处理（不打断）</string>
+  <string name="setting_display_page_append_message_steer_desc">开启：回复进行中发送的文字作为引导注入当前这一轮，先做完当前这一步再参考，不打断工具执行。关闭（默认）：立即打断当前这一轮，并从这条新消息重新开始。只有附件时仍按打断处理。</string>
   <string name="chat_page_compress_target_tokens">目标Token大小</string>
   <string name="chat_page_compress_target_tokens_supporting">请输入 100 到 32,000 之间的整数。</string>
   <string name="chat_page_compress_warning">⚠️ 原始消息会保留，只是被折叠的区段不再原样发给模型、改用摘要替代</string>

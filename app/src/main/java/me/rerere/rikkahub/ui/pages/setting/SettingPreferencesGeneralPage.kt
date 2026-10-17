@@ -259,6 +259,26 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
             item {
                 CardGroup(
                     modifier = Modifier.padding(horizontal = 8.dp),
+                    title = { Text(stringResource(R.string.setting_send_behavior_title)) },
+                ) {
+                    item(
+                        headlineContent = { Text(stringResource(R.string.setting_display_page_append_message_steer_title)) },
+                        supportingContent = { Text(stringResource(R.string.setting_display_page_append_message_steer_desc)) },
+                        trailingContent = {
+                            Switch(
+                                checked = settings.steerOnAppendEnabled,
+                                onCheckedChange = {
+                                    vm.updateSettings(settings.copy(steerOnAppendEnabled = it))
+                                }
+                            )
+                        },
+                    )
+                }
+            }
+
+            item {
+                CardGroup(
+                    modifier = Modifier.padding(horizontal = 8.dp),
                     title = { Text(stringResource(R.string.setting_page_tts_settings)) },
                 ) {
                     item(

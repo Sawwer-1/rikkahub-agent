@@ -8,6 +8,8 @@ import me.rerere.rikkahub.service.chat.SteeringUiEntry
 internal enum class ChatSendAction {
     QUEUE,
     INTERRUPT,
+    /** 软引导：不打断当前这一轮，把文字作为 steering 注入（只在设置开启时出现）。 */
+    SOFT_STEER,
     STOP,
     SHOW_RUNNING_CHOICES,
 }
@@ -33,14 +35,22 @@ internal enum class RunningSendChoice {
  * 已暂停（含"审批状态需对账"与失败 pin 的 Paused）也走 [ChatSendAction.INTERRUPT]：
  * 用户此时发新消息的意图就是"改做这条"，把自己卡在暂停里等他先去点恢复是错的。
  *
- * **不再有"软引导"这一档**（2026-10-17 用户反馈：生成中追加消息看到的却是"我正在记着 /
- * 可切换是否保留"的引导卡片，发送没有打断当前轮）：steering 内核（SteerCommand / 卡片 /
- * web / Telegram `/steer`）保留不动，只是 App 的发送路径不再产生它。
+ * **2026-10-17 定版**：App 短按发送默认**不再产生软引导**（用户反馈生成中追加消息看到的是
+ * "我正在记着 / 可切换是否保留"的卡片、当前轮没停）。steering 内核（SteerCommand / 卡片 /
+ * web / Telegram `/steer`）保留不动。
+ *
+ * **B02 / R1 起**给了用户一个显式开关（`Settings.steerOnAppendEnabled`，默认关＝硬打断）。
+ * 打开后，生成中带文字追加 → [ChatSendAction.SOFT_STEER]（不打断，文字注入当前轮）；
+ * 纯附件承载不了引导（SteerCommand 只带文本），仍走 [ChatSendAction.INTERRUPT]。
  */
 internal fun resolveShortSendAction(
     runtimeState: RuntimeState,
     hasInput: Boolean,
+    hasGuidanceText: Boolean = false,
+    softSteerEnabled: Boolean = false,
 ): ChatSendAction = when {
+    runtimeState == RuntimeState.Running && hasInput && softSteerEnabled && hasGuidanceText ->
+        ChatSendAction.SOFT_STEER
     runtimeState == RuntimeState.Running && hasInput -> ChatSendAction.INTERRUPT
     runtimeState == RuntimeState.Running -> ChatSendAction.STOP
     runtimeState == RuntimeState.WaitingApproval && hasInput -> ChatSendAction.INTERRUPT

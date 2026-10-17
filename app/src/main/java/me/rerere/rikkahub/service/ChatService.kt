@@ -204,6 +204,9 @@ import me.rerere.rikkahub.service.chat.CancelSteeringCommand
 import me.rerere.rikkahub.service.chat.UpdateQueuedMessageCommand
 import me.rerere.rikkahub.service.chat.PromoteQueuedMessageToSteeringCommand
 import me.rerere.rikkahub.service.chat.QueuedMessageUiEntry
+import me.rerere.rikkahub.service.chat.STEERING_AUDIT_CATEGORY
+import me.rerere.rikkahub.service.chat.steeringAuditDetail
+import me.rerere.rikkahub.service.chat.steeringAuditTarget
 import me.rerere.rikkahub.subagent.allowsTool
 import me.rerere.rikkahub.subagent.generationMaxSteps
 import me.rerere.ai.provider.ModelType
@@ -2259,7 +2262,7 @@ class ChatService(
             me.rerere.rikkahub.service.chat.SteeringHistoryMode.TRANSIENT,
     ): SubmitResult {
         if (text.isBlank()) return SubmitResult.Rejected("Steering text cannot be blank")
-        return submitCommand(
+        val result = submitCommand(
             conversationId = conversationId,
             command = SteerCommand(
                 text = text,
@@ -2269,6 +2272,18 @@ class ChatService(
             ),
             origin = origin,
         )
+        // 审计（R1）：谁提交的引导决定"生成中追加消息"这条链路的实际落点，
+        // 开关生效与否只能靠这条记录验证。只记来源与元数据，不记正文。
+        recordSteeringSubmissionAudit(
+            conversationId = conversationId,
+            origin = origin,
+            scope = scope,
+            historyMode = historyMode,
+            textLength = text.length,
+            promotedFromQueue = false,
+            result = result,
+        )
+        return result
     }
 
     fun updateSteeringHistoryMode(
@@ -2331,11 +2346,23 @@ class ChatService(
     suspend fun promoteQueuedMessageToSteering(
         conversationId: Uuid,
         commandId: Uuid,
-    ): SubmitResult = submitCommand(
-        conversationId,
-        PromoteQueuedMessageToSteeringCommand(commandId),
-        CommandOrigin.APP_UI,
-    )
+    ): SubmitResult {
+        val command = PromoteQueuedMessageToSteeringCommand(commandId)
+        val result = submitCommand(conversationId, command, CommandOrigin.APP_UI)
+        // 队列升格是**另一条**产生引导的路径：它的 origin 仍是当初入队的来源，
+        // 单看 origin 分不出"直接引导"与"排队后被升格"，所以在这里显式标注来源。
+        // 正文此刻还在运行时里（入队时的 SendMessageCommand），这里只能记元数据。
+        recordSteeringSubmissionAudit(
+            conversationId = conversationId,
+            origin = CommandOrigin.APP_UI,
+            scope = command.scope,
+            historyMode = command.historyMode,
+            textLength = null,
+            promotedFromQueue = true,
+            result = result,
+        )
+        return result
+    }
 
     fun submitEmergency(
         conversationId: Uuid,
@@ -4513,6 +4540,40 @@ class ChatService(
                 append(" interrupt=").append(interruptCommandId)
             },
             status = "interrupted:new_message",
+        )
+    }
+
+    /**
+     * 引导提交来源审计（B02 / R1）。
+     *
+     * 四条路（App 输入框追加 / 队列升格 / Web API / Telegram `/steer`）最后都变成同一个
+     * [SteerCommand]；`origin` 只能区分进程来源，分不出「追加」与「升格」，因此来源标签由
+     * [steeringAuditTarget] 决定。只记来源、作用域、字数与结果，**绝不记正文**。
+     */
+    private suspend fun recordSteeringSubmissionAudit(
+        conversationId: Uuid,
+        origin: CommandOrigin,
+        scope: me.rerere.rikkahub.service.chat.SteeringScope,
+        historyMode: me.rerere.rikkahub.service.chat.SteeringHistoryMode,
+        textLength: Int?,
+        promotedFromQueue: Boolean,
+        result: SubmitResult,
+    ) {
+        val audit = securityAudit ?: return
+        audit.record(
+            category = STEERING_AUDIT_CATEGORY,
+            action = "submitted",
+            target = steeringAuditTarget(origin, promotedFromQueue),
+            detail = buildString {
+                append("conversation=").append(conversationId)
+                append(' ').append(steeringAuditDetail(scope, historyMode, textLength))
+            },
+            status = when (result) {
+                is SubmitResult.Accepted -> "accepted"
+                is SubmitResult.QueueFull -> "queue_full"
+                is SubmitResult.RuntimeUnavailable -> "runtime_unavailable"
+                is SubmitResult.Rejected -> "rejected"
+            },
         )
     }
 

@@ -384,6 +384,7 @@ private fun ChatPageContent(
         when (choice.toSendAction()) {
             ChatSendAction.QUEUE -> vm.handleMessageSend(contents)
             ChatSendAction.INTERRUPT -> vm.handleInterrupt(contents)
+            ChatSendAction.SOFT_STEER -> return
             ChatSendAction.STOP -> vm.stopGeneration()
             ChatSendAction.SHOW_RUNNING_CHOICES -> return
         }
@@ -680,13 +681,20 @@ private fun ChatPageContent(
                             )
                         } else {
                             val contents = inputState.getContents()
+                            // 软引导只能承载文字（SteerCommand.text）；纯附件仍走硬打断。
+                            val guidanceText = contents
+                                .filterIsInstance<UIMessagePart.Text>()
+                                .joinToString("\n") { it.text }
                             val action = resolveShortSendAction(
                                 runtimeState = runtimeState,
                                 hasInput = !inputState.isEmpty(),
+                                hasGuidanceText = guidanceText.isNotBlank(),
+                                softSteerEnabled = setting.steerOnAppendEnabled,
                             )
                             when (action) {
                                 ChatSendAction.QUEUE -> vm.handleMessageSend(contents)
                                 ChatSendAction.INTERRUPT -> vm.handleInterrupt(contents)
+                                ChatSendAction.SOFT_STEER -> vm.handleSteer(guidanceText)
                                 ChatSendAction.STOP -> vm.stopGeneration()
                                 ChatSendAction.SHOW_RUNNING_CHOICES -> showSendModeDialog = true
                             }
@@ -733,6 +741,10 @@ private fun ChatPageContent(
                                 ChatSendAction.STOP -> vm.stopGeneration()
                                 ChatSendAction.INTERRUPT -> submitRunningChoice(
                                     RunningSendChoice.STOP_AND_REPLACE
+                                )
+                                // 长按选单只有两项，软引导只在短按 + 设置开启时出现。
+                                ChatSendAction.SOFT_STEER -> submitRunningChoice(
+                                    RunningSendChoice.HANDLE_AFTER_CURRENT_TASK
                                 )
                             }
                         }

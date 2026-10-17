@@ -1019,6 +1019,13 @@ data class Settings(
     val displaySetting: DisplaySetting = DisplaySetting(),
     val waifuSetting: WaifuSetting = WaifuSetting(),
     val enableWebSearch: Boolean = false,
+    /**
+     * 生成中追加消息的行为（B02 / R1）。
+     * false（默认）= 硬打断：停当前这一轮，把这条消息作为起点重开（见 resolveShortSendAction）。
+     * true = 软引导：不打断，把文字作为 steering 注入当前轮，做完当前这一步后再参考。
+     * 纯附件承载不了引导（SteerCommand 只带文本），仍走硬打断。
+     */
+    val steerOnAppendEnabled: Boolean = false,
     val parallelReadOnlyToolsEnabled: Boolean = false,
     val maxParallelReadOnlyTools: Int = 3,
     val managedVirtualDisplayEnabled: Boolean = false,
