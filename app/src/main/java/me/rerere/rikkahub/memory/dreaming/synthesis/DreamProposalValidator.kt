@@ -269,11 +269,16 @@ class DreamProposalValidator(
     ): DreamValidatedClaimVersion {
         val normalizedKey = normalizeClaimKey(claim.claimKeyHint)
             ?: reject(DreamProposalValidationFailure.CLAIM_KEY_INVALID)
-        // 2026-10-17 语言守卫（真机 Dream 中英混排）：只拦「英文骨架 + 中文槽位」形态，
-        // 纯英文/纯中文都放行，不做语言偏好假设。命中 → repair 重写一次 → 仍中则终局失败。
+        // 2026-10-17 语言守卫（真机 Dream 中英混排；用户拍板：中文会话必须全中文输出）：
+        // 先按本次 payload 判输入主语言——以中文为主时**纯英文也拒**（拉丁字符 > 40），
+        // 否则退回「英文骨架 + 中文槽位」判据（纯英文放行，不误伤英文用户）。
+        // 命中 → repair 重写一次 → 仍中则终局失败，不入库。
+        val chineseDominantInput = DreamLanguageGuard.isChineseDominantInput(
+            request.input.modelInput.payloadJson,
+        )
         rejectUnless(
             listOfNotNull(claim.title, claim.statement)
-                .none { DreamLanguageGuard.isMixedLanguageOutput(it) }
+                .none { DreamLanguageGuard.isDisallowedOutput(it, chineseDominantInput) }
         ) {
             DreamProposalValidationFailure.LANGUAGE_MISMATCH
         }

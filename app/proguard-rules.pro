@@ -98,3 +98,8 @@
 # Shizuku loads the UserService class and its constructors from the installed APK.
 -keep class me.rerere.rikkahub.privilege.ExternalPrivilegeUserService { public <init>(...); *; }
 -keep class me.rerere.rikkahub.privilege.IExternalPrivilegeBridgeService** { *; }
+
+# 2026-10-17（可核验性）：Dream 语言守卫与 DreamDao 的观察方法在 release 包里必须保留符号名，
+# 否则 R8 混淆后无法从 APK 字节里证明"这次改动真的进了二进制"（此前字节核验两条 MISS 就是它）。
+-keep class me.rerere.rikkahub.memory.dreaming.synthesis.DreamLanguageGuard { *; }
+-keep interface me.rerere.rikkahub.data.db.dao.DreamDao { *; }

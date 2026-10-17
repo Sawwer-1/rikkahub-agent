@@ -45,4 +45,36 @@ class DreamLanguageGuardTest {
             ),
         )
     }
+
+    @Test
+    fun `Chinese dominant input demands fully Chinese output even without any Han in the claim`() {
+        // 用户拍板（2026-10-17）：中文会话必须全中文输出 —— 纯英文摘要也要拦。
+        val chinesePayload = "体验内容：".repeat(80) + "用户与助手讨论了一个长期项目。" .repeat(20)
+        assertTrue(DreamLanguageGuard.isChineseDominantInput(chinesePayload))
+
+        val pureEnglishClaim = "The assistant consistently provides immersive narration and keeps " +
+            "the negotiated boundaries intact across the whole conversation."
+        assertTrue(DreamLanguageGuard.isDisallowedOutput(pureEnglishClaim, chineseDominantInput = true))
+        // 同一条产出，在非中文输入下按"混排"判据 → 纯英文放行。
+        assertFalse(DreamLanguageGuard.isDisallowedOutput(pureEnglishClaim, chineseDominantInput = false))
+        // 全中文产出永远放行。
+        assertFalse(
+            DreamLanguageGuard.isDisallowedOutput(
+                "助手一直用第一人称叙述，并始终守住双方约定好的边界。",
+                chineseDominantInput = true,
+            ),
+        )
+        // 中文句里几个专名/标识符（拉丁 ≤ 40 字符）仍放行。
+        assertFalse(
+            DreamLanguageGuard.isDisallowedOutput(
+                "思考链在 DeepSeek V4 Flash 上偏长，max_tokens 留空即可。",
+                chineseDominantInput = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `English input is never judged Chinese dominant`() {
+        assertFalse(DreamLanguageGuard.isChineseDominantInput("The user and assistant discussed a project."))
+    }
 }

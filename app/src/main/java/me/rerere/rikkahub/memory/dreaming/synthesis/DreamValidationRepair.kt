@@ -54,8 +54,10 @@ private fun validationRepairGuidance(failure: DreamProposalValidationFailure): S
 
     DreamProposalValidationFailure.LANGUAGE_MISMATCH ->
         "Write title and statement in ONE language: the dominant language of the experiences you cite. " +
-            "Do not keep an English sentence frame while inserting names or phrases from another language; " +
-            "translate the whole sentence (keep proper nouns, code identifiers and file paths verbatim)."
+            "When those experiences are predominantly Chinese, write the ENTIRE sentence in Chinese and use " +
+            "Latin letters only for proper nouns, code identifiers and file paths (no English clause, no " +
+            "English connector, no half-translated sentence). Never keep an English sentence frame while " +
+            "inserting names or phrases from another language."
 
     DreamProposalValidationFailure.AUTHORITY_SCOPE_MISMATCH,
     DreamProposalValidationFailure.AUTHORITY_REVISION_MISMATCH,
