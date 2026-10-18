@@ -2114,7 +2114,8 @@ class ConversationRuntime(
         stateRevision.updateAndGet { current -> maxOf(current, completedRevision) }
         // B10 / R4：删掉 `persistenceCoordinator.flushThrough` 的假屏障（唯一实现恒返回 Persisted）。
         // 现在只认真实的持久化失败——即引导历史落盘时报出来的那个错误。
-        if (steeringHistoryFailure != null) {
+        val persistenceFailure = steeringHistoryFailure
+        if (persistenceFailure != null) {
             queuePausedReason = "会话状态未能落库"
             queuePaused = true
         }
