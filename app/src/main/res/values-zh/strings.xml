@@ -659,6 +659,8 @@
   <string name="chat_compress_succeeded">历史已压缩：被折叠的部分已收进摘要。</string>
   <string name="chat_compress_succeeded_counts">历史已压缩：折叠 %1$d 条进摘要，保留 %2$d 条。</string>
   <string name="chat_compress_nothing_to_fold">没有可折叠的内容：会话已在目标范围内，保持原样。</string>
+  <string name="compress_dialog_status_folded">已折叠 %1$d 条历史 · 摘要 %2$d 字</string>
+  <string name="compress_dialog_status_none">还没有折叠过任何历史：开关打开后，对话变长时才会自动折叠；点「确认」可立即折一次。</string>
   <string name="chat_interrupted_and_restarted">已停掉上一轮回复，正在从这条消息继续。</string>
   <string name="setting_send_behavior_title">回复进行中的发送</string>
   <string name="setting_display_page_append_message_steer_title">追加消息按“软引导”处理（不打断）</string>

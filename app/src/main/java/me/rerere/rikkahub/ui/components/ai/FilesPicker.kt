@@ -324,6 +324,8 @@ internal fun FilesPicker(
     if (showCompressDialog) {
         RollingCompressDialog(
             autoCompressConfig = conversation.autoCompressConfig,
+            compressedNodeCount = conversation.activeCompressedMessageNodeIds.size,
+            compressedSummaryChars = conversation.compressedSummary?.length ?: 0,
             onDismiss = {
             onShowCompressDialogChange(false)
             onDismiss()

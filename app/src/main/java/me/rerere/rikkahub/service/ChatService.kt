@@ -378,6 +378,35 @@ internal fun effectiveCompressionKeepRecentMessages(keepRecentMessages: Int): In
     return keepRecentMessages.coerceAtLeast(1)
 }
 
+/**
+ * 自动滚动摘要的触发判据（工单 CB 2026-10-18「开了开关但没生效」）。
+ *
+ * 旧判据里条数这一路写着 `triggerMessageCount > 0 && …`，而 `Assistant.contextMessageSize`
+ * 默认就是 **0（不限条数）**；token 预算两路又默认**留空 = 不启用**。两者叠加的结果是：
+ * 默认配置下**开关打开也永远不会触发**——用户只能看到「开着」，看不到任何折叠。
+ *
+ * 现在的口径：
+ * - token 预算判据由调用方先算好（显式配置了阈值才会参与），成立即触发；
+ * - 助手限制了条数（> 0）时沿用旧语义：`可见节点 ≥ 保留 + 助手窗口`；
+ * - 助手不限条数（= 0）时改用**等价判据**：`可见节点 ≥ 2 × 保留`，即「值得折的量不少于要留的量」。
+ *   开关是会话级、默认关，只有用户主动打开才走到这里，所以这条兜底不会影响老会话。
+ */
+internal fun shouldAutoCompress(
+    visibleNodeCount: Int,
+    keepRecentMessages: Int,
+    assistantContextMessageSize: Int,
+    tokenBudgetTriggered: Boolean,
+): Boolean {
+    if (tokenBudgetTriggered) return true
+    val keep = effectiveCompressionKeepRecentMessages(keepRecentMessages)
+    if (visibleNodeCount <= keep) return false
+    return if (assistantContextMessageSize > 0) {
+        visibleNodeCount >= keep + assistantContextMessageSize
+    } else {
+        visibleNodeCount >= keep * 2
+    }
+}
+
 internal fun estimateCompressionTokens(text: String): Int {
     var asciiChars = 0
     var nonAsciiChars = 0
@@ -7102,11 +7131,6 @@ class ChatService(
 
         val keepRecentMessages = config.keepRecentMessages.coerceAtLeast(1)
 
-        // 判据 1/3：条数触发（保留原语义）——可见节点数达到 keepRecentMessages + contextMessageSize
-        // 即压缩；只在 contextMessageSize > 0 时参与。
-        val messageCountTriggered = triggerMessageCount > 0 &&
-            conversation.visibleMessageNodes.size >= keepRecentMessages + triggerMessageCount
-
         // 判据 2/3 与 3/3：token 预算触发（OR 条件）——窗口占用达到阈值即压缩。
         // 两个预算项**任一非空即生效**：tokensK 非空走绝对上限（优先）；仅 percent 非空走窗口
         // 百分比；两者都空、或模型未声明正数上下文窗口（contextLength = 0）时该判据不生效，
@@ -7128,8 +7152,15 @@ class ChatService(
                 thresholdTokensK = settings.autoCompactionThresholdTokensK,
             ).shouldCompact
 
-        // 三个判据各自独立、任一成立即触发；这里统一收口。
-        if (!messageCountTriggered && !tokenBudgetTriggered) return
+        // 收口在 shouldAutoCompress：token 预算成立即触发；条数这一路在助手不限条数（0）时
+        // 走「折叠量 ≥ 保留量」的等价判据，否则默认配置下开关永远不触发（工单 CB 2026-10-18）。
+        val triggered = shouldAutoCompress(
+            visibleNodeCount = conversation.visibleMessageNodes.size,
+            keepRecentMessages = keepRecentMessages,
+            assistantContextMessageSize = triggerMessageCount,
+            tokenBudgetTriggered = tokenBudgetTriggered,
+        )
+        if (!triggered) return
 
         compressConversationRolling(
             conversationId = conversationId,
@@ -7163,9 +7194,18 @@ class ChatService(
     }
 
     suspend fun updateCompressedSummary(conversationId: Uuid, summary: String?) {
-        val updated = getConversationFlow(conversationId).value.copy(
-            compressedSummary = summary?.takeIf { it.isNotBlank() },
-        )
+        val current = getConversationFlow(conversationId).value
+        val normalized = summary?.takeIf { it.isNotBlank() }
+        val updated = current.copy(
+            compressedSummary = normalized,
+            // 摘要被清空 = 撤销折叠。否则那批节点既不在请求里、也没有摘要替代，
+            // 等于把历史静默丢给模型（工单 CB 2026-10-18 复查时发现的同类隐患）。
+            compressedMessageNodeIds = if (normalized == null) {
+                emptySet()
+            } else {
+                current.compressedMessageNodeIds
+            },
+        ).normalizeCompressionState()
         saveConversation(conversationId, updated)
     }
 

@@ -275,6 +275,8 @@
   <string name="chat_compress_succeeded">History compressed — the folded part is now a summary.</string>
   <string name="chat_compress_succeeded_counts">History compressed — %1$d messages folded into the summary, %2$d kept visible.</string>
   <string name="chat_compress_nothing_to_fold">Nothing folded: the conversation is already within the target, so it stayed as it was.</string>
+  <string name="compress_dialog_status_folded">Folded %1$d messages · summary %2$d chars</string>
+  <string name="compress_dialog_status_none">Nothing folded yet: with the switch on, history folds automatically once the chat grows; press Confirm to fold once now.</string>
   <string name="chat_interrupted_and_restarted">Stopped the previous reply — continuing from your new message.</string>
   <string name="setting_send_behavior_title">Sending while a reply is running</string>
   <string name="setting_display_page_append_message_steer_title">Append as guidance instead of interrupting</string>

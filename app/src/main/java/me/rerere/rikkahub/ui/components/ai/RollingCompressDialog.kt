@@ -43,6 +43,13 @@ import me.rerere.rikkahub.ui.components.ui.RabbitLoadingIndicator
 @Composable
 fun RollingCompressDialog(
     autoCompressConfig: AutoCompressConfig?,
+    /**
+     * 已折叠的历史条数与摘要字数（工单 CB 2026-10-18）：滚动摘要在 UI 上是「无痕」的——
+     * 原始消息保留、只是不再发给模型，所以用户没有任何可断言的观察点。这两个数字直接来自
+     * 会话的压缩状态，是「到底折过没有」的唯一可见证据。
+     */
+    compressedNodeCount: Int = 0,
+    compressedSummaryChars: Int = 0,
     onDismiss: () -> Unit,
     onSaveConfig: (
         additionalPrompt: String,
@@ -114,6 +121,32 @@ fun RollingCompressDialog(
                     }
                 } else {
                     Text(stringResource(R.string.chat_page_compress_context_desc))
+
+                    // 压缩状态（工单 CB 2026-10-18）：UI 无痕 ≠ 没生效，但此前连一个可看的数字
+                    // 都没有，用户只能靠请求侧 token 猜。这里直接报「折了几条 / 摘要多长」。
+                    if (compressedNodeCount > 0) {
+                        Text(
+                            text = stringResource(
+                                R.string.compress_dialog_status_folded,
+                                compressedNodeCount,
+                                compressedSummaryChars,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .testTag("compress_dialog_status")
+                                .semantics { testTagsAsResourceId = true },
+                        )
+                    } else {
+                        Text(
+                            text = stringResource(R.string.compress_dialog_status_none),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .testTag("compress_dialog_status")
+                                .semantics { testTagsAsResourceId = true },
+                        )
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),

@@ -35,10 +35,25 @@ sealed interface ConversationMetadataMutation {
     }
 }
 
+/**
+ * 运行时图写入：以调用方的图为准，其余字段（标题/提示词/文件夹…）以库里为准。
+ *
+ * **2026-10-18（工单 CB「自动滚动摘要未见生效」）**：`compressedSummary` /
+ * `compressedMessageNodeIds` 必须跟着图一起走。它们是**运行时图状态**，不是用户元数据：
+ * 压缩刚算完就调 `saveConversation` 落库，若这里仍取库里的旧值，压缩结果会被静默丢弃——
+ * 手动「确认」能弹「已压缩 N 条」，但库里一条都没折；自动路径同理，每轮都白算。
+ * `autoCompressConfig`（配置）不在其列，继续走 `mutateMetadata` 单列写入。
+ */
 internal fun Conversation.withRuntimeGraph(incoming: Conversation): Conversation {
     require(id == incoming.id)
-    return copy(messageNodes = incoming.messageNodes, chatSuggestions = incoming.chatSuggestions,
-        updateAt = incoming.updateAt, newConversation = false)
+    return copy(
+        messageNodes = incoming.messageNodes,
+        chatSuggestions = incoming.chatSuggestions,
+        updateAt = incoming.updateAt,
+        newConversation = false,
+        compressedSummary = incoming.compressedSummary,
+        compressedMessageNodeIds = incoming.compressedMessageNodeIds,
+    )
 }
 
 internal fun applyMessageMutation(
