@@ -331,6 +331,10 @@ class ChatCompletionsAPI(
         // just for debugging response body
         // println(client.newCall(request).await().body.string())
 
+        // B04 / R6：思考通道重复退化的提前收敛护栏（详见 ReasoningRepetitionGuard.kt）。
+        val reasoningTail = StringBuilder()
+        var repetitionGuardFired = false
+
         val listener = object : EventSourceListener() {
             override fun onEvent(
                 eventSource: EventSource,
@@ -375,6 +379,40 @@ class ChatCompletionsAPI(
                                 }
                             }
                             val usage = parseTokenUsage(event["usage"] as? JsonObject)
+
+                            // B04 / R6：累计思考并检测退化；命中则**提前收敛**——补一个正常的
+                            // stop 终止标记再关流，避免上层把它当成传输中断去触发最终答案恢复。
+                            if (!repetitionGuardFired) {
+                                val reasoningDelta = choiceList.firstOrNull()?.delta?.parts
+                                    ?.filterIsInstance<UIMessagePart.Reasoning>()
+                                    ?.joinToString("") { it.reasoning }
+                                    .orEmpty()
+                                if (reasoningDelta.isNotEmpty()) {
+                                    reasoningTail.append(reasoningDelta)
+                                    val verdict = detectReasoningRepetition(reasoningTail.toString())
+                                    if (verdict != null) {
+                                        repetitionGuardFired = true
+                                        Log.w(
+                                            TAG,
+                                            "reasoning repetition guard: run=${verdict.repeatedRun} " +
+                                                "cut=${verdict.cutIndex} " +
+                                                "reason=${verdict.reason.take(REPETITION_SEGMENT_MAX_CHARS)}",
+                                        )
+                                        deliverProviderChunk(
+                                            TAG,
+                                            MessageChunk(
+                                                id = eventId,
+                                                model = model,
+                                                choices = choiceList.map { it.copy(finishReason = "stop") },
+                                                usage = usage,
+                                                terminal = GenerationTerminal.fromProviderReason("stop"),
+                                            ),
+                                        ) { summary -> Log.w(TAG, summary) }
+                                        close()
+                                        return
+                                    }
+                                }
+                            }
 
                             val messageChunk = MessageChunk(
                                 id = eventId,
