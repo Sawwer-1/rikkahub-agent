@@ -11,17 +11,30 @@ import org.junit.Test
  *
  * 这些用例锁的是「宁可漏判、不可误杀」：正常长列表、正常重复句式都不能触发；
  * 只有同一短句连续刷屏或同一整行连续刷屏才收敛。
+ *
+ * 注意：[prefix] 必须真的长过 [REPETITION_MIN_TEXT_CHARS]，否则会先被「短思考不判」挡掉，
+ * 让正样本用例失去意义（第一版就踩了这个：前缀只有 90 字，两个正样本全挂在 assertNotNull）。
  */
 class ReasoningRepetitionGuardTest {
-    private val prefix = buildString {
-        append("先看日志，确认是解析层还是校验层拒的；再看请求体里 max_tokens 与工具 schema 的大小。")
-        append("定位到行之后再改，改完要有单测，单测要能区分正确与错误。")
-        append("这一段是正常内容，长度足够越过护栏的最小判定长度，不参与重复计数。")
-    }
+    private val prefix = listOf(
+        "先看日志，确认这次输出是被解析层拒掉的，还是被校验层拒掉的。",
+        "再看请求体里 max_tokens 的取值与工具 schema 的实际体积是否异常。",
+        "定位到具体行之后再动手改，改完必须补一条能区分正确与错误的单测。",
+        "单测要能证明修复前后的行为差异，而不是只断言调用不抛异常。",
+        "短回答里出现重复措辞是正常的，护栏不能把这种正常现象判成退化。",
+        "真正危险的是同一短句连续刷屏，把输出预算全部烧在重复片段上。",
+        "护栏只看尾部窗口，历史里出现过的重复交给回传侧的折叠逻辑处理。",
+        "这段前缀故意写长，用来越过护栏的最小判定长度，本身不含任何重复。",
+        "如果尾部已经恢复正常表述，就不应该再判退化，避免把抖动判成故障。",
+        "判定阈值宁可保守一些，漏判的代价远小于误杀正常长文本的代价。",
+        "会话越长，越需要一道能自己收尾的护栏，而不是等预算耗尽才结束。",
+        "所有判据都要能用纯函数复现，不依赖网络、不依赖设备时间。",
+    ).joinToString("")
 
     @Test
     fun `consecutive identical short sentences converge the turn`() {
         val raw = prefix + "好。".repeat(REPETITION_MIN_RUN)
+        assertTrue(raw.length > REPETITION_MIN_TEXT_CHARS)
 
         val verdict = detectReasoningRepetition(raw)
         assertNotNull(verdict)
@@ -58,7 +71,10 @@ class ReasoningRepetitionGuardTest {
         // 单行超过句级上限（24 字），句级规则不参与；行级规则兜住这种无标点刷屏。
         val line = "这一行是很长的重复说明文字，超过二十四个字符的限制。"
         assertTrue(line.length > REPETITION_SEGMENT_MAX_CHARS)
-        val raw = prefix + (1..REPETITION_MIN_LINE_RUN).joinToString("\n") { line }
+        // 前面先补一个换行，保证「整行相同」的那组真的凑满 REPETITION_MIN_LINE_RUN 行
+        // （否则第一行会和前缀粘在一起，实际只有 N-1 行相同）。
+        val raw = prefix + "\n" + (1..REPETITION_MIN_LINE_RUN).joinToString("\n") { line }
+        assertTrue(raw.length > REPETITION_MIN_TEXT_CHARS)
 
         val verdict = detectReasoningRepetition(raw)
 
