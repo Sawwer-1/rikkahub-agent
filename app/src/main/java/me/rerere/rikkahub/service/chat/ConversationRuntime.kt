@@ -158,7 +158,6 @@ class ConversationRuntime(
     private val executor: RuntimeCommandExecutor,
     private val hydrator: RuntimeHydrator = RuntimeHydrator { },
     private val repairer: RuntimeRepairer = RuntimeRepairer { _, _ -> InterruptCleanupResult.Completed },
-    private val persistenceCoordinator: PersistenceCoordinator = NoOpPersistenceCoordinator(),
     private val durableQueue: DurableCommandQueue? = null,
     private val commandAuthority: RuntimeCommandAuthority? = null,
     private val onBecameIdle: (Uuid) -> Unit = {},
@@ -1537,12 +1536,9 @@ class ConversationRuntime(
                 _steeringStatus.value = run.control.steeringStates()
                 return true
             }
-            val barrier = runSuspendCatching { persistenceCoordinator.flushThrough(stateRevision.get()) }
-                .getOrElse { PersistResult.Failed(it) }
-            if (barrier is PersistResult.Failed) {
-                _steeringStatus.value = run.control.steeringStates()
-                return true
-            }
+            // B10 / R4：这里原本查一次「持久化屏障」，但唯一实现 `NoopPersistenceCoordinator`
+            // 永远返回 Persisted —— 等于假装落库成功。屏障本身尚未实现，代码不再保留这层假保证：
+            // 真正的落库失败由调用方（ChatService.saveConversation）自己上报并置 Paused。
         }
         _steeringStatus.value = run.control.steeringStates()
         return true
@@ -2116,11 +2112,9 @@ class ConversationRuntime(
         }
         val completedRevision = (outcome as? RunOutcome.Completed)?.finalRevision ?: stateRevision.get()
         stateRevision.updateAndGet { current -> maxOf(current, completedRevision) }
-        val persistenceResult = runSuspendCatching {
-            persistenceCoordinator.flushThrough(stateRevision.get())
-        }.getOrElse { PersistResult.Failed(it) }
-        val persistenceFailure = steeringHistoryFailure ?: (persistenceResult as? PersistResult.Failed)?.error
-        if (persistenceFailure != null) {
+        // B10 / R4：删掉 `persistenceCoordinator.flushThrough` 的假屏障（唯一实现恒返回 Persisted）。
+        // 现在只认真实的持久化失败——即引导历史落盘时报出来的那个错误。
+        if (steeringHistoryFailure != null) {
             queuePausedReason = "会话状态未能落库"
             queuePaused = true
         }

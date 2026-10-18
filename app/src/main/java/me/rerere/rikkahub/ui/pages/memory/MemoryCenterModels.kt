@@ -26,6 +26,23 @@ data class MemoryLibraryFilter(
     val sort: MemoryLibrarySort = MemoryLibrarySort.UPDATED,
 )
 
+/**
+ * 「现在整理」按钮是否可点（B10 / R29）。
+ *
+ * 判据与队列状态一致：**有活可干、且当前没有批次在跑**。
+ * - 有活 = 待处理或暂停（失败重试走另一个按钮，见 [canRetryFailed]）；
+ * - 有批次在跑（`processingCaptures > 0`）时不再可点——点下去只是再排一次队，
+ *   而且会让「正在整理 N」的数字看起来没反应（248 §三 的观感问题）。
+ */
+internal fun canProcessNow(stats: MemoryCenterStats): Boolean =
+    stats.processingCaptures == 0 &&
+        (stats.pendingCaptures > 0 || stats.pausedCaptures > 0)
+
+/** 「重试失败」按钮：失败或暂停且有活时可用；同一时刻只允许一批在跑。 */
+internal fun canRetryFailed(stats: MemoryCenterStats): Boolean =
+    stats.processingCaptures == 0 &&
+        (stats.failedCaptures > 0 || stats.pausedCaptures > 0)
+
 data class MemoryCenterStats(
     val active: Int = 0,
     val archived: Int = 0,

@@ -1926,27 +1926,24 @@ class ConversationRuntimeTest {
     }
 
     @Test
-    fun `next queued command waits for persistence completion barrier`() = runBlocking {
+    fun `next queued command starts after the previous run finishes`() = runBlocking {
+        // B10 / R4：这里原本验证「持久化完成屏障」——但那个屏障的唯一实现恒返回 Persisted，
+        // 等于没有。屏障已删除（见 ConversationRuntime 注释），改为验证仍然成立的那条真保证：
+        // 前一条命令结束后，排队中的下一条才开始执行，且两条都拿到 Completed。
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val barrierEntered = CompletableDeferred<Unit>()
-        val releaseBarrier = CompletableDeferred<Unit>()
+        val aStarted = CompletableDeferred<Unit>()
+        val releaseA = CompletableDeferred<Unit>()
         val bStarted = CompletableDeferred<Unit>()
         val runtime = ConversationRuntime(
             appScope = scope,
             conversationId = Uuid.random(),
-            persistenceCoordinator = object : PersistenceCoordinator {
-                override suspend fun persistIfNewer(snapshot: ConversationSnapshot): PersistResult =
-                    PersistResult.Persisted
-
-                override suspend fun flushThrough(revision: Long): PersistResult {
-                    barrierEntered.complete(Unit)
-                    releaseBarrier.await()
-                    return PersistResult.Persisted
-                }
-            },
             executor = RuntimeCommandExecutor { envelope, _ ->
                 val text = (envelope.command as SendMessageCommand)
                     .content.parts.filterIsInstance<UIMessagePart.Text>().single().text
+                if (text == "A") {
+                    aStarted.complete(Unit)
+                    releaseA.await()
+                }
                 if (text == "B") bStarted.complete(Unit)
                 RunOutcome.Completed(finalRevision = if (text == "A") 1L else 2L)
             },
@@ -1966,11 +1963,12 @@ class ConversationRuntimeTest {
 
         assertTrue(runtime.enqueueEnvelope(first) is SubmitResult.Accepted)
         assertTrue(runtime.enqueueEnvelope(second) is SubmitResult.Accepted)
-        withTimeout(AWAIT_TIMEOUT_MS) { barrierEntered.await() }
+        withTimeout(AWAIT_TIMEOUT_MS) { aStarted.await() }
+        // A 还在跑：B 不能并发开始，A 也不能提前算完成。
         assertTrue(!bStarted.isCompleted)
         assertTrue(!first.result.isCompleted)
 
-        releaseBarrier.complete(Unit)
+        releaseA.complete(Unit)
         assertEquals(CommandOutcome.Completed, first.result.await())
         withTimeout(AWAIT_TIMEOUT_MS) { bStarted.await() }
         assertEquals(CommandOutcome.Completed, second.result.await())

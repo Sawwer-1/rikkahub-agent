@@ -170,7 +170,6 @@ import me.rerere.rikkahub.service.chat.CommandOutcome
 import me.rerere.rikkahub.service.chat.ConversationRuntime
 import me.rerere.rikkahub.service.chat.InterruptCommand
 import me.rerere.rikkahub.service.chat.InterruptRegenerateCommand
-import me.rerere.rikkahub.service.chat.PersistenceCoordinator
 import me.rerere.rikkahub.service.chat.RawUserContent
 import me.rerere.rikkahub.service.chat.RuntimeCommandExecutor
 import me.rerere.rikkahub.service.chat.RuntimeHydrator

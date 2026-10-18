@@ -745,13 +745,13 @@ fun MemorySettingsTab(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = onProcessNow,
-                        enabled = stats.pendingCaptures > 0 || stats.pausedCaptures > 0,
+                        enabled = canProcessNow(stats),
                     ) {
                         Text(stringResource(R.string.memory_v2_process_now))
                     }
                     OutlinedButton(
                         onClick = onRetryFailed,
-                        enabled = stats.failedCaptures > 0 || stats.pausedCaptures > 0,
+                        enabled = canRetryFailed(stats),
                     ) {
                         Text(stringResource(R.string.memory_v2_retry_failed))
                     }
