@@ -26,6 +26,8 @@ import me.rerere.rikkahub.data.db.entity.MessageNodeEntity
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
+import me.rerere.rikkahub.data.model.applyNodeLevelMutation
+import me.rerere.rikkahub.data.model.isStaleGraphWrite
 import me.rerere.rikkahub.data.authority.source.ConversationSourceAuthorityCommit
 import me.rerere.rikkahub.data.authority.source.ConversationSourceAuthorityWriter
 import me.rerere.rikkahub.data.authority.source.ConversationSourceScope
@@ -579,24 +581,42 @@ class ConversationRepository(
         incoming: Conversation,
         sourceInvalidationMode: ConversationSourceInvalidationMode,
         sourceInvalidationNowMs: Long,
+        force: Boolean = false,
     ): Conversation? {
         var commits: List<ConversationSourceAuthorityCommit> = emptyList()
         val updated = database.withTransaction {
             val stored = getConversationById(incoming.id) ?: return@withTransaction null
             // 2026-10-16 只读观测（工单 CB 问题三：取消生成丢历史）：
             // 运行时整图写入是「以调用方的图为准」的语义（withRuntimeGraph 整段替换 messageNodes），
-            // 调用方只要递进来一份更短的图，库侧节点就会静默消失。这里**只记日志、不改行为**，
-            // 目的是设备侧复现时能从 logcat 取回「是哪一次写入把历史写短了」的一手证据。
+            // 调用方只要递进来一份更短的图，库侧节点就会静默消失。
+            // B03 / R3 起这里不再只是记日志：**既更旧又丢节点**的非 force 写入直接拒绝，
+            // 返回库里的图（调用方据此纠正内存态）。判据见 isStaleGraphWrite。
             val incomingNodeIds = incoming.messageNodes.mapTo(hashSetOf()) { it.id }
             val droppedNodes = stored.messageNodes.count { it.id !in incomingNodeIds }
             if (droppedNodes > 0) {
+                val stale = isStaleGraphWrite(
+                    storedNodeIds = stored.messageNodes.map { it.id },
+                    storedUpdatedAt = stored.updateAt,
+                    incomingNodeIds = incomingNodeIds,
+                    incomingUpdatedAt = incoming.updateAt,
+                    force = force,
+                )
                 Log.w(
                     TAG,
                     "updateRuntimeConversation: runtime graph drops stored nodes — " +
                         "conversation=${incoming.id} " +
                         "storedNodes=${stored.messageNodes.size} " +
-                        "incomingNodes=${incoming.messageNodes.size} dropped=$droppedNodes"
+                        "incomingNodes=${incoming.messageNodes.size} dropped=$droppedNodes " +
+                        "stale=$stale force=$force"
                 )
+                if (stale) {
+                    Log.w(
+                        TAG,
+                        "updateRuntimeConversation: rejected stale graph write for ${incoming.id}; " +
+                            "returning the stored graph instead",
+                    )
+                    return@withTransaction stored
+                }
             }
             val merged = stored.withRuntimeGraph(incoming)
             persistConversationInCurrentTransaction(merged, false, sourceInvalidationMode, sourceInvalidationNowMs)
@@ -608,6 +628,30 @@ class ConversationRepository(
         commits.forEach(sourceAuthorityWriter::dispatchPostCommit)
         if (updated != null) enqueueSearchProjection(incoming.id)
         return updated
+    }
+
+    /**
+     * 节点级写入（B03 / R2）：取消清理只改「它认识的那几个节点」，不写整张图。
+     *
+     * 以**库里的图**为骨架（见 [applyNodeLevelMutation]）：调用方手里的内存快照再旧、再短，
+     * 也不会把库侧节点抹掉——「取消后库图节点数不减少」由构造保证，不再依赖调用方记得 hydrate。
+     * 返回写入后的会话（图没变则原样返回库里的），调用方据此纠正内存态。
+     */
+    suspend fun mutateMessageNodes(
+        conversationId: Uuid,
+        mutate: (List<MessageNode>) -> List<MessageNode>,
+    ): Conversation? {
+        val stored = getConversationById(conversationId) ?: return null
+        val mutated = applyNodeLevelMutation(
+            stored = stored.messageNodes,
+            mutated = mutate(stored.messageNodes),
+        )
+        if (mutated == stored.messageNodes) return stored
+        return updateRuntimeConversation(
+            incoming = stored.copy(messageNodes = mutated, updateAt = Instant.now()),
+            sourceInvalidationMode = ConversationSourceInvalidationMode.SKIP_TRANSIENT_WRITE,
+            sourceInvalidationNowMs = System.currentTimeMillis(),
+        )
     }
 
     suspend fun updateConversationSuggestions(conversationId: Uuid, suggestions: List<String>) {

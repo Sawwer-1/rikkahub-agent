@@ -6723,9 +6723,8 @@ class ChatService(
         conversationId: Uuid,
         cancellationResults: Map<String, CancelRequestResult> = emptyMap(),
     ) {
-        // Hydrate first (post-restart path): reading an unhydrated initial graph here and
-        // saving below would rewrite the stored message nodes from that empty snapshot.
-        // A failed hydrate means the in-memory graph is untrustworthy — do not persist.
+        // 取消前先水合（B03 / R2）：内存态要能反映库里现状，否则「就地放弃工具」可能作用在
+        // 一份残缺快照上（进程重启后的空 session）。读库失败说明两边都不可信 → 放弃持久化。
         if (!ensureHydrated(conversationId)) {
             Log.w(
                 TAG,
@@ -6733,44 +6732,43 @@ class ChatService(
             )
             return
         }
-        val session = sessions[conversationId]
-        // Whole-graph rewrite guard: only a session backed by a hydrated graph may be
-        // persisted here; an unhydrated initial graph would erase stored message nodes.
-        if (session == null || !session.isHydrated) {
+        // 节点级写入（B03 / R2）：以**库里的图**为骨架，只替换本次清理动过的节点。
+        // 246/247 留下的整图回写在这里退场——那份内存快照只要比库里旧或短，就会把别人
+        // 刚写进去的节点整段抹掉（工单 CB 问题三的残余）；现在节点数由构造保证不减少。
+        val committed = runCatching {
+            conversationRepo.mutateMessageNodes(conversationId) { storedNodes ->
+                val lastMessageId = storedNodes.lastOrNull()?.currentMessage?.id
+                storedNodes.map { node ->
+                    node.copy(messages = node.messages.map { message ->
+                        var updated = message.finishPendingTools {
+                            cancelToolByUser(it, cancellationResults)
+                        }
+                        if (
+                            message.id == lastMessageId &&
+                            message.role == MessageRole.ASSISTANT &&
+                            (message.state != UIMessageState.COMPLETED || message.finishedAt == null) &&
+                            message.state != UIMessageState.FAILED
+                        ) {
+                            updated = updated.copy(state = UIMessageState.INTERRUPTED)
+                        }
+                        updated
+                    })
+                }
+            }
+        }.getOrElse { error ->
+            if (error is CancellationException) throw error
             Log.w(
                 TAG,
-                "finishInterruptedPendingTools: session not hydrated for $conversationId; skip whole-graph rewrite",
+                "finishInterruptedPendingTools: node-level write failed for $conversationId",
+                error,
             )
             return
+        } ?: return
+        // 把库里落定的节点回灌内存态：只按 id 覆盖，内存里更新的节点不受影响。
+        updateConversationState(conversationId) { current ->
+            val committedById = committed.messageNodes.associateBy { it.id }
+            current.copy(messageNodes = current.messageNodes.map { committedById[it.id] ?: it })
         }
-        val currentConversation = session.state.value
-        if (currentConversation.messageNodes.isEmpty()) {
-            Log.w(
-                TAG,
-                "finishInterruptedPendingTools: empty graph for $conversationId; skip whole-graph rewrite",
-            )
-            return
-        }
-        val lastMessageId = currentConversation.messageNodes.lastOrNull()?.currentMessage?.id
-        var changed = false
-        val updatedNodes = currentConversation.messageNodes.map { node ->
-            node.copy(messages = node.messages.map { message ->
-                var updated = message.finishPendingTools {
-                    cancelToolByUser(it, cancellationResults)
-                }
-                if (
-                    message.id == lastMessageId &&
-                    message.role == MessageRole.ASSISTANT &&
-                    (message.state != UIMessageState.COMPLETED || message.finishedAt == null) &&
-                    message.state != UIMessageState.FAILED
-                ) {
-                    updated = updated.copy(state = UIMessageState.INTERRUPTED)
-                }
-                if (updated != message) changed = true
-                updated
-            })
-        }
-        if (changed) saveConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
     }
 
     // ---- 生成标题 ----
@@ -7483,12 +7481,18 @@ class ChatService(
         }
     }
 
+    /**
+     * @param force 合法收缩的逃生门（B03 / R3）：用户删消息、重新生成截断这类**新图更短**的写入
+     *   本来就不该拦（判据只看「更旧 + 丢节点」），所以日常不需要它；只有调用方明确知道
+     *   自己递的是一份「时间戳偏旧但内容正确」的图时才置 true。
+     */
     suspend fun saveConversation(
         conversationId: Uuid,
         conversation: Conversation,
         sourceInvalidationMode: ConversationSourceInvalidationMode =
             ConversationSourceInvalidationMode.APPLY,
         sourceInvalidationNowMs: Long = System.currentTimeMillis(),
+        force: Boolean = false,
     ) {
         val exists = conversationRepo.existsConversationById(conversation.id)
         if (!exists && conversation.title.isBlank() && conversation.messageNodes.isEmpty()) {
@@ -7528,8 +7532,12 @@ class ChatService(
             check(conversation.newConversation) { "Conversation disappeared before runtime save" }
             conversation.copy(newConversation = false).also { conversationRepo.insertConversation(it) }
         } else {
-            conversationRepo.updateRuntimeConversation(conversation, sourceInvalidationMode, sourceInvalidationNowMs)
-                ?: error("Conversation disappeared before runtime save")
+            conversationRepo.updateRuntimeConversation(
+                incoming = conversation,
+                sourceInvalidationMode = sourceInvalidationMode,
+                sourceInvalidationNowMs = sourceInvalidationNowMs,
+                force = force,
+            ) ?: error("Conversation disappeared before runtime save")
         }
         updateConversation(conversationId, committed)
     }
