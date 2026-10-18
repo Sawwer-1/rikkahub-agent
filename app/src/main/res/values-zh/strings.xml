@@ -667,6 +667,8 @@
   <string name="compress_dialog_trigger_context">折叠时机 · 上下文占用</string>
   <string name="compress_dialog_trigger_context_off">不按占用</string>
   <string name="compress_dialog_trigger_hint">两条任一满足就折一次；「自动」= 折叠量不少于要保留的量。</string>
+  <string name="setting_page_weixin_reply_chunk">回复分段长度</string>
+  <string name="setting_page_weixin_reply_chunk_desc">单条微信消息的最大字数，超出按段落/句子自动拆成多条发送（200–4000）。</string>
   <string name="chat_interrupted_and_restarted">已停掉上一轮回复，正在从这条消息继续。</string>
   <string name="setting_send_behavior_title">回复进行中的发送</string>
   <string name="setting_display_page_append_message_steer_title">追加消息按“软引导”处理（不打断）</string>

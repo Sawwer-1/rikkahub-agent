@@ -283,6 +283,8 @@
   <string name="compress_dialog_trigger_context">When to fold · context usage</string>
   <string name="compress_dialog_trigger_context_off">Off</string>
   <string name="compress_dialog_trigger_hint">Folds when either condition is met. Auto = fold at least as many messages as you keep.</string>
+  <string name="setting_page_weixin_reply_chunk">Reply chunk size</string>
+  <string name="setting_page_weixin_reply_chunk_desc">Max characters per WeChat message; longer replies are split at paragraph or sentence boundaries (200–4000).</string>
   <string name="chat_interrupted_and_restarted">Stopped the previous reply — continuing from your new message.</string>
   <string name="setting_send_behavior_title">Sending while a reply is running</string>
   <string name="setting_display_page_append_message_steer_title">Append as guidance instead of interrupting</string>

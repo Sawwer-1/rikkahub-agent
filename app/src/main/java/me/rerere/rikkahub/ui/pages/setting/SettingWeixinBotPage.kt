@@ -394,6 +394,28 @@ fun SettingWeixinBotPage(
                             )
                         },
                     )
+                    // B05 / R17：长回复分段阈值（iLink 文本有上限，超长整条被拒）。
+                    item(
+                        headlineContent = { Text(stringResource(R.string.setting_page_weixin_reply_chunk)) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_weixin_reply_chunk_desc)) },
+                        trailingContent = {
+                            me.rerere.rikkahub.ui.components.ui.OutlinedNumberInput(
+                                value = cfg.replyChunkChars,
+                                onValueChange = { v ->
+                                    updateConfig {
+                                        it.copy(
+                                            replyChunkChars = v.coerceIn(
+                                                me.rerere.rikkahub.data.weixin.MIN_WEIXIN_REPLY_CHUNK_CHARS,
+                                                me.rerere.rikkahub.data.weixin.MAX_WEIXIN_REPLY_CHUNK_CHARS,
+                                            )
+                                        )
+                                    }
+                                },
+                                label = "字",
+                                modifier = Modifier.size(width = 120.dp, height = 56.dp),
+                            )
+                        },
+                    )
                 }
             }
         }

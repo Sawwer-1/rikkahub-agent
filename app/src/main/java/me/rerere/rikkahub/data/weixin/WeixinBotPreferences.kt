@@ -54,6 +54,11 @@ data class WeixinBotConfig(
     val baseUrl: String = WeixinBotClient.DEFAULT_BASE_URL,
     val botId: String = "",
     val pollIntervalSec: Int = 1,
+    /**
+     * 单条回复的最大字符数（B05 / R17）。iLink 的文本消息有长度上限，超长会被整条拒掉，
+     * 长回复必须按这个阈值分段发送。默认 1800，可在设置页调整（200..4000）。
+     */
+    val replyChunkChars: Int = DEFAULT_WEIXIN_REPLY_CHUNK_CHARS,
     val chatMap: Map<String, String> = emptyMap(),
 ) {
     val hasCredential: Boolean get() = botToken.isNotBlank()
@@ -70,6 +75,7 @@ class WeixinBotPreferences(private val context: Context) {
     private val K_BASE_URL = stringPreferencesKey("base_url")
     private val K_BOT_ID = stringPreferencesKey("bot_id")
     private val K_POLL_INTERVAL = intPreferencesKey("poll_interval_sec")
+    private val K_REPLY_CHUNK_CHARS = intPreferencesKey("reply_chunk_chars")
     private val K_CHAT_MAP = stringPreferencesKey("chat_map")
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -90,6 +96,8 @@ class WeixinBotPreferences(private val context: Context) {
             p[K_BASE_URL] = next.baseUrl
             p[K_BOT_ID] = next.botId
             p[K_POLL_INTERVAL] = next.pollIntervalSec.coerceIn(1, 120)
+            p[K_REPLY_CHUNK_CHARS] = next.replyChunkChars
+                .coerceIn(MIN_WEIXIN_REPLY_CHUNK_CHARS, MAX_WEIXIN_REPLY_CHUNK_CHARS)
             if (next.chatMap.isNotEmpty()) p[K_CHAT_MAP] = serializeChatMap(next.chatMap)
             else p.remove(K_CHAT_MAP)
         }
@@ -104,6 +112,8 @@ class WeixinBotPreferences(private val context: Context) {
             baseUrl = p[K_BASE_URL] ?: WeixinBotClient.DEFAULT_BASE_URL,
             botId = p[K_BOT_ID].orEmpty(),
             pollIntervalSec = p[K_POLL_INTERVAL] ?: 1,
+            replyChunkChars = (p[K_REPLY_CHUNK_CHARS] ?: DEFAULT_WEIXIN_REPLY_CHUNK_CHARS)
+                .coerceIn(MIN_WEIXIN_REPLY_CHUNK_CHARS, MAX_WEIXIN_REPLY_CHUNK_CHARS),
             chatMap = parseChatMap(p[K_CHAT_MAP].orEmpty()),
         )
 

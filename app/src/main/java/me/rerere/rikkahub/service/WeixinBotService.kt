@@ -309,16 +309,33 @@ class WeixinBotService : Service() {
             android.util.Log.w(TAG, "no cached context_token for $toUserId, cannot send")
             return
         }
-        runCatching {
-            client.sendTextMessage(
-                token = token,
-                baseUrl = baseUrl,
-                toUserId = toUserId,
-                text = text,
-                contextToken = ctx,
-            )
-        }.onFailure {
-            android.util.Log.w(TAG, "sendTextMessage failed for $toUserId", it)
+        // B05 / R17：iLink 文本消息有长度上限，超长会整条被拒（用户侧表现为「发出去了但对方没收到」）。
+        // 按配置阈值分段顺序发送，任一段失败即停止（后面的段再发也没有上下文意义）。
+        val limit = runCatching { prefs.current().replyChunkChars }
+            .getOrDefault(me.rerere.rikkahub.data.weixin.DEFAULT_WEIXIN_REPLY_CHUNK_CHARS)
+        val chunks = me.rerere.rikkahub.data.weixin.splitWeixinReply(text, limit)
+        if (chunks.size > 1) {
+            android.util.Log.i(TAG, "sendTextOrLog: splitting ${text.length} chars into ${chunks.size} chunks (limit=$limit)")
+        }
+        var sent = 0
+        for (chunk in chunks) {
+            val ok = runCatching {
+                client.sendTextMessage(
+                    token = token,
+                    baseUrl = baseUrl,
+                    toUserId = toUserId,
+                    text = chunk,
+                    contextToken = ctx,
+                )
+            }.onFailure {
+                android.util.Log.w(TAG, "sendTextMessage failed for $toUserId (chunk ${sent + 1}/${chunks.size})", it)
+            }.isSuccess
+            if (!ok) break
+            sent++
+            if (sent < chunks.size) kotlinx.coroutines.delay(150)
+        }
+        if (sent < chunks.size) {
+            android.util.Log.w(TAG, "sendTextOrLog: only $sent/${chunks.size} chunks delivered to $toUserId")
         }
     }
 
