@@ -474,6 +474,8 @@ class ChatVM(
         targetTokens: Int,
         keepRecentMessages: Int,
         autoCompress: Boolean,
+        triggerExtraMessages: Int = 0,
+        triggerContextPercent: Int? = null,
     ): Job {
         return viewModelScope.launch {
             chatService.compressConversationRolling(
@@ -486,6 +488,8 @@ class ChatVM(
                     additionalPrompt = additionalPrompt,
                     targetTokens = targetTokens,
                     keepRecentMessages = keepRecentMessages,
+                    triggerExtraMessages = triggerExtraMessages,
+                    triggerContextPercent = triggerContextPercent,
                 ),
             ).onSuccess { outcome ->
                 Toast.makeText(context, compressionOutcomeText(outcome), Toast.LENGTH_SHORT).show()

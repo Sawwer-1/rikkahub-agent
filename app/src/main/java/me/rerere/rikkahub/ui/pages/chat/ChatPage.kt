@@ -1252,9 +1252,15 @@ private fun ChatFilesPickerSheet(
             state = inputState,
             assistant = assistant,
             mcpManager = vm.mcpManager,
-            onCompressContext = { additionalPrompt, targetTokens, keepRecentMessages, autoCompress ->
+            onCompressContext = { additionalPrompt, targetTokens, keepRecentMessages, autoCompress,
+                triggerExtraMessages, triggerContextPercent ->
                 vm.handleRollingCompressContext(
-                    additionalPrompt, targetTokens, keepRecentMessages, autoCompress,
+                    additionalPrompt,
+                    targetTokens,
+                    keepRecentMessages,
+                    autoCompress,
+                    triggerExtraMessages,
+                    triggerContextPercent,
                 )
             },
             onSaveAutoCompressConfig = { config ->

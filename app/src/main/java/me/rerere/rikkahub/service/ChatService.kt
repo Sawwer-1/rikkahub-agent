@@ -379,33 +379,48 @@ internal fun effectiveCompressionKeepRecentMessages(keepRecentMessages: Int): In
 }
 
 /**
- * 自动滚动摘要的触发判据（工单 CB 2026-10-18「开了开关但没生效」）。
+ * 自动滚动摘要的触发判据（工单 CB 2026-10-18「开了开关但没生效」+ 2026-10-18「触发时机交给用户」）。
  *
  * 旧判据里条数这一路写着 `triggerMessageCount > 0 && …`，而 `Assistant.contextMessageSize`
  * 默认就是 **0（不限条数）**；token 预算两路又默认**留空 = 不启用**。两者叠加的结果是：
  * 默认配置下**开关打开也永远不会触发**——用户只能看到「开着」，看不到任何折叠。
  *
- * 现在的口径：
- * - token 预算判据由调用方先算好（显式配置了阈值才会参与），成立即触发；
- * - 助手限制了条数（> 0）时沿用旧语义：`可见节点 ≥ 保留 + 助手窗口`；
- * - 助手不限条数（= 0）时改用**等价判据**：`可见节点 ≥ 2 × 保留`，即「值得折的量不少于要留的量」。
- *   开关是会话级、默认关，只有用户主动打开才走到这里，所以这条兜底不会影响老会话。
+ * 现在**条数门槛由会话配置决定**（弹窗里可选），三层优先级：
+ * 1. `AutoCompressConfig.triggerExtraMessages > 0` —— 用户显式选的增量（保留 + 增量）；
+ * 2. 助手级 `contextMessageSize > 0` —— 老语义（保留 + 助手窗口），保持兼容；
+ * 3. 都没配 —— 兜底取「增量 = 保留条数」（即折叠量 ≥ 保留量），保证开关打开时真的会折。
  */
+internal fun resolveAutoCompressionCountThreshold(
+    keepRecentMessages: Int,
+    configuredExtraMessages: Int,
+    assistantContextMessageSize: Int,
+): Int {
+    val keep = effectiveCompressionKeepRecentMessages(keepRecentMessages)
+    val extra = when {
+        configuredExtraMessages > 0 -> configuredExtraMessages
+        assistantContextMessageSize > 0 -> assistantContextMessageSize
+        else -> keep
+    }
+    return keep + extra
+}
+
+/**
+ * 上下文占用这一路的阈值百分比。
+ *
+ * 会话级配置**优先**于全局设置（用户在弹窗里做的选择就是最终口径）；
+ * 两者都没有 = 不按占用触发（返回 null）。
+ */
+internal fun resolveAutoCompressionPercent(
+    configuredPercent: Int?,
+    globalPercent: Int?,
+): Int? = configuredPercent?.coerceIn(5, 95) ?: globalPercent
+
+/** 条数门槛与上下文占用**任一**满足即折叠。 */
 internal fun shouldAutoCompress(
     visibleNodeCount: Int,
-    keepRecentMessages: Int,
-    assistantContextMessageSize: Int,
+    countThreshold: Int,
     tokenBudgetTriggered: Boolean,
-): Boolean {
-    if (tokenBudgetTriggered) return true
-    val keep = effectiveCompressionKeepRecentMessages(keepRecentMessages)
-    if (visibleNodeCount <= keep) return false
-    return if (assistantContextMessageSize > 0) {
-        visibleNodeCount >= keep + assistantContextMessageSize
-    } else {
-        visibleNodeCount >= keep * 2
-    }
-}
+): Boolean = tokenBudgetTriggered || visibleNodeCount >= countThreshold
 
 internal fun estimateCompressionTokens(text: String): Int {
     var asciiChars = 0
@@ -7124,40 +7139,41 @@ class ChatService(
         val config = conversation.autoCompressConfig ?: return
         if (!config.enabled) return
 
-        // 条数判据的输入：assistant.contextMessageSize = 0 表示助手不限制条数（AssistantBasicPage
-        // 的 "unlimited"）。0 时该判据只是不参与，**不再提前 return 阻断 token 预算判据**（三判据
-        // 彼此独立，收口统一在下方 `!messageCountTriggered && !tokenBudgetTriggered`）。
-        val triggerMessageCount = assistant?.contextMessageSize ?: 0
-
+        // 条数门槛：会话配置优先（用户在弹窗里选的），其次助手级窗口，最后兜底「折叠量 ≥ 保留量」。
         val keepRecentMessages = config.keepRecentMessages.coerceAtLeast(1)
+        val countThreshold = resolveAutoCompressionCountThreshold(
+            keepRecentMessages = keepRecentMessages,
+            configuredExtraMessages = config.triggerExtraMessages,
+            assistantContextMessageSize = assistant?.contextMessageSize ?: 0,
+        )
 
-        // 判据 2/3 与 3/3：token 预算触发（OR 条件）——窗口占用达到阈值即压缩。
-        // 两个预算项**任一非空即生效**：tokensK 非空走绝对上限（优先）；仅 percent 非空走窗口
-        // 百分比；两者都空、或模型未声明正数上下文窗口（contextLength = 0）时该判据不生效，
-        // 此时完全维持原条数语义。
+        // 上下文占用这一路：会话级百分比优先于全局设置；两者都没有 = 这一路不参与。
         val contextLength = settings.getChatModelForAssistant(conversation.assistantId)
             ?.let { model -> model.contextLength?.takeIf { it > 0 } ?: model.userContextWindowTokens }
             ?: 0
-        // 注意：下面 `?.let` 提供的只是 ContextBudgetPlanner.plan(thresholdPercent: Int) 必填签名的
-        // 占位值，**不参与计算**——tokensK 非空时 plan 内部只走
-        // `thresholdTokensK?.let { tokensK * 1000 } ?: 百分比`（ContextBudgetPlanner.kt:35-39 的 `?:`）
-        // 的左支；仅当 percent 已设置时使用其真实值。
-        val autoCompactionPercent = settings.autoCompactionThresholdPercent
+        val globalPercent = settings.autoCompactionThresholdPercent
             ?: settings.autoCompactionThresholdTokensK?.let { SUGGESTED_AUTO_COMPACTION_THRESHOLD_PERCENT }
-        val tokenBudgetTriggered = autoCompactionPercent != null && contextLength > 0 &&
+        val effectivePercent = resolveAutoCompressionPercent(
+            configuredPercent = config.triggerContextPercent,
+            globalPercent = globalPercent,
+        )
+        // 会话级选了百分比时不让全局绝对上限（tokensK）抢走口径——用户明确选的那个说了算。
+        val globalTokensK = if (config.triggerContextPercent != null) {
+            null
+        } else {
+            settings.autoCompactionThresholdTokensK
+        }
+        val tokenBudgetTriggered = effectivePercent != null && contextLength > 0 &&
             ContextBudgetPlanner.plan(
                 messages = conversation.currentMessages,
                 contextLength = contextLength,
-                thresholdPercent = autoCompactionPercent,
-                thresholdTokensK = settings.autoCompactionThresholdTokensK,
+                thresholdPercent = effectivePercent,
+                thresholdTokensK = globalTokensK,
             ).shouldCompact
 
-        // 收口在 shouldAutoCompress：token 预算成立即触发；条数这一路在助手不限条数（0）时
-        // 走「折叠量 ≥ 保留量」的等价判据，否则默认配置下开关永远不触发（工单 CB 2026-10-18）。
         val triggered = shouldAutoCompress(
             visibleNodeCount = conversation.visibleMessageNodes.size,
-            keepRecentMessages = keepRecentMessages,
-            assistantContextMessageSize = triggerMessageCount,
+            countThreshold = countThreshold,
             tokenBudgetTriggered = tokenBudgetTriggered,
         )
         if (!triggered) return

@@ -99,7 +99,14 @@ internal fun FilesPicker(
     assistant: Assistant,
     state: ChatInputState,
     mcpManager: McpManager,
-    onCompressContext: (additionalPrompt: String, targetTokens: Int, keepRecentMessages: Int, autoCompress: Boolean) -> Job,
+    onCompressContext: (
+        additionalPrompt: String,
+        targetTokens: Int,
+        keepRecentMessages: Int,
+        autoCompress: Boolean,
+        triggerExtraMessages: Int,
+        triggerContextPercent: Int?
+    ) -> Job,
     onSaveAutoCompressConfig: (AutoCompressConfig?) -> Unit,
     onUpdateAssistant: (Assistant) -> Unit,
     onUpdateConversation: (ConversationMetadataMutation) -> Unit,
@@ -330,18 +337,29 @@ internal fun FilesPicker(
             onShowCompressDialogChange(false)
             onDismiss()
             },
-            onSaveConfig = { additionalPrompt, targetTokens, keepRecentMessages, autoCompress ->
+            onSaveConfig = { additionalPrompt, targetTokens, keepRecentMessages, autoCompress,
+                triggerExtraMessages, triggerContextPercent ->
                 onSaveAutoCompressConfig(
                     AutoCompressConfig(
                         enabled = autoCompress,
                         additionalPrompt = additionalPrompt,
                         targetTokens = targetTokens,
                         keepRecentMessages = keepRecentMessages,
+                        triggerExtraMessages = triggerExtraMessages,
+                        triggerContextPercent = triggerContextPercent,
                     )
                 )
             },
-            onConfirm = { additionalPrompt, targetTokens, keepRecentMessages, autoCompress ->
-                onCompressContext(additionalPrompt, targetTokens, keepRecentMessages, autoCompress)
+            onConfirm = { additionalPrompt, targetTokens, keepRecentMessages, autoCompress,
+                triggerExtraMessages, triggerContextPercent ->
+                onCompressContext(
+                    additionalPrompt,
+                    targetTokens,
+                    keepRecentMessages,
+                    autoCompress,
+                    triggerExtraMessages,
+                    triggerContextPercent,
+                )
             },
         )
     }

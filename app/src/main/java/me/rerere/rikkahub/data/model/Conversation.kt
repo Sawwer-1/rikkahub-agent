@@ -258,6 +258,19 @@ data class AutoCompressConfig(
     val additionalPrompt: String = "",
     val targetTokens: Int = 2000,
     val keepRecentMessages: Int = 32,
+    /**
+     * 折叠时机（条数）：可见消息数达到 `保留条数 + 该增量` 时折一次。
+     * **0 = 自动**（增量取保留条数本身，即「折叠量 ≥ 保留量」）。
+     *
+     * 2026-10-18（用户要求「什么时候触发该让用户自己定」）：此前这条门槛藏在
+     * `Assistant.contextMessageSize` 里（默认 0 = 永远不触发），用户没有任何入口。
+     */
+    val triggerExtraMessages: Int = 0,
+    /**
+     * 折叠时机（上下文占用）：窗口占用的百分比阈值，达到即折。
+     * null = 不按占用触发（只用条数）。与条数是「任一满足即触发」。
+     */
+    val triggerContextPercent: Int? = null,
 )
 
 data class ConversationForkCompressionState(

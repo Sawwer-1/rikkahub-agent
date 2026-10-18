@@ -55,9 +55,18 @@ fun RollingCompressDialog(
         additionalPrompt: String,
         targetTokens: Int,
         keepRecentMessages: Int,
-        autoCompress: Boolean
+        autoCompress: Boolean,
+        triggerExtraMessages: Int,
+        triggerContextPercent: Int?
     ) -> Unit,
-    onConfirm: (additionalPrompt: String, targetTokens: Int, keepRecentMessages: Int, autoCompress: Boolean) -> Job
+    onConfirm: (
+        additionalPrompt: String,
+        targetTokens: Int,
+        keepRecentMessages: Int,
+        autoCompress: Boolean,
+        triggerExtraMessages: Int,
+        triggerContextPercent: Int?
+    ) -> Job
 ) {
     var additionalPrompt by remember { mutableStateOf(autoCompressConfig?.additionalPrompt.orEmpty()) }
     var selectedTokens by remember { mutableIntStateOf(autoCompressConfig?.targetTokens ?: 2000) }
@@ -65,8 +74,17 @@ fun RollingCompressDialog(
         mutableIntStateOf(autoCompressConfig?.keepRecentMessages?.coerceAtLeast(1) ?: 32)
     }
     var autoCompress by remember { mutableStateOf(autoCompressConfig?.enabled ?: false) }
+    // 折叠时机（2026-10-18 用户要求）：条数增量与上下文占用百分比都由用户自己定。
+    var triggerExtraMessages by remember {
+        mutableIntStateOf(autoCompressConfig?.triggerExtraMessages ?: 0)
+    }
+    var triggerContextPercent by remember {
+        mutableStateOf(autoCompressConfig?.triggerContextPercent)
+    }
     val tokenOptions = listOf(500, 1000, 2000, 4000)
     val keepRecentOptions = listOf(1, 16, 32, 64)
+    val triggerExtraOptions = listOf(0, 16, 32, 64)
+    val triggerPercentOptions = listOf<Int?>(null, 50, 70, 85)
     var currentJob by remember { mutableStateOf<Job?>(null) }
     val isLoading = currentJob?.isActive == true
     val currentAutoCompressConfig = AutoCompressConfig(
@@ -74,6 +92,8 @@ fun RollingCompressDialog(
         additionalPrompt = additionalPrompt,
         targetTokens = selectedTokens,
         keepRecentMessages = keepRecentMessages.coerceAtLeast(1),
+        triggerExtraMessages = triggerExtraMessages,
+        triggerContextPercent = triggerContextPercent,
     )
     val showSaveConfigButton = autoCompress ||
         currentAutoCompressConfig != (autoCompressConfig ?: AutoCompressConfig())
@@ -212,6 +232,67 @@ fun RollingCompressDialog(
                         }
                     }
 
+                    // 折叠时机（条数）——用户自主设定：保留几 + 再多几条就折
+                    Text(
+                        text = stringResource(R.string.compress_dialog_trigger_count),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                    SingleChoiceSegmentedButtonRow(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        triggerExtraOptions.forEachIndexed { index, extra ->
+                            SegmentedButton(
+                                selected = triggerExtraMessages == extra,
+                                onClick = { triggerExtraMessages = extra },
+                                shape = SegmentedButtonDefaults.itemShape(
+                                    index = index,
+                                    count = triggerExtraOptions.size
+                                )
+                            ) {
+                                Text(
+                                    if (extra == 0) {
+                                        stringResource(R.string.compress_dialog_trigger_count_auto)
+                                    } else {
+                                        stringResource(R.string.compress_dialog_trigger_count_extra, extra)
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // 折叠时机（上下文占用）
+                    Text(
+                        text = stringResource(R.string.compress_dialog_trigger_context),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                    SingleChoiceSegmentedButtonRow(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        triggerPercentOptions.forEachIndexed { index, percent ->
+                            SegmentedButton(
+                                selected = triggerContextPercent == percent,
+                                onClick = { triggerContextPercent = percent },
+                                shape = SegmentedButtonDefaults.itemShape(
+                                    index = index,
+                                    count = triggerPercentOptions.size
+                                )
+                            ) {
+                                Text(
+                                    if (percent == null) {
+                                        stringResource(R.string.compress_dialog_trigger_context_off)
+                                    } else {
+                                        "$percent%"
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        text = stringResource(R.string.compress_dialog_trigger_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
                     // Additional context input
                     OutlinedTextField(
                         value = additionalPrompt,
@@ -251,7 +332,14 @@ fun RollingCompressDialog(
                     if (showSaveConfigButton) {
                         TextButton(
                             onClick = {
-                                onSaveConfig(additionalPrompt, selectedTokens, keepRecentMessages, autoCompress)
+                                onSaveConfig(
+                                    additionalPrompt,
+                                    selectedTokens,
+                                    keepRecentMessages,
+                                    autoCompress,
+                                    triggerExtraMessages,
+                                    triggerContextPercent,
+                                )
                             },
                             // 该按钮此前不在无障碍树里（自检 §12.4-1 实测 find_node no-match），补 tag。
                             modifier = Modifier
@@ -263,7 +351,14 @@ fun RollingCompressDialog(
                     }
                     TextButton(
                         onClick = {
-                            currentJob = onConfirm(additionalPrompt, selectedTokens, keepRecentMessages, autoCompress)
+                            currentJob = onConfirm(
+                                additionalPrompt,
+                                selectedTokens,
+                                keepRecentMessages,
+                                autoCompress,
+                                triggerExtraMessages,
+                                triggerContextPercent,
+                            )
                         },
                         modifier = Modifier
                             .testTag("compress_dialog_confirm_button")
