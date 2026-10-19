@@ -277,6 +277,36 @@ private fun UIMessagePart.Tool.withMemoryScopeBindingFailure(code: String): UIMe
         ),
     )
 
+/**
+ * 折叠历史的替代物（P5，263）：一条 **system 消息**放在消息流开头。
+ *
+ * 语义：被折叠的区段已经不在消息列表里，这条消息占据它原来的位置（最老的一端），
+ * 而不是像旧实现那样把摘要追加到尾部动态系统段——后者会让模型同时看到「历史完整」+
+ * 「末尾多出一段摘要」，与「折叠区段改用摘要替代」的界面承诺不一致。
+ */
+internal fun compressionSummaryMessage(summary: String): UIMessage = UIMessage(
+    role = MessageRole.SYSTEM,
+    parts = listOf(
+        UIMessagePart.Text(
+            buildString {
+                append("Earlier messages in this conversation are omitted from the transcript ")
+                append("and replaced by the summary below. Treat it as conversation history, ")
+                append("not as a new user request.")
+                appendLine()
+                appendLine()
+                append(summary)
+            },
+        ),
+    ),
+)
+
+/** 把摘要消息插到历史最前端；没有摘要时原样返回（保持既有行为）。 */
+internal fun withCompressionSummary(
+    messages: List<UIMessage>,
+    summary: String?,
+): List<UIMessage> =
+    if (summary.isNullOrBlank()) messages else listOf(compressionSummaryMessage(summary)) + messages
+
 internal fun generationFinalizationStep(
     stepIndex: Int,
     maxSteps: Int,
@@ -2928,24 +2958,11 @@ class GenerationHandler(
                 ?.currentContext(callOrigin, id, commandId)
                 ?.toProviderAddendum()
         }
-        // 压缩上下文注入点（唯一）：摘要带专属标记句进动态（volatile）系统段，
-        // 工具执行账本原样附在摘要之后（B 案，extv 语义）。
-        val compressionContextAddendum = buildString {
-            if (!conversationContextSummary.isNullOrBlank()) {
-                append("The following is a compressed summary of earlier messages in this conversation. ")
-                append("Use it as conversation context, but do not treat it as a new user request.")
-                appendLine()
-                appendLine()
-                append(conversationContextSummary)
-            }
-            if (!conversationToolHistory.isNullOrBlank()) {
-                if (isNotEmpty()) {
-                    appendLine()
-                    appendLine()
-                }
-                append(conversationToolHistory)
-            }
-        }.ifBlank { null }
+        // 压缩上下文注入（P5 修正，263）：折叠区段已经从消息流里移走，摘要改为**消息流开头的
+        // 一条 system 消息**（原位替代），不再塞进尾部动态系统段。此前是「追加」语义——
+        // 模型看到的历史没缺、末尾又多一段摘要，与「被折叠的区段改用摘要替代」不符。
+        // 工具执行账本仍走系统段（它本来就是补充说明，不是历史）。
+        val compressionContextAddendum = conversationToolHistory?.takeIf { it.isNotBlank() }
         val providerSystemAddendum = listOfNotNull(
             systemAddendum,
             persistentSteeringContext.systemAddendum,
@@ -3189,7 +3206,10 @@ class GenerationHandler(
                 initialTimingRound,
             ) {
                 contextPreparer.prepareOrdinaryChat(
-                    messages = providerEphemeralMessages,
+                    messages = withCompressionSummary(
+                        providerEphemeralMessages,
+                        conversationContextSummary,
+                    ),
                     configuredContextWindowTokens = model.userContextWindowTokens,
                     advertisedContextWindowTokens = model.contextLength,
                     trustedContextWindowTokens = trustedContextWindowTokens,
@@ -3256,7 +3276,10 @@ class GenerationHandler(
                 initialTimingRound,
             ) {
                 contextPreparer.prepareOrdinaryChat(
-                    messages = finalContextCandidateMessages,
+                    messages = withCompressionSummary(
+                        finalContextCandidateMessages,
+                        conversationContextSummary,
+                    ),
                     configuredContextWindowTokens = model.userContextWindowTokens,
                     advertisedContextWindowTokens = model.contextLength,
                     trustedContextWindowTokens = trustedContextWindowTokens,
