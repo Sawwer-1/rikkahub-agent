@@ -366,6 +366,13 @@ fun SettingAgentRuntimePage(
                             Text(stringResource(R.string.agent_runtime_plugin_import))
                         }
                     }
+                    // 262：橘瓣包在这里也能直接导入（安装前自动翻译），把口径写在入口下面，
+                    // 否则用户不知道自己那份 manifest.json 的包能不能用。
+                    Text(
+                        text = stringResource(R.string.agent_runtime_plugin_import_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     if (plugins.isEmpty()) {
                         Text(stringResource(R.string.agent_runtime_plugins_empty))
                     }

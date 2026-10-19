@@ -86,7 +86,27 @@ class AgentRuntimeSettingsViewModel(
                         output.fd.sync()
                     }
                 } ?: error("plugin_archive_unreadable")
-                installer.install(archive).getOrThrow()
+                // 262 / 259 遗留：橘瓣包（manifest.json + main.js）在这里翻译成本仓能装的
+                // plugin.json + index.html 再交给安装器；本仓包（有 plugin.json）原样安装。
+                val orange = if (me.rerere.rikkahub.plugin.orange.OrangePluginPackager
+                        .looksLikeOrangePlugin(archive)
+                ) {
+                    me.rerere.rikkahub.plugin.orange.OrangePluginPackager
+                        .prepare(archive, importDir)
+                        .also { prepared ->
+                            // 语义损失必须留痕（例如 ai_chat 无等价能力），否则用户以为装全了。
+                            prepared.warnings.forEach {
+                                android.util.Log.w("AgentRuntimeSettings", "orange compat: $it")
+                            }
+                        }
+                } else {
+                    null
+                }
+                try {
+                    installer.install(orange?.archive ?: archive).getOrThrow()
+                } finally {
+                    orange?.archive?.delete()
+                }
             } finally {
                 archive.delete()
             }

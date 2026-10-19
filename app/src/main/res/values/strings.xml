@@ -2352,6 +2352,7 @@
   <string name="agent_runtime_plugin_global">Enable installed plugin</string>
   <string name="agent_runtime_plugin_global_desc">A restored or upgraded package remains disabled until reviewed again.</string>
   <string name="agent_runtime_plugin_import">Import ZIP</string>
+  <string name="agent_runtime_plugin_import_desc">Accepts this app's plugin packages (plugin.json + entry) and OrangeChat packages (manifest.json + main.js, translated on import).</string>
   <string name="agent_runtime_plugin_installed">%1$s installed for review; %2$d new permission(s).</string>
   <string name="agent_runtime_plugin_needs_review">Needs review</string>
   <string name="agent_runtime_plugin_permissions">Permissions: %1$s</string>

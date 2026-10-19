@@ -73,6 +73,7 @@
   <string name="agent_runtime_plugin_global">启用已安装插件</string>
   <string name="agent_runtime_plugin_global_desc">恢复或升级后的插件会保持禁用，直到再次审核。</string>
   <string name="agent_runtime_plugin_import">导入 ZIP</string>
+  <string name="agent_runtime_plugin_import_desc">支持本仓插件包（plugin.json + 入口）与橘瓣插件包（manifest.json + main.js，导入时自动翻译）。</string>
   <string name="agent_runtime_plugin_installed">%1$s 已安装并等待审核；新增 %2$d 项权限。</string>
   <string name="agent_runtime_plugin_name_version">%1$s · %2$s</string>
   <string name="agent_runtime_plugin_needs_review">需要审核</string>
