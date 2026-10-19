@@ -95,8 +95,10 @@ fun RollingCompressDialog(
         triggerExtraMessages = triggerExtraMessages,
         triggerContextPercent = triggerContextPercent,
     )
-    val showSaveConfigButton = autoCompress ||
-        currentAutoCompressConfig != (autoCompressConfig ?: AutoCompressConfig())
+    // 只在「有未保存修改」时显示「保存」（工单 CB 2026-10-19 P3）。
+    // 旧判据含 `autoCompress ||`：开关一开就永远显示 → 取消/保存/确认三键并存，
+    // 用户点「保存」后按钮位置变化，第二次点击落到别的键上（P2「点击不稳定」）。
+    val showSaveConfigButton = currentAutoCompressConfig != (autoCompressConfig ?: AutoCompressConfig())
 
     // Monitor job completion
     LaunchedEffect(currentJob) {

@@ -421,6 +421,35 @@ internal fun shouldAutoCompress(
     tokenBudgetTriggered: Boolean,
 ): Boolean = tokenBudgetTriggered || visibleNodeCount >= countThreshold
 
+/**
+ * 折叠区段喂给摘要模型的文本（工单 CB 2026-10-19 N1/O2）。
+ *
+ * 旧实现只取 `summaryAsText()`（纯文本部分），纯工具轮折出来只剩一个 "[ASSISTANT]: " 空壳：
+ * 模型对着一堆空壳生成摘要 → 返回空 → 折叠生效但摘要 0 字（N1/O2 的「已折叠 9 条 · 摘要 0 字」）。
+ *
+ * 现在把工具调用也渲染进去（名字 + 入参 + 出参，各截 400 字），保证任何有内容的节点都能产出
+ * 可摘要的语料；完全空白的消息返回空串，由调用方过滤掉。
+ */
+internal fun compressionSummaryText(message: UIMessage): String {
+    val body = buildString {
+        val text = message.parts.filterIsInstance<UIMessagePart.Text>()
+            .joinToString("\n") { it.text }
+            .trim()
+        if (text.isNotEmpty()) append(text)
+        message.parts.filterIsInstance<UIMessagePart.Tool>().forEach { tool ->
+            if (isNotEmpty()) appendLine()
+            append("[tool] ").append(tool.toolName)
+            val input = tool.input.trim()
+            if (input.isNotEmpty()) append(" input=").append(input.take(400))
+            val output = tool.output.filterIsInstance<UIMessagePart.Text>()
+                .joinToString("\n") { it.text }
+                .trim()
+            if (output.isNotEmpty()) append(" output=").append(output.take(400))
+        }
+    }
+    return if (body.isBlank()) "" else "[${message.role.name}]: $body"
+}
+
 internal fun estimateCompressionTokens(text: String): Int {
     var asciiChars = 0
     var nonAsciiChars = 0
@@ -6988,11 +7017,9 @@ class ChatService(
 
         if (allMessages.size > effectiveKeepRecentMessages) {
             nodesToCompress = allNodes.dropLast(effectiveKeepRecentMessages)
-            // Plan B: tool-bearing nodes are kept verbatim in the tool-history ledger, so only
-            // nodes that carry summarizable text feed the prose summary.
             messagesToCompress = nodesToCompress
                 .map { node -> node.currentMessage }
-                .filter { it.summaryAsText().isNotBlank() }
+                .filter { compressionSummaryText(it).isNotBlank() }
         } else {
             throw IllegalStateException(context.getString(R.string.chat_page_compress_not_enough_messages))
         }
@@ -7043,7 +7070,7 @@ class ChatService(
         }
 
         suspend fun compressMessages(messages: List<UIMessage>): String {
-            val contentToCompress = messages.joinToString("\n\n") { it.summaryAsText() }
+            val contentToCompress = messages.joinToString("\n\n") { compressionSummaryText(it) }
             val extraContext = buildString {
                 append("Summarize only the new messages below.")
                 if (additionalPrompt.isNotBlank()) {
@@ -7097,6 +7124,17 @@ class ChatService(
                     }
                 }
             ).ifBlank { null }
+        }
+        if (summaryForPrompt.isNullOrBlank()) {
+            // 摘要是被折叠区段的**替代物**（工单 CB 2026-10-19 N1/O2）：摘要为空时若仍然折叠，
+            // 那批消息就从模型上下文里彻底消失——用户看到的是「已折叠 9 条 · 摘要 0 字」，
+            // 模型看到的是一段凭空少掉的历史。这里整次不折，原文保留。
+            Log.w(TAG, "compressConversationRolling: empty summary, fold aborted for $conversationId")
+            return@runCatching CompressionOutcome(
+                foldedMessages = 0,
+                keptMessages = allNodes.size,
+                summaryEmpty = true,
+            )
         }
         val selectedNodeIds = nodesToCompress.mapTo(mutableSetOf()) { it.id }
         val latestConversation = getConversationFlow(conversationId).value

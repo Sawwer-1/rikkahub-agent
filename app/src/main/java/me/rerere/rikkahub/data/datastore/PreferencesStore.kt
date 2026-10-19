@@ -157,6 +157,15 @@ class SettingsStore(
         val DISPLAY_SETTING = stringPreferencesKey("display_setting")
         val DEVELOPER_MODE = booleanPreferencesKey("developer_mode")
 
+        // 运行时开关（工单 CB 2026-10-19 A1）：这四项此前只存在于 Settings 数据类里，
+        // `update(settings)` 的键表里没有它们 → 打开开关不落库，进程重启即回到默认值。
+        // 「开关打开但行为不变」的实测（settings MD5 字节一致、键集合 71→71）就是这条造成的。
+        val STEER_ON_APPEND = booleanPreferencesKey("steer_on_append_enabled")
+        val PARALLEL_READ_ONLY_TOOLS = booleanPreferencesKey("parallel_read_only_tools_enabled")
+        val MAX_PARALLEL_READ_ONLY_TOOLS = intPreferencesKey("max_parallel_read_only_tools")
+        val MANAGED_VIRTUAL_DISPLAY = booleanPreferencesKey("managed_virtual_display_enabled")
+        val PLUGIN_RUNTIME = booleanPreferencesKey("plugin_runtime_enabled")
+
         // 模型选择
         val ENABLE_WEB_SEARCH = booleanPreferencesKey("enable_web_search")
         val FAVORITE_MODELS = stringPreferencesKey("favorite_models")
@@ -289,6 +298,12 @@ class SettingsStore(
         }.map { preferences ->
             Settings(
                 enableWebSearch = preferences[ENABLE_WEB_SEARCH] == true,
+                // 运行时开关（工单 CB 2026-10-19 A1）：读回与写入必须成对，否则 UI 一关一开就丢。
+                steerOnAppendEnabled = preferences[STEER_ON_APPEND] == true,
+                parallelReadOnlyToolsEnabled = preferences[PARALLEL_READ_ONLY_TOOLS] == true,
+                maxParallelReadOnlyTools = preferences[MAX_PARALLEL_READ_ONLY_TOOLS] ?: 3,
+                managedVirtualDisplayEnabled = preferences[MANAGED_VIRTUAL_DISPLAY] == true,
+                pluginRuntimeEnabled = preferences[PLUGIN_RUNTIME] == true,
                 favoriteModels = preferences[FAVORITE_MODELS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
@@ -665,6 +680,12 @@ class SettingsStore(
             preferences[DISPLAY_SETTING] = JsonInstant.encodeToString(settings.displaySetting)
 
             preferences[ENABLE_WEB_SEARCH] = settings.enableWebSearch
+            // 运行时开关（工单 CB 2026-10-19 A1）：漏写这四行 = 开关只在内存里生效。
+            preferences[STEER_ON_APPEND] = settings.steerOnAppendEnabled
+            preferences[PARALLEL_READ_ONLY_TOOLS] = settings.parallelReadOnlyToolsEnabled
+            preferences[MAX_PARALLEL_READ_ONLY_TOOLS] = settings.maxParallelReadOnlyTools.coerceIn(1, 8)
+            preferences[MANAGED_VIRTUAL_DISPLAY] = settings.managedVirtualDisplayEnabled
+            preferences[PLUGIN_RUNTIME] = settings.pluginRuntimeEnabled
             preferences[FAVORITE_MODELS] = JsonInstant.encodeToString(settings.favoriteModels)
             preferences[SELECT_MODEL] = settings.chatModelId.toString()
             preferences[FAST_MODEL] = settings.fastModelId.toString()

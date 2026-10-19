@@ -501,7 +501,11 @@ class ChatVM(
 
     /** Human summary of a compression pass: how much was folded and what stayed visible. */
     private fun compressionOutcomeText(outcome: CompressionOutcome): String =
-        if (outcome.foldedMessages <= 0) {
+        if (outcome.summaryEmpty) {
+            // 摘要没生成出来 = 这次没折（原文还在）。必须说清楚，否则用户会以为折叠生效了
+            // 但摘要空着（工单 CB 2026-10-19 N1 的「折叠 9 条 · 摘要 0 字」）。
+            context.getString(R.string.chat_compress_summary_failed)
+        } else if (outcome.foldedMessages <= 0) {
             context.getString(R.string.chat_compress_nothing_to_fold)
         } else {
             context.getString(
