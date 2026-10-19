@@ -252,6 +252,20 @@ interface DreamDao {
     )
     suspend fun getProtectedObserverWatermark(scopeId: String): Long?
 
+    /**
+     * 当前范围内还没结束的 run 数（B/261 O1）。
+     *
+     * 「立即做梦」重复点击此前会不停新建 run，随后这些 run 在 claim/lease 阶段互相冲突
+     * （设备侧 LEASE_EXPIRED ×3 / FENCE_CONFLICT ×1 就是这个形态）。点击前先数一次，
+     * 有活跃 run 就不再新建；点击后再数一次，用「真的有没有 run」来决定文案，
+     * 避免出现「提示已开始、流程其实没启动」。
+     */
+    @Query(
+        "SELECT COUNT(*) FROM dream_runs WHERE scope_id = :scopeId " +
+            "AND status IN ('PENDING', 'RUNNING')",
+    )
+    suspend fun countActiveRuns(scopeId: String): Int
+
     @Query(
         "SELECT MIN(s.observer_checkpoint_epoch, s.last_applied_memory_epoch, " +
             "COALESCE((SELECT MIN(r.base_observer_checkpoint_epoch) FROM dream_runs r " +

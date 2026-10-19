@@ -521,13 +521,27 @@ class MemoryCenterVM(
         viewModelScope.launch(Dispatchers.IO) {
             dreamNowRunning.value = true
             try {
+                // 261 / O1：重复点击不再叠加创建 run。
+                // 旧行为：每次点击都进 scan → 各建一个 run → 它们在 claim/lease 阶段互相冲突
+                // （设备侧 LEASE_EXPIRED ×3 / FENCE_CONFLICT ×1 正是这个形态），
+                // 而界面每次都报「已开始做梦」，看起来像「提示了但没跑」。
+                val scopeId = currentDreamScopeId().value
+                val activeBefore = runCatching { dreamDao.countActiveRuns(scopeId) }.getOrDefault(0)
+                if (activeBefore > 0) {
+                    dreamNowMessage.value = dreamAlreadyRunningMessage(activeBefore)
+                    return@launch
+                }
                 val result = dreamSynthesisCoordinator.scanDirtyScopes(
                     reason = DreamSynthesisScanReason.MANUAL,
                     bypassIdle = true,
                 )
                 dreamNowMessage.value = when {
-                    result.scheduledScopes.isNotEmpty() ->
-                        "已开始做梦：本次立即执行（联网即可，无需充电/空闲），进度见下方"
+                    result.scheduledScopes.isNotEmpty() -> {
+                        // 文案必须由「真的有没有活跃 run」决定：只有扫完还能数到 run 才算开始，
+                        // 否则如实说没启动（这就是「提示已开始、流程未启动」的正面回答）。
+                        val activeAfter = runCatching { dreamDao.countActiveRuns(scopeId) }.getOrDefault(0)
+                        dreamNowStartedMessage(activeAfter)
+                    }
                     result.deferredScopes.values.any {
                         it == DreamSynthesisScheduleDeferral.DAILY_BUDGET_EXHAUSTED
                     } -> "今日额度已用尽（UTC 00:00 重置）"

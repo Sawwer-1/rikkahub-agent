@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,6 +21,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -50,6 +53,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -1337,6 +1343,8 @@ private fun TopBar(
     val titleState = useEditState<String> {
         onUpdateTitle(it)
     }
+    // 261 / U1：社交入口收进「更多」菜单后的展开状态（随 TopBar 生命周期即可）。
+    var socialMenuExpanded by remember { mutableStateOf(false) }
 
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -1416,15 +1424,57 @@ private fun TopBar(
                 )
             }
 
-            // Social surfaces (ported from jude, batch 3): moments + anonymous question box.
-            MomentsButton(
-                hasUnread = momentsUnread,
-                onClick = onOpenMoments,
-            )
-            AnonymousQuestionBoxButton(
-                hasUnread = anonymousQuestionBoxUnread,
-                onClick = onOpenAnonymousQuestionBox,
-            )
+            // 社交入口收纳（261 / U1 + U2）：朋友圈与私信提问箱不再各占一个图标位，
+            // 收进「更多」菜单——顶部入口从 5 个降到 4 个，且这两个无描述图标节点
+            // （a11y 里读不到名字）随之消失，改成带文字的菜单项。
+            Box {
+                IconButton(
+                    onClick = { socialMenuExpanded = true },
+                    modifier = Modifier
+                        .testTag("chat_topbar_more")
+                        .semantics { testTagsAsResourceId = true },
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.MoreVertical,
+                        contentDescription = stringResource(R.string.ui3_chat_more),
+                    )
+                }
+                DropdownMenu(
+                    expanded = socialMenuExpanded,
+                    onDismissRequest = { socialMenuExpanded = false },
+                ) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                if (momentsUnread) {
+                                    stringResource(R.string.ui3_chat_moments) + " ·"
+                                } else {
+                                    stringResource(R.string.ui3_chat_moments)
+                                }
+                            )
+                        },
+                        onClick = {
+                            socialMenuExpanded = false
+                            onOpenMoments()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                if (anonymousQuestionBoxUnread) {
+                                    stringResource(R.string.ui3_chat_question_box) + " ·"
+                                } else {
+                                    stringResource(R.string.ui3_chat_question_box)
+                                }
+                            )
+                        },
+                        onClick = {
+                            socialMenuExpanded = false
+                            onOpenAnonymousQuestionBox()
+                        },
+                    )
+                }
+            }
 
             IconButton(onClick = onOpenDiagnostics) {
                 Icon(HugeIcons.Activity01, stringResource(R.string.ui3_chat_runtime_diagnostics))
