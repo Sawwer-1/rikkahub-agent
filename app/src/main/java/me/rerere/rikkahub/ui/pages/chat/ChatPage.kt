@@ -75,6 +75,7 @@ import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.common.android.appTempFolder
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Activity01
 import me.rerere.hugeicons.stroke.LeftToRightListBullet
