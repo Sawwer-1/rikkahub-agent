@@ -24,8 +24,8 @@ android {
         applicationId = "me.rerere.rikkahub"
         minSdk = 26
         targetSdk = 37
-        versionCode = 258
-        versionName = "2.7.6"
+        versionCode = 259
+        versionName = "2.7.7"
 
         // Fork provenance, kept out of versionName so the upstream baseline stays greppable.
         // See docs/audits for the meaning of the 2.3.1-agent-up244.x naming.
