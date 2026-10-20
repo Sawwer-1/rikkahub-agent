@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findProvider
@@ -492,6 +493,7 @@ class MemoryCenterVM(
 
     private var dreamStatusPollingJob: Job? = null
     private var dreamStatusObservationJob: Job? = null
+    private var dreamStatusTickerJob: Job? = null
 
     init {
         refreshDreamRuntimeStatus()
@@ -510,6 +512,18 @@ class MemoryCenterVM(
                 .map { runs -> runs.firstOrNull()?.status to runs.size }
                 .collect { refreshDreamRuntimeStatus() }
         }
+        // 262 / O3 附带：DB 只在有写入时发事件，而「已排队 X 分钟」「已 N 分钟」是随时间走的
+        // 相对文案。只靠 DB 事件刷新会把这两个数字冻在最后一次写入的时刻（设备上表现为
+        // 「已排队 2 分钟」对照 run 创建时间对不上）。有活跃 run 时补一条 30 秒的重算节拍。
+        dreamStatusTickerJob?.cancel()
+        dreamStatusTickerJob = viewModelScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                delay(DREAM_ACTIVE_RUN_TICK_MS)
+                if (dreamRuntimeStatus.value?.activeRunSummary != null) {
+                    refreshDreamRuntimeStatus()
+                }
+            }
+        }
     }
 
     /** 手动「立即做梦」：跳过空闲等待（用户在界面点了就说明此刻要做），其余成本/条件门照常。 */
@@ -525,12 +539,21 @@ class MemoryCenterVM(
                 // 旧行为：每次点击都进 scan → 各建一个 run → 它们在 claim/lease 阶段互相冲突
                 // （设备侧 LEASE_EXPIRED ×3 / FENCE_CONFLICT ×1 正是这个形态），
                 // 而界面每次都报「已开始做梦」，看起来像「提示了但没跑」。
-                val scopeId = currentDreamScopeId().value
-                val activeBefore = runCatching { dreamDao.countActiveRuns(scopeId) }.getOrDefault(0)
-                if (activeBefore > 0) {
-                    dreamNowMessage.value = dreamAlreadyRunningMessage(activeBefore)
+                val scope = currentDreamScopeId()
+                val scopeId = scope.value
+                // 262 / O3 修正：这道门只该数「真的在跑」的 RUNNING。
+                // 旧写法用 countActiveRuns（PENDING + RUNNING），于是自动排队的 run（带空闲 +
+                // 充电约束、前台使用时永远不跑）会把手动触发整条挡住：点击直接 return，
+                // 数据面零变化——用户看到的「点了没反应」就是这个。
+                val runningBefore = runCatching { dreamDao.countRunningRuns(scopeId) }.getOrDefault(0)
+                if (runningBefore > 0) {
+                    dreamNowMessage.value = dreamAlreadyRunningMessage(runningBefore)
                     return@launch
                 }
+                // 只有排队行时：交给 MANUAL 扫描把这条 run 的 Work 重排成零延迟 + 只留联网约束。
+                val queuedBefore = runCatching { dreamDao.countActiveRuns(scopeId) }
+                    .getOrDefault(0)
+                    .coerceAtLeast(runningBefore) - runningBefore
                 val result = dreamSynthesisCoordinator.scanDirtyScopes(
                     reason = DreamSynthesisScanReason.MANUAL,
                     bypassIdle = true,
@@ -540,8 +563,18 @@ class MemoryCenterVM(
                         // 文案必须由「真的有没有活跃 run」决定：只有扫完还能数到 run 才算开始，
                         // 否则如实说没启动（这就是「提示已开始、流程未启动」的正面回答）。
                         val activeAfter = runCatching { dreamDao.countActiveRuns(scopeId) }.getOrDefault(0)
-                        dreamNowStartedMessage(activeAfter)
+                        // 复用了排队中的那条 run（没有新建）：不能报「已新建」，要说清楚是
+                        // 「把队列里这次的等待条件去掉了」。
+                        if (queuedBefore > 0 && activeAfter > 0) {
+                            dreamQueuedRunPromotedMessage()
+                        } else {
+                            dreamNowStartedMessage(activeAfter)
+                        }
                     }
+                    // 扫描没排到它（范围此刻算不出脏），但确实有一条排队 run：直接把它的 Work
+                    // 重排成手动语义，兑现「跳过等待」的承诺。
+                    queuedBefore > 0 && dreamSynthesisCoordinator.enqueueQueuedRunNow(scope) ->
+                        dreamQueuedRunPromotedMessage()
                     result.deferredScopes.values.any {
                         it == DreamSynthesisScheduleDeferral.DAILY_BUDGET_EXHAUSTED
                     } -> "今日额度已用尽（UTC 00:00 重置）"
@@ -1269,6 +1302,8 @@ class MemoryCenterVM(
     private fun currentDreamScopeId(): DreamScopeId = pairDreamScopeId
 
     companion object {
+        /** 有活跃 run 时重算「已排队 X 分钟 / 已 N 分钟」的节拍（262 / O3 附带）。 */
+        private const val DREAM_ACTIVE_RUN_TICK_MS = 30_000L
         const val MIN_IDLE_MINUTES = 1
         const val MAX_IDLE_MINUTES = 1_440
         const val MIN_IMMEDIATE_THRESHOLD = 1

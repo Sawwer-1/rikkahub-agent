@@ -132,6 +132,47 @@ class ChatSendDecisionTest {
     }
 
     @Test
+    fun `a live run interrupts even when the derived state briefly left Running`() {
+        // 262 工单（软引导开关关闭仍走软引导）：判定只看 runtimeState == Running 时，
+        // durable 唤醒把派生状态刷成 Idle、或取消宽限期的 Cancelling，都会让追加消息静默落到
+        // QUEUE（不打断、不重开，看起来就是"开关没生效"）。run job 还活着就必须按打断处理。
+        listOf(RuntimeState.Idle, RuntimeState.Hydrating, RuntimeState.Cancelling(Uuid.random()))
+            .forEach { state ->
+                assertEquals(
+                    "state=$state",
+                    ChatSendAction.INTERRUPT,
+                    resolveShortSendAction(
+                        state,
+                        hasInput = true,
+                        hasGuidanceText = true,
+                        runAlive = true,
+                    ),
+                )
+            }
+        // 软引导不能建立在"状态失真"上：只有真正 Running 才允许。
+        assertEquals(
+            ChatSendAction.INTERRUPT,
+            resolveShortSendAction(
+                RuntimeState.Idle,
+                hasInput = true,
+                hasGuidanceText = true,
+                softSteerEnabled = true,
+                runAlive = true,
+            ),
+        )
+        // run 真的结束了（没有 live job）就照旧排队，别把普通发送变成打断。
+        assertEquals(
+            ChatSendAction.QUEUE,
+            resolveShortSendAction(RuntimeState.Idle, hasInput = true, runAlive = false),
+        )
+        // 长按同样按"在跑"给选择。
+        assertEquals(
+            ChatSendAction.SHOW_RUNNING_CHOICES,
+            resolveLongSendAction(RuntimeState.Idle, hasInput = true, runAlive = true),
+        )
+    }
+
+    @Test
     fun `idle keeps ordinary messages queued`() {
         assertEquals(
             ChatSendAction.QUEUE,

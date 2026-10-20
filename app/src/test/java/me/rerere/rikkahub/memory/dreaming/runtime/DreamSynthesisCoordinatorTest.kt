@@ -279,6 +279,33 @@ class DreamSynthesisCoordinatorTest {
         assertTrue(newStore.createdRequests.isEmpty())
     }
 
+    @Test
+    fun `queued run is re-enqueued for a manual trigger even when the scope is no longer dirty`() =
+        runBlocking {
+            // 262 / O3：范围里只有一条排队 run（自动调度带的空闲 + 充电约束，前台永远不跑）时，
+            // 手动「立即做梦」必须把它的 Work 重排成零延迟，而不是"有活跃 run 就什么都不做"。
+            val store = FakeSchedulingStore(mutableListOf())
+            store.pendingRuns[PRIVATE_SCOPE] = RUN_EXISTING to DreamRunMode.INCREMENTAL
+            val scheduler = RecordingScheduler()
+            val coordinator = coordinator(store, scheduler)
+
+            // 范围不脏：扫描排不出任何东西，正是设备上"点了没反应"的形态。
+            val scanned = coordinator.scanDirtyScopes(
+                DreamSynthesisScanReason.MANUAL,
+                bypassIdle = true,
+            )
+            assertTrue(scanned.scheduledScopes.isEmpty())
+
+            assertTrue(coordinator.enqueueQueuedRunNow(PRIVATE_SCOPE))
+
+            val enqueued = scheduler.enqueuedScopes.single()
+            assertEquals(PRIVATE_SCOPE, enqueued.scopeId)
+            assertEquals(RUN_EXISTING, enqueued.runId)
+            assertTrue(enqueued.bypassIdle)
+            assertTrue(enqueued.replaceExisting)
+            assertEquals(0, store.createdRequests.size)
+        }
+
     private fun coordinator(
         store: FakeSchedulingStore,
         scheduler: RecordingScheduler,
@@ -394,6 +421,9 @@ class DreamSynthesisCoordinatorTest {
             pendingRunCountOverride ?: pendingRuns.size
 
         override suspend fun countGlobalRunningRuns(): Int = runningRunCount
+
+        override suspend fun findQueuedRunId(scopeId: DreamScopeId): String? =
+            pendingRuns[scopeId]?.first
 
         override suspend fun cancelScopeRuns(scopeId: DreamScopeId, nowMs: Long): Int {
             cancelledScopes += scopeId

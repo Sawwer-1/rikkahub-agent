@@ -78,6 +78,13 @@ interface DreamSynthesisSchedulingStore : DreamDailyUsageStore {
     /** Pair-authoritative active executions across every registered Pair scope. */
     suspend fun countGlobalRunningRuns(): Int
 
+    /**
+     * 该范围内排队中（PENDING，尚未开始）的 run id；没有则 null。
+     *
+     * 手动「立即做梦」用它把已有排队 run 的 Work 请求升级成「零延迟 + 只留联网约束」，
+     * 不再另建一条 run（262 / O3）。
+     */
+    suspend fun findQueuedRunId(scopeId: DreamScopeId): String?
     /** Terminalizes queued/running synthesis for this scope; Observer work is never touched. */
     suspend fun cancelScopeRuns(scopeId: DreamScopeId, nowMs: Long): Int
 }
@@ -168,6 +175,44 @@ class DreamSynthesisCoordinator(
         bypassIdle: Boolean = false,
     ): DreamSynthesisScanResult = schedulingMutex.withLock {
         scanDirtyScopesLocked(reason, limit, bypassIdle)
+    }
+
+    /**
+     * 手动「立即做梦」的兜底通道（262 / O3）：范围里已经有一条排队中的 PENDING run，
+     * 但它带着自动调度留下的空闲/充电约束一直不动时，把这条 run 的 Work 请求按手动语义
+     * 重排（零延迟 + 只留联网约束），**不新建 run**。
+     *
+     * 与 [scanDirtyScopes] 的分工：范围还脏时扫描就会重排同一条 run；这里只覆盖
+     * 「run 还在排队、范围此刻算不出脏」的情况。返回 true 表示确实重排了 Work。
+     */
+    suspend fun enqueueQueuedRunNow(scopeId: DreamScopeId): Boolean = schedulingMutex.withLock {
+        val now = clock.nowEpochMs()
+        if (now < 0L) return@withLock false
+        val flags = readFlagsOrNull(scopeId) ?: return@withLock false
+        if (!flags.allowsSynthesisGeneration()) return@withLock false
+        val policy = readPolicyOrNull() ?: return@withLock false
+        if (readCoarseBudget(policy, now).deferral != null) return@withLock false
+        val runId = try {
+            store.findQueuedRunId(scopeId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return@withLock false
+        } ?: return@withLock false
+        try {
+            scheduler.enqueueScope(
+                scopeId = scopeId,
+                runId = runId,
+                policy = policy,
+                replaceExisting = true,
+                bypassIdle = true,
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return@withLock false
+        }
+        true
     }
 
     private suspend fun scanDirtyScopesLocked(

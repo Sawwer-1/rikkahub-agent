@@ -108,9 +108,16 @@ class AssistantDetailVM(
             initialValue = emptyList(),
         )
 
+    // 262 / O4 附带：详情页「待审核」与记忆中心「待审核」口径必须一致。
+    // 记忆中心那边是「记忆候选 + 关系建议」两队列之和（MemoryCenterVM.memoryCenterStats），
+    // 这里原先只数记忆候选，于是同屏出现「21 项」与「27 条」两个数。
     val pendingReviewCount = assistant
         .flatMapLatest { currentAssistant ->
-            memoryV2Dao.observePendingCandidateCount(currentAssistant.memoryScope.ownerId)
+            val scopeId = currentAssistant.memoryScope.ownerId
+            kotlinx.coroutines.flow.combine(
+                memoryV2Dao.observePendingCandidateCount(scopeId),
+                memoryV2Dao.observePendingRelationCandidates(scopeId),
+            ) { memoryReview, relationReview -> memoryReview + relationReview.size }
         }
         .stateIn(
             scope = viewModelScope,

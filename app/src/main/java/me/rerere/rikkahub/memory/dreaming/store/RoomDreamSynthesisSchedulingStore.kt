@@ -149,6 +149,11 @@ class RoomDreamSynthesisSchedulingStore(
     override suspend fun countGlobalRunningRuns(): Int =
         Math.toIntExact(dreamDao.countPairRunningSynthesisRuns())
 
+    override suspend fun findQueuedRunId(scopeId: DreamScopeId): String? =
+        dreamDao.findPendingOrRunningSynthesisRun(scopeId.value)
+            ?.takeIf { it.status == DreamRunStatus.PENDING.name }
+            ?.runId
+
     override suspend fun readGlobalUtcUsage(query: DreamDailyUsageQuery): DreamDailyUsage {
         val row = dreamDao.readGlobalDreamDailyUsage(
             startInclusiveEpochMs = query.window.startInclusiveEpochMs,

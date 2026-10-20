@@ -266,6 +266,19 @@ interface DreamDao {
     )
     suspend fun countActiveRuns(scopeId: String): Int
 
+    /**
+     * 真正在跑的 run 数（262 / O3）。
+     *
+     * `countActiveRuns` 把「排队中 PENDING」和「正在跑 RUNNING」算在一起，手动「立即做梦」
+     * 用它当门就会出现：有一条自动排队、带着空闲+充电约束的 PENDING 行时，点击被当成
+     * 「已有一次在做梦」直接 return——数据面零变化，而这条 run 又因为条件不满足永远不跑。
+     * 手动触发只应该被「真的在跑」挡住。
+     */
+    @Query(
+        "SELECT COUNT(*) FROM dream_runs WHERE scope_id = :scopeId AND status = 'RUNNING'",
+    )
+    suspend fun countRunningRuns(scopeId: String): Int
+
     @Query(
         "SELECT MIN(s.observer_checkpoint_epoch, s.last_applied_memory_epoch, " +
             "COALESCE((SELECT MIN(r.base_observer_checkpoint_epoch) FROM dream_runs r " +

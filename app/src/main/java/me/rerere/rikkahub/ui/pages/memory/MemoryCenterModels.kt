@@ -44,12 +44,22 @@ internal fun canRetryFailed(stats: MemoryCenterStats): Boolean =
         (stats.failedCaptures > 0 || stats.pausedCaptures > 0)
 
 /**
- * 「立即做梦」点击前的提示（261 / O1）：范围里已有未结束的 run 时不再新建，
+ * 「立即做梦」点击前的提示（261 / O1）：范围里已有**正在跑**的 run 时不再新建，
  * 否则重复点击会不断加 run，随后在 claim/lease 阶段互相冲突
  * （设备侧 LEASE_EXPIRED ×3 / FENCE_CONFLICT ×1 就是这个形态）。
+ *
+ * 262 / O3 起这里的口径收窄为「真的在跑（RUNNING）」：排队中的 PENDING 不再算，
+ * 否则自动排队、带空闲+充电约束的那条 run 会把手动触发永久挡住。
  */
 internal fun dreamAlreadyRunningMessage(activeRuns: Int): String =
-    "已有一次做梦在进行（$activeRuns 个未结束）：这次不再新建，等它结束再点。"
+    "已有一次做梦在进行（$activeRuns 个在跑）：这次不再新建，等它结束再点。"
+
+/**
+ * 「立即做梦」复用排队 run 时的提示（262 / O3）：没有新建 run，只是把那条排队 run 的
+ * 调度从自动条件改成手动语义（零延迟 + 只留联网约束），所以不能报「已新建」。
+ */
+internal fun dreamQueuedRunPromotedMessage(): String =
+    "已让排队中的这次做梦立即开跑（联网即可，不再等充电/空闲）。"
 
 /**
  * 「立即做梦」点击后的提示（261 / O1）：**由真的有没有活跃 run 决定**，而不是由「扫描说排了」决定。

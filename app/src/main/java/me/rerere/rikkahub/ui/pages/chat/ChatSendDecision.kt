@@ -48,14 +48,35 @@ internal fun resolveShortSendAction(
     hasInput: Boolean,
     hasGuidanceText: Boolean = false,
     softSteerEnabled: Boolean = false,
+    runAlive: Boolean = false,
 ): ChatSendAction = when {
+    // 软引导只在「确实在跑」时成立；状态机短暂失真不算。
     runtimeState == RuntimeState.Running && hasInput && softSteerEnabled && hasGuidanceText ->
         ChatSendAction.SOFT_STEER
-    runtimeState == RuntimeState.Running && hasInput -> ChatSendAction.INTERRUPT
-    runtimeState == RuntimeState.Running -> ChatSendAction.STOP
+    isRunActive(runtimeState, runAlive) && hasInput -> ChatSendAction.INTERRUPT
+    isRunActive(runtimeState, runAlive) -> ChatSendAction.STOP
     runtimeState == RuntimeState.WaitingApproval && hasInput -> ChatSendAction.INTERRUPT
     runtimeState == RuntimeState.Paused && hasInput -> ChatSendAction.INTERRUPT
     else -> ChatSendAction.QUEUE
+}
+
+/**
+ * 「这一刻是不是有一轮在跑」。
+ *
+ * 262 修（软引导开关行为未接线）：此前只看 `runtimeState == Running`，而 `runtimeState`
+ * 是派生值——durable 命令落库唤醒时 `restoreDurableCommands()` 会重算成 resting（Idle），
+ * 取消宽限期是 `Cancelling`。这些窗口里 run 还活着，发送却被判成 QUEUE：既不打断也不重开，
+ * 队列卡片 / 队列升格后的引导卡片正好就是用户看到的「开关关了还在软引导」。
+ * 所以这里把「run job 还活着」也算作在跑。
+ */
+private fun isRunActive(runtimeState: RuntimeState, runAlive: Boolean): Boolean {
+    if (runtimeState == RuntimeState.Running) return true
+    if (!runAlive) return false
+    return when (runtimeState) {
+        RuntimeState.Idle, RuntimeState.Hydrating -> true
+        is RuntimeState.Cancelling -> true
+        else -> false
+    }
 }
 
 /**
@@ -65,9 +86,10 @@ internal fun resolveShortSendAction(
 internal fun resolveLongSendAction(
     runtimeState: RuntimeState,
     hasInput: Boolean,
+    runAlive: Boolean = false,
 ): ChatSendAction = when {
-    runtimeState == RuntimeState.Running && hasInput -> ChatSendAction.SHOW_RUNNING_CHOICES
-    runtimeState == RuntimeState.Running -> ChatSendAction.STOP
+    isRunActive(runtimeState, runAlive) && hasInput -> ChatSendAction.SHOW_RUNNING_CHOICES
+    isRunActive(runtimeState, runAlive) -> ChatSendAction.STOP
     else -> ChatSendAction.QUEUE
 }
 

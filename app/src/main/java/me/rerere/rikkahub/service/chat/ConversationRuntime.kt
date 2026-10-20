@@ -1109,7 +1109,14 @@ class ConversationRuntime(
                     else -> complete(envelope, CommandOutcome.Rejected("Unsupported durable command type"))
                 }
             }
-        _runtimeState.value = restingRuntimeState()
+        // 262 修（软引导开关「关着仍走软引导」）：本方法会被 durable 落库唤醒反复触发
+        // （DurableCommandQueue 的 setWakeUpListener），生成进行中也会进来。这里原先无条件重算
+        // resting 态——此时 queuePaused=false、waitingCommandIds 空 → Idle，于是 UI 在 run 还活着
+        // 时读到 Idle，生成中追加消息被判成 QUEUE（既不打断也不重开，看起来就是「开关没生效」）。
+        // 有活跃 run 时状态归 run 生命周期管，这里不许降级。
+        if (activeRun == null) {
+            _runtimeState.value = restingRuntimeState()
+        }
         refreshQueueStatus()
     }
 

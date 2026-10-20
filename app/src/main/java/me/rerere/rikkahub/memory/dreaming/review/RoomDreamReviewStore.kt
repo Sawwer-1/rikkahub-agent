@@ -592,13 +592,14 @@ class RoomDreamReviewStore(
             }
         }
         val superseded = active?.supersedesSnapshotId?.let { previousId ->
+            // 上一版快照只喂「变化列表」。它读不出来只该让变化列表不可用，不该把当前画像一起藏掉。
             synthesisDao.getSnapshot(previousId, scopeId.value)
-                ?: return invalidProjection(scopeId, state, usageMode)
         }
         if (superseded != null && superseded.status != SNAPSHOT_SUPERSEDED) {
-            return invalidProjection(scopeId, state, usageMode)
+            degraded = true
         }
-        val diff = snapshotDiff(scopeId, superseded, active)
+        val comparableSuperseded = superseded?.takeIf { it.status == SNAPSHOT_SUPERSEDED }
+        val diff = snapshotDiff(scopeId, comparableSuperseded, active)
         if (diff is DreamSnapshotDiffResult.Unavailable) {
             // The active Pair snapshot has already been recompiled and byte-checked above. A
             // legacy/corrupt superseded snapshot can make only the historical diff unreadable; it
@@ -610,16 +611,25 @@ class RoomDreamReviewStore(
         ) {
             return invalidProjection(scopeId, state, usageMode)
         }
-        val runs = dreamDao.listRecentRuns(scopeId.value, DREAM_REVIEW_MAX_RECENT_RUNS + 1)
-        if (runs.size > DREAM_REVIEW_MAX_RECENT_RUNS) {
-            return invalidProjection(scopeId, state, usageMode, diff)
-        }
-        val runConsistency = pairRunConsistency(state, runs, projectionNowMs)
-        if (runConsistency == PairRunConsistency.INVALID) {
-            return invalidProjection(scopeId, state, usageMode, diff)
-        }
+        // 262 / O4：以下各项都只决定「运行历史 / 变化列表 / 待整理计数」这类周边读数，
+        // 不影响上面已逐条校验过的 claims 与快照。原实现一律 invalidProjection（claims 清空、
+        // 但 diff 保留）——设备上「claims 52 条、三分类卡全空、变化列表仍能显示 4 条」
+        // 正是这个形态。运行历史超过 50 条更是长期使用必然发生的事，不能当成画像损坏。
+        val allRuns = dreamDao.listRecentRuns(scopeId.value, DREAM_REVIEW_MAX_RECENT_RUNS + 1)
+        if (allRuns.size > DREAM_REVIEW_MAX_RECENT_RUNS) degraded = true
+        val runs = allRuns.take(DREAM_REVIEW_MAX_RECENT_RUNS)
+        val runConsistency = pairRunConsistency(state, allRuns, projectionNowMs)
+        if (runConsistency == PairRunConsistency.INVALID) degraded = true
         val hasLiveRun = runConsistency == PairRunConsistency.LIVE
         if (runConsistency == PairRunConsistency.STALE) degraded = true
+        val runSummaries = runs.mapNotNull(DreamRunEntity::toUsageSummaryOrNull)
+        if (runSummaries.size != runs.size) degraded = true
+        val activeSummary = active?.toSummary()
+        if (active != null && activeSummary == null) degraded = true
+        val supersededSummary = comparableSuperseded?.toSummary()
+        if (comparableSuperseded != null && supersededSummary == null) degraded = true
+        val pairState = experienceDao.getState(scopeId.value)
+        if (pairState == null) degraded = true
         val empty = summaries.isEmpty() && active == null && state.activeRunId == null
         val status = when {
             hasLiveRun -> DreamDerivedStatus.RUNNING
@@ -628,16 +638,6 @@ class RoomDreamReviewStore(
             empty -> DreamDerivedStatus.EMPTY
             else -> DreamDerivedStatus.READY
         }
-        val runSummaries = runs.mapNotNull(DreamRunEntity::toUsageSummaryOrNull)
-        if (runSummaries.size != runs.size) return invalidProjection(scopeId, state, usageMode, diff)
-        val activeSummary = active?.toSummary()
-        if (active != null && activeSummary == null) return invalidProjection(scopeId, state, usageMode, diff)
-        val supersededSummary = superseded?.toSummary()
-        if (superseded != null && supersededSummary == null) {
-            return invalidProjection(scopeId, state, usageMode, diff)
-        }
-        val pairState = experienceDao.getState(scopeId.value)
-            ?: return invalidProjection(scopeId, state, usageMode, diff)
         return DreamReviewProjection(
             fence = fence,
             derivedStatus = status,
@@ -647,11 +647,10 @@ class RoomDreamReviewStore(
             supersededSnapshot = supersededSummary,
             snapshotDiff = diff,
             recentRuns = runSummaries,
-            pendingExperienceCount = experienceDao.countPending(
-                scopeId.value,
-                pairState.appliedExperienceEpoch,
-            ),
-            experienceDebt = pairState.experienceDebt,
+            pendingExperienceCount = pairState?.let {
+                experienceDao.countPending(scopeId.value, it.appliedExperienceEpoch)
+            } ?: 0,
+            experienceDebt = pairState?.experienceDebt ?: 0.0,
         )
     }
 

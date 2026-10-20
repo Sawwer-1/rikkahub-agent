@@ -697,6 +697,10 @@ private fun ChatPageContent(
                                 hasInput = !inputState.isEmpty(),
                                 hasGuidanceText = guidanceText.isNotBlank(),
                                 softSteerEnabled = setting.steerOnAppendEnabled,
+                                // 派生状态会短时离开 Running（durable 唤醒重算 / 取消宽限期），
+                                // 但 live run job 还在；判定必须用「真的有没有在跑」，
+                                // 否则追加消息会静默落进队列，看起来像「开关关了还在软引导」。
+                                runAlive = loadingJob != null,
                             )
                             when (action) {
                                 ChatSendAction.QUEUE -> vm.handleMessageSend(contents)
@@ -735,6 +739,7 @@ private fun ChatPageContent(
                                 resolveLongSendAction(
                                     runtimeState = runtimeState,
                                     hasInput = !inputState.isEmpty(),
+                                    runAlive = loadingJob != null,
                                 )
                             ) {
                                 ChatSendAction.SHOW_RUNNING_CHOICES -> showSendModeDialog = true
