@@ -24,8 +24,8 @@ android {
         applicationId = "me.rerere.rikkahub"
         minSdk = 26
         targetSdk = 37
-        versionCode = 264
-        versionName = "2.8.2"
+        versionCode = 265
+        versionName = "2.8.3"
 
         // Fork provenance, kept out of versionName so the upstream baseline stays greppable.
         // See docs/audits for the meaning of the 2.3.1-agent-up244.x naming.
@@ -37,9 +37,8 @@ android {
         // build/outputs/managed_device_android_test_additional_output.
         testInstrumentationRunnerArguments["useTestStorageService"] = "true"
 
-        ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
-        }
+        // ABI 输出由下方 splits.abi 全权管理（ndk.abiFilters 与启用的 splits 并存
+        // 会被 AGP 拒绝：Conflicting configuration）。
     }
 
     splits {
@@ -49,8 +48,8 @@ android {
             val isBuildingBundle = gradle.startParameter.taskNames.any { it.lowercase().contains("bundle") }
             isEnable = !isBuildingBundle
             reset()
-            include("arm64-v8a", "x86_64")
-            isUniversalApk = true
+            include("arm64-v8a")
+            isUniversalApk = false
         }
     }
 

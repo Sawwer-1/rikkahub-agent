@@ -1898,7 +1898,7 @@ class ChatService(
                             runId: Uuid,
                             reason: ToolCancelReason,
                         ): me.rerere.rikkahub.service.chat.InterruptCleanupResult {
-                            finishInterruptedPendingTools(id, emptyMap())
+                            finishInterruptedPendingTools(id, emptyMap(), flushGraphAfterCleanup = true)
                             return me.rerere.rikkahub.service.chat.InterruptCleanupResult.Completed
                         }
 
@@ -1907,7 +1907,7 @@ class ChatService(
                             reason: ToolCancelReason,
                             toolCancellationResults: Map<String, CancelRequestResult>,
                         ): me.rerere.rikkahub.service.chat.InterruptCleanupResult {
-                            finishInterruptedPendingTools(id, toolCancellationResults)
+                            finishInterruptedPendingTools(id, toolCancellationResults, flushGraphAfterCleanup = true)
                             return me.rerere.rikkahub.service.chat.InterruptCleanupResult.Completed
                         }
                     },
@@ -6794,6 +6794,7 @@ class ChatService(
     private suspend fun finishInterruptedPendingTools(
         conversationId: Uuid,
         cancellationResults: Map<String, CancelRequestResult> = emptyMap(),
+        flushGraphAfterCleanup: Boolean = false,
     ) {
         // 取消前先水合（B03 / R2）：内存态要能反映库里现状，否则「就地放弃工具」可能作用在
         // 一份残缺快照上（进程重启后的空 session）。读库失败说明两边都不可信 → 放弃持久化。
@@ -6840,6 +6841,35 @@ class ChatService(
         updateConversationState(conversationId) { current ->
             val committedById = committed.messageNodes.associateBy { it.id }
             current.copy(messageNodes = current.messageNodes.map { committedById[it.id] ?: it })
+        }
+        // 停止/打断收尾后把内存权威图整图落库一次（仅 repair 路径，发送开头的
+        // 无参调用不带本标志——那时 admission 刚把锚点节点写入 DB，不能用此刻的
+        // 内存图覆盖它）。
+        //
+        // 背景：发送命令的 admission（runtimeAdmissionGraphProvider）从 DB 构图并追加
+        // 锚点节点落库，而执行端 executeSendMessageScoped 在内存图上另行追加同一条
+        // 用户消息的锚点节点——两个 node id 各生一份：DB 持 admission 节点，内存持
+        // 执行端节点（updateConversation 只写内存）。run 正常完成时
+        // authority.finish(内存图, GENERATION_FINAL_SAVED) 会以内存图覆盖 DB 完成对齐；
+        // 被停止/打断的 run 只走 finishFallback（DB 图原样回写），对齐不会发生，两图
+        // 从此分叉。此后 editMessage 从 DB 取节点 id，MutateMessageCommand 执行端在
+        // 内存图上找不到该节点 → Conflict("Message target missing")（2026-10-24 工单）。
+        // 此处把收尾后的内存图落库恢复一致；saveConversation 自带 unhydrated/空图
+        // 守卫，进程重启后的未水合 session 不会污染库。
+        if (flushGraphAfterCleanup) {
+            runCatching {
+                val session = sessions[conversationId]
+                if (session != null && session.isHydrated) {
+                    saveConversation(conversationId, session.state.value)
+                }
+            }.onFailure { error ->
+                if (error is CancellationException) throw error
+                Log.w(
+                    TAG,
+                    "finishInterruptedPendingTools: post-cleanup graph flush failed for $conversationId",
+                    error,
+                )
+            }
         }
     }
 
@@ -7909,8 +7939,14 @@ class ChatService(
         }
 
         // 未入库草稿会话读不到 Room 副本：直接给用户可见的拒绝，而不是静默 no-op。
-        val current = conversationRepo.getConversationById(conversationId)
-            ?: return SubmitResult.Rejected("会话还没保存，先发送一条消息后再编辑")
+        // 取图必须与 MutateMessageCommand 执行端同源（session 已水合时优先内存态）：
+        // 执行端读内存（2026-10-10 战报的修复），入口若读 DB，「发送后停止」窗口里
+        // 两侧会命中 admission 与执行端各自生成的不同锚点节点 → 必然 Conflict。
+        val current = if (sessions[conversationId]?.isHydrated == true) {
+            getConversationFlow(conversationId).value
+        } else {
+            conversationRepo.getConversationById(conversationId)
+        } ?: return SubmitResult.Rejected("会话还没保存，先发送一条消息后再编辑")
         val node = current.getMessageNodeByMessageId(messageId)
             ?: return SubmitResult.Rejected("找不到要编辑的消息")
         val settings = settingsStore.settingsFlow.first()
