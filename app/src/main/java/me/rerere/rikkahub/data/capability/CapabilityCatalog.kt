@@ -528,6 +528,8 @@ object CapabilityCatalog {
         "conversation_list_recent",
         "conversation_read_recent",
         "conversation_search",
+        // 工单 T-10：定时任务专用当日摘要，只读、无 UI、后台可用，与上面三项同类。
+        "conversation_day_digest",
         "linux_profile_list",
         "linux_grant_list",
         "linux_session_inspect",
