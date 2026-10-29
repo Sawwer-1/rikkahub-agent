@@ -5567,6 +5567,15 @@ class ChatService(
                                 callOrigin == ToolCallOrigin.LocalChat || tool.name != "conversation_search"
                             }
                         )
+                        // 工单 T-10：定时任务没有特权会话身份，第二用户读者工具对它们不可用
+                        // （PRIVILEGED_SESSION_REQUIRED）；这里给它一个受限摘要工具——指定会话、
+                        // 仅当天、只回片段。能力目录已把该工具限定为仅 TrustedWorkflow 可调。
+                        if (callOrigin == ToolCallOrigin.TrustedWorkflow) {
+                            add(
+                                me.rerere.rikkahub.data.ai.tools
+                                    .createTrustedWorkflowConversationDigestTool(conversationRepo)
+                            )
+                        }
                     } else if (assistant.allowConversationHistoryRead) {
                         addAll(
                             me.rerere.rikkahub.data.ai.tools.createSecondUserConversationReaderTools(

@@ -1211,6 +1211,21 @@ object CapabilityCatalog {
             requiresUnlockedDevice = true,
         ))
 
+        // 工单 T-10：定时任务（TrustedWorkflow）专用的会话当日摘要。与 ConversationHistoryRead
+        // 分开登记：只含一个受限工具（指定会话 + 今日 + 片段），不对后台任务开放全局检索、
+        // 不开放历史窗口、不要求解锁（后台任务常在锁屏时运行，数据面已由工具自身收窄）。
+        reg(CapabilityDescriptor(
+            id = CapabilityId.TrustedWorkflowConversationDigest,
+            localToolOption = null,
+            toolNames = setOf("conversation_day_digest"),
+            requirements = emptyList(),
+            implementationState = ImplementationState.Implemented,
+            riskLevel = RiskLevel.Medium,
+            approvalPolicy = ApprovalPolicy.Default,
+            allowedOrigins = setOf(ToolCallOrigin.TrustedWorkflow),
+            requiresUnlockedDevice = false,
+        ))
+
         // ═══════════════════════════════════════════════════════════════════════════
         // SECTION: Privileged Bridges
         // ═══════════════════════════════════════════════════════════════════════════

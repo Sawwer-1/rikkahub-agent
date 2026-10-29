@@ -71,6 +71,7 @@ enum class CapabilityId {
     MediaLibrary,
     ExportConversation,
     ConversationHistoryRead,
+    TrustedWorkflowConversationDigest,
 
     // ── Privileged Bridges ────────────────────────────────────────────────────────
     Ssh,
