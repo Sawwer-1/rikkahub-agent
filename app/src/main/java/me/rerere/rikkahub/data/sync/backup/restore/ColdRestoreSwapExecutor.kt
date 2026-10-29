@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.data.sync.backup.restore
 
+import me.rerere.rikkahub.data.sync.backup.isSafeOwnedDirectory
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.channels.OverlappingFileLockException
@@ -567,10 +568,7 @@ private fun exactQuarantineDirectory(parent: Path, prefix: String, id: String): 
             )
         }
     }
-    val canonical = runCatching { directory.toFile().canonicalFile.toPath().normalize() }.getOrNull()
-    if (canonical != directory || Files.isSymbolicLink(directory) ||
-        !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)
-    ) {
+    if (!isSafeOwnedDirectory(directory)) {
         throw swapFailure(
             ColdRestoreSwapFailure.QUARANTINE_PATH_UNSAFE,
             ColdRestoreFailureCode.LEARNING_PATH_UNSAFE,
@@ -590,8 +588,7 @@ private fun exactRegularFile(path: Path, parent: Path): Boolean =
         Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
 
 private fun safeDatabaseDirectory(path: Path): Boolean = runCatching {
-    !Files.isSymbolicLink(path) && Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) &&
-        path.toFile().canonicalFile.toPath().normalize() == path
+    isSafeOwnedDirectory(path)
 }.getOrDefault(false)
 
 private fun safeLockFile(path: Path): Boolean =

@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.data.sync.backup.restore
 
+import me.rerere.rikkahub.data.sync.backup.isSafeOwnedDirectory
 import android.content.Context
 import java.io.File
 import java.nio.channels.FileChannel
@@ -42,7 +43,7 @@ internal object ColdRestoreComponents {
                     if (journal.phase != ColdRestorePhase.REBUILD_REQUIRED) return false
                     if (applied(paths, journal)) return true
                     val directory = paths.requestDirectory(journal.requestId)
-                    check(!Files.isSymbolicLink(directory) && directory.toFile().canonicalFile.toPath() == directory)
+                    check(isSafeOwnedDirectory(directory))
                     val archive = BackupArchiveV1FileIO.inspectForRestore(paths.stagedArchive(journal.requestId).toFile())
                     check(archive.archiveSize == journal.archiveSize && archive.archiveSha256 == journal.archiveSha256)
                     check(archive.manifest.mainStream == journal.mainStream)
@@ -71,8 +72,7 @@ internal object ColdRestoreComponents {
     fun applied(paths: ColdRestoreStagingPaths, journal: ColdRestoreJournalV1): Boolean {
         if (!journal.deferredComponents) return true
         val directory = paths.requestDirectory(journal.requestId)
-        if (Files.isSymbolicLink(directory) || !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS) ||
-            directory.toFile().canonicalFile.toPath() != directory) return false
+        if (!isSafeOwnedDirectory(directory)) return false
         val marker = directory.resolve(RECEIPT)
         val expected = receipt(journal)
         return !Files.isSymbolicLink(marker) && Files.isRegularFile(marker, LinkOption.NOFOLLOW_LINKS) &&

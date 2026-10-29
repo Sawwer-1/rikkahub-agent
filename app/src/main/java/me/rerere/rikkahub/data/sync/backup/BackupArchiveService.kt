@@ -399,8 +399,9 @@ internal class BackupArchiveComponentRestorer(
     }
 
     fun restoreFiles(archive: VerifiedBackupArchiveV1) {
-        val filesRoot = context.filesDir.toPath().toAbsolutePath().normalize()
-        requireSafeOwnedDirectory(filesRoot)
+        // 必须用 canonical 返回值作根：原始 filesDir 的 /data/user/0 与 canonical 结果不相等，
+        // 后续 startsWith 比较若混用两种形态会恒假（工单 CB 2026-10-29）。
+        val filesRoot = requireSafeOwnedDirectory(context.filesDir.toPath().toAbsolutePath().normalize())
         BackupArchiveV1FileIO.restoreFileEntries(archive) { entryName ->
             resolveRestoreTarget(entryName)?.also { target ->
                 ensureSafeTargetParent(filesRoot, target)
@@ -478,13 +479,15 @@ private fun deleteExactTemporaryArtifact(file: File) {
 }
 
 private fun requireSafeOwnedDirectory(path: java.nio.file.Path): java.nio.file.Path {
-    val canonical = runCatching { path.toFile().canonicalFile.toPath().normalize() }.getOrNull()
-    if (canonical != path || Files.isSymbolicLink(path) ||
-        !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)
-    ) {
+    // 返回 canonical 物理路径作为权威路径（工单 CB 2026-10-29）。
+    // Android 的 filesDir 位于 /data/user/0（指向 /data/data 的系统符号链接），
+    // `canonical == path` 恒为假；判定改为「path 本身不是符号链接 + 能解析 + 是目录」，
+    // 系统挂载链由 canonical 消化。调用方后续比较/遍历一律用返回值。
+    val canonical = resolveSafeOwnedPath(path)
+    if (canonical == null || !Files.isDirectory(canonical, LinkOption.NOFOLLOW_LINKS)) {
         throw serviceFailure(BackupArchiveServiceFailure.FILE_TARGET_UNSAFE)
     }
-    return path
+    return canonical
 }
 
 private fun ensureDirectOwnedDirectory(directory: File): File {
@@ -500,7 +503,10 @@ private fun ensureDirectOwnedDirectory(directory: File): File {
 
 private fun ensureDirectoryTreeInside(rootDirectory: File, targetDirectory: File) {
     val root = requireSafeOwnedDirectory(rootDirectory.toPath().toAbsolutePath().normalize())
-    val target = targetDirectory.toPath().toAbsolutePath().normalize()
+    // target 也取 canonical 后再与 root 比较：root 是 canonical，target 若用原始
+    // /data/user/0 路径，startsWith 会恒假（工单 CB 2026-10-29）。
+    val target = resolveSafeOwnedPath(targetDirectory.toPath().toAbsolutePath().normalize())
+        ?: throw serviceFailure(BackupArchiveServiceFailure.FILE_TARGET_UNSAFE)
     if (!target.startsWith(root)) {
         throw serviceFailure(BackupArchiveServiceFailure.FILE_TARGET_UNSAFE)
     }
@@ -515,10 +521,9 @@ private fun ensureDirectoryTreeInside(rootDirectory: File, targetDirectory: File
 }
 
 private fun ensureSafeTargetParent(filesRoot: java.nio.file.Path, target: File) {
-    val normalized = target.toPath().toAbsolutePath().normalize()
-    if (!target.isAbsolute || !normalized.startsWith(filesRoot) ||
-        normalized.parent == null || Files.isSymbolicLink(normalized)
-    ) {
+    val normalized = resolveSafeOwnedPath(target.toPath().toAbsolutePath().normalize())
+        ?: throw serviceFailure(BackupArchiveServiceFailure.FILE_TARGET_UNSAFE)
+    if (!target.isAbsolute || !normalized.startsWith(filesRoot) || normalized.parent == null) {
         throw serviceFailure(BackupArchiveServiceFailure.FILE_TARGET_UNSAFE)
     }
     requireSafeOwnedDirectory(normalized.parent)

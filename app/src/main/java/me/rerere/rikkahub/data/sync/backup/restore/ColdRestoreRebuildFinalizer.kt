@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.data.sync.backup.restore
 
+import me.rerere.rikkahub.data.sync.backup.isSafeOwnedDirectory
 import android.content.Context
 import java.io.File
 import java.nio.channels.FileChannel
@@ -136,10 +137,7 @@ private fun contextDatabaseDirectory(staging: ColdRestoreStagingPaths): Path? {
     val appData = noBackup.parent ?: return null
     val databases = appData.resolve("databases").normalize()
     return databases.takeIf { candidate ->
-        candidate.parent == appData && !Files.isSymbolicLink(candidate) &&
-            Files.isDirectory(candidate, LinkOption.NOFOLLOW_LINKS) &&
-            runCatching { candidate.toFile().canonicalFile.toPath().normalize() == candidate }
-                .getOrDefault(false)
+        candidate.parent == appData && isSafeOwnedDirectory(candidate)
     }
 }
 
@@ -149,8 +147,7 @@ private fun exactQuarantine(parent: Path, prefix: String, id: String): Path? {
     if (directory.parent != parent) return null
     if (!Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) return directory
     return directory.takeIf {
-        !Files.isSymbolicLink(it) && Files.isDirectory(it, LinkOption.NOFOLLOW_LINKS) &&
-            runCatching { it.toFile().canonicalFile.toPath().normalize() == it }.getOrDefault(false)
+        isSafeOwnedDirectory(it)
     }
 }
 

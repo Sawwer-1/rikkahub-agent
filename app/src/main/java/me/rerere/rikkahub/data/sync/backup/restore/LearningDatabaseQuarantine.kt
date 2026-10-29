@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.data.sync.backup.restore
 
+import me.rerere.rikkahub.data.sync.backup.resolveSafeOwnedPath
+import me.rerere.rikkahub.data.sync.backup.isSafeOwnedDirectory
 import java.io.File
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -66,7 +68,7 @@ class LearningOwnedDatabasePaths private constructor(
                 if (!Files.isDirectory(appData, LinkOption.NOFOLLOW_LINKS)) {
                     return invalid(LearningOwnedDatabasePathFailure.APP_DATA_PATH_NOT_DIRECTORY)
                 }
-                if (appData.toFile().canonicalFile.toPath().normalize() != appData) {
+                if (resolveSafeOwnedPath(appData) == null) {
                     return invalid(LearningOwnedDatabasePathFailure.APP_DATA_PATH_SYMBOLIC_LINK)
                 }
 
@@ -80,7 +82,7 @@ class LearningOwnedDatabasePaths private constructor(
                 if (!Files.isDirectory(databaseDirectory, LinkOption.NOFOLLOW_LINKS)) {
                     return invalid(LearningOwnedDatabasePathFailure.DATABASE_DIRECTORY_NOT_DIRECTORY)
                 }
-                if (databaseDirectory.toFile().canonicalFile.toPath().normalize() != databaseDirectory) {
+                if (resolveSafeOwnedPath(databaseDirectory) == null) {
                     return invalid(LearningOwnedDatabasePathFailure.DATABASE_DIRECTORY_SYMBOLIC_LINK)
                 }
 
@@ -293,13 +295,7 @@ class LearningRestoreQuarantine(
 
     private fun validateDatabaseDirectoryUnchanged() {
         val directory = paths.databaseDirectory
-        val canonicalMatches = runCatching {
-            directory.toFile().canonicalFile.toPath().normalize() == directory
-        }.getOrDefault(false)
-        if (Files.isSymbolicLink(directory) ||
-            !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS) ||
-            !canonicalMatches
-        ) {
+        if (!isSafeOwnedDirectory(directory)) {
             throw LearningQuarantineException(LearningQuarantineFailure.SOURCE_PATH_CHANGED, null)
         }
     }

@@ -597,13 +597,14 @@ private fun requireSafeArchive(file: File): Path {
         throw failure(BackupArchiveFileFailure.ARCHIVE_PATH_UNSAFE)
     }
     val path = file.toPath().toAbsolutePath().normalize()
-    val canonical = runCatching { file.canonicalFile.toPath().normalize() }.getOrNull()
-    if (canonical != path || Files.isSymbolicLink(path) ||
-        !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || !Files.isReadable(path)
+    // 见 SafePath.kt：canonical 与原文在 Android 上永不相等（/data/user/0 系统链接）。
+    val canonical = resolveSafeOwnedPath(path)
+    if (canonical == null ||
+        !Files.isRegularFile(canonical, LinkOption.NOFOLLOW_LINKS) || !Files.isReadable(canonical)
     ) {
         throw failure(BackupArchiveFileFailure.ARCHIVE_PATH_UNSAFE)
     }
-    return path
+    return canonical
 }
 
 private fun requireSafeSourceFile(file: File): Path {
@@ -611,20 +612,20 @@ private fun requireSafeSourceFile(file: File): Path {
         throw failure(BackupArchiveFileFailure.SOURCE_PATH_UNSAFE)
     }
     val path = file.toPath().toAbsolutePath().normalize()
-    val canonical = runCatching { file.canonicalFile.toPath().normalize() }.getOrNull()
-    if (canonical != path || Files.isSymbolicLink(path) ||
-        !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || !Files.isReadable(path)
+    // 见 SafePath.kt：canonical 与原文在 Android 上永不相等（/data/user/0 系统链接）。
+    val canonical = resolveSafeOwnedPath(path)
+    if (canonical == null ||
+        !Files.isRegularFile(canonical, LinkOption.NOFOLLOW_LINKS) || !Files.isReadable(canonical)
     ) {
         throw failure(BackupArchiveFileFailure.SOURCE_PATH_UNSAFE)
     }
-    return path
+    return canonical
 }
 
 private fun requireSafeDirectory(path: Path, reason: BackupArchiveFileFailure) {
-    val canonical = runCatching { path.toFile().canonicalFile.toPath().normalize() }.getOrNull()
-    if (canonical != path || Files.isSymbolicLink(path) ||
-        !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)
-    ) {
+    // 见 SafePath.kt：Android 上 filesDir/cacheDir 位于 /data/user/0（系统符号链接），
+    // canonical 与原文永不相等；只要求「path 本身非符号链接 + 能解析 + 是目录」。
+    if (!isSafeOwnedDirectory(path)) {
         throw failure(reason)
     }
 }

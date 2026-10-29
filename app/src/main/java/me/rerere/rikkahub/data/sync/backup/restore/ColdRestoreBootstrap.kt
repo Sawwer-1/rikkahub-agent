@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.data.sync.backup.restore
 
+import me.rerere.rikkahub.data.sync.backup.resolveSafeOwnedPath
+import me.rerere.rikkahub.data.sync.backup.isSafeOwnedDirectory
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.ByteBuffer
@@ -66,10 +68,7 @@ class ColdRestoreBootstrapPaths private constructor(
             }
             return try {
                 val appData = applicationDataDirectory.toPath().toAbsolutePath().normalize()
-                if (Files.isSymbolicLink(appData) ||
-                    !Files.isDirectory(appData, LinkOption.NOFOLLOW_LINKS) ||
-                    appData.toFile().canonicalFile.toPath().normalize() != appData
-                ) {
+                if (!isSafeOwnedDirectory(appData)) {
                     return invalidBootstrapPath(
                         ColdRestoreBootstrapPathFailure.DATABASE_DIRECTORY_NOT_OWNED,
                     )
@@ -90,9 +89,7 @@ class ColdRestoreBootstrapPaths private constructor(
                         ColdRestoreBootstrapPathFailure.DATABASE_DIRECTORY_NOT_DIRECTORY,
                     )
                 }
-                if (databaseDirectory.toFile().canonicalFile.toPath().normalize() !=
-                    databaseDirectory
-                ) {
+                if (resolveSafeOwnedPath(databaseDirectory) == null) {
                     return invalidBootstrapPath(
                         ColdRestoreBootstrapPathFailure.DATABASE_DIRECTORY_SYMBOLIC_LINK,
                     )
@@ -699,9 +696,7 @@ private fun exactRegularFile(path: Path, expectedParent: Path): Boolean =
         Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
 
 private fun exactRequestDirectory(path: Path, expectedParent: Path): Boolean = runCatching {
-    path.parent == expectedParent && !Files.isSymbolicLink(path) &&
-        Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) &&
-        path.toFile().canonicalFile.toPath().normalize() == path
+    path.parent == expectedParent && isSafeOwnedDirectory(path)
 }.getOrDefault(false)
 
 private fun preparedSidecars(prepared: Path): List<Path> = listOf(
@@ -720,16 +715,11 @@ private fun deleteExactStalePreparedArtifacts(prepared: Path, expectedParent: Pa
 }
 
 private fun stagingRootIsUnchanged(paths: ColdRestoreStagingPaths): Boolean = runCatching {
-    !Files.isSymbolicLink(paths.rootDirectory) &&
-        Files.isDirectory(paths.rootDirectory, LinkOption.NOFOLLOW_LINKS) &&
-        paths.rootDirectory.toFile().canonicalFile.toPath().normalize() == paths.rootDirectory
+    isSafeOwnedDirectory(paths.rootDirectory)
 }.getOrDefault(false)
 
 private fun databaseDirectoryIsUnchanged(paths: ColdRestoreBootstrapPaths): Boolean = runCatching {
-    !Files.isSymbolicLink(paths.databaseDirectory) &&
-        Files.isDirectory(paths.databaseDirectory, LinkOption.NOFOLLOW_LINKS) &&
-        paths.databaseDirectory.toFile().canonicalFile.toPath().normalize() ==
-        paths.databaseDirectory &&
+    isSafeOwnedDirectory(paths.databaseDirectory) &&
         listOf(paths.mainDatabase, paths.mainWal, paths.mainShm).all { candidate ->
             candidate.parent == paths.databaseDirectory &&
                 !Files.isSymbolicLink(candidate) &&

@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.data.sync.backup.restore
 
+import me.rerere.rikkahub.data.sync.backup.resolveSafeOwnedPath
+import me.rerere.rikkahub.data.sync.backup.isSafeOwnedDirectory
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -74,7 +76,7 @@ class ColdRestoreStagingPaths private constructor(
                 if (!Files.isDirectory(appData, LinkOption.NOFOLLOW_LINKS)) {
                     return invalidPath(ColdRestoreStagingPathFailure.APP_DATA_PATH_NOT_DIRECTORY)
                 }
-                if (appData.toFile().canonicalFile.toPath().normalize() != appData) {
+                if (resolveSafeOwnedPath(appData) == null) {
                     return invalidPath(ColdRestoreStagingPathFailure.APP_DATA_PATH_SYMBOLIC_LINK)
                 }
 
@@ -88,7 +90,7 @@ class ColdRestoreStagingPaths private constructor(
                 if (noBackup.parent != appData) {
                     return invalidPath(ColdRestoreStagingPathFailure.NO_BACKUP_PATH_NOT_APP_OWNED)
                 }
-                if (noBackup.toFile().canonicalFile.toPath().normalize() != noBackup) {
+                if (resolveSafeOwnedPath(noBackup) == null) {
                     return invalidPath(ColdRestoreStagingPathFailure.NO_BACKUP_PATH_SYMBOLIC_LINK)
                 }
 
@@ -103,7 +105,7 @@ class ColdRestoreStagingPaths private constructor(
                     if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
                         return invalidPath(ColdRestoreStagingPathFailure.STAGING_ROOT_NOT_DIRECTORY)
                     }
-                    if (root.toFile().canonicalFile.toPath().normalize() != root) {
+                    if (resolveSafeOwnedPath(root) == null) {
                         return invalidPath(ColdRestoreStagingPathFailure.STAGING_ROOT_SYMBOLIC_LINK)
                     }
                 }
@@ -166,10 +168,7 @@ class VerifiedColdRestoreArchive private constructor(
                 )
             }
             val path = archiveFile.toPath().toAbsolutePath().normalize()
-            val canonicalMatches = runCatching {
-                path.toFile().canonicalFile.toPath().normalize() == path
-            }.getOrDefault(false)
-            if (Files.isSymbolicLink(path) || !canonicalMatches) {
+            if (resolveSafeOwnedPath(path) == null) {
                 return rejectedArchive(
                     VerifiedColdRestoreArchiveFailure.ARCHIVE_PATH_SYMBOLIC_LINK,
                 )
@@ -475,9 +474,7 @@ private fun ensureRoot(paths: ColdRestoreStagingPaths): Boolean = try {
     if (!Files.exists(paths.rootDirectory, LinkOption.NOFOLLOW_LINKS)) {
         Files.createDirectory(paths.rootDirectory)
     }
-    !Files.isSymbolicLink(paths.rootDirectory) &&
-        Files.isDirectory(paths.rootDirectory, LinkOption.NOFOLLOW_LINKS) &&
-        paths.rootDirectory.toFile().canonicalFile.toPath().normalize() == paths.rootDirectory
+    isSafeOwnedDirectory(paths.rootDirectory)
 } catch (_: Exception) {
     false
 }
