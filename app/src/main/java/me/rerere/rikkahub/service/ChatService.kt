@@ -1897,19 +1897,15 @@ class ChatService(
                         override suspend fun repair(
                             runId: Uuid,
                             reason: ToolCancelReason,
-                        ): me.rerere.rikkahub.service.chat.InterruptCleanupResult {
-                            finishInterruptedPendingTools(id, emptyMap(), flushGraphAfterCleanup = true)
-                            return me.rerere.rikkahub.service.chat.InterruptCleanupResult.Completed
-                        }
+                        ): me.rerere.rikkahub.service.chat.InterruptCleanupResult =
+                            runInterruptRepair(id, emptyMap(), reason)
 
                         override suspend fun repair(
                             runId: Uuid,
                             reason: ToolCancelReason,
                             toolCancellationResults: Map<String, CancelRequestResult>,
-                        ): me.rerere.rikkahub.service.chat.InterruptCleanupResult {
-                            finishInterruptedPendingTools(id, toolCancellationResults, flushGraphAfterCleanup = true)
-                            return me.rerere.rikkahub.service.chat.InterruptCleanupResult.Completed
-                        }
+                        ): me.rerere.rikkahub.service.chat.InterruptCleanupResult =
+                            runInterruptRepair(id, toolCancellationResults, reason)
                     },
                     durableQueue = durableCommandQueue,
                     commandAuthority = runtimeCommandAuthority,
@@ -6791,11 +6787,43 @@ class ChatService(
         )
     }
 
+    /**
+     * 收尾 + 按取消原因决定是否把内存权威图对齐落库。
+     *
+     * 只有用户主动停止/打断（run 已死、turn 已终局）才整图落库；`STEERING_OVERRIDE` 在
+     * run 仍流式时触发，落库会写入中途图并对未终局 turn 做记忆源失效（2026-10-28 审计
+     * 第 1 条），因此一律只做节点级收尾。
+     *
+     * 收尾失败返回 [InterruptCleanupResult.PartialFailure]，让运行时把队列暂停并把
+     * 「中断清理未完成」透出给用户——此前一律返回 Completed，编辑重试仍会撞同一个
+     * Conflict 而日志里只有一条 W（2026-10-28 审计第 4 条）。
+     */
+    private suspend fun runInterruptRepair(
+        conversationId: Uuid,
+        cancellationResults: Map<String, CancelRequestResult>,
+        reason: ToolCancelReason,
+    ): me.rerere.rikkahub.service.chat.InterruptCleanupResult {
+        val flushGraph = reason == ToolCancelReason.USER_STOPPED ||
+            reason == ToolCancelReason.USER_INTERRUPTED
+        val ok = finishInterruptedPendingTools(
+            conversationId = conversationId,
+            cancellationResults = cancellationResults,
+            flushGraphAfterCleanup = flushGraph,
+        )
+        return if (ok) {
+            me.rerere.rikkahub.service.chat.InterruptCleanupResult.Completed
+        } else {
+            me.rerere.rikkahub.service.chat.InterruptCleanupResult.PartialFailure(
+                "中断清理未完成",
+            )
+        }
+    }
+
     private suspend fun finishInterruptedPendingTools(
         conversationId: Uuid,
         cancellationResults: Map<String, CancelRequestResult> = emptyMap(),
         flushGraphAfterCleanup: Boolean = false,
-    ) {
+    ): Boolean {
         // 取消前先水合（B03 / R2）：内存态要能反映库里现状，否则「就地放弃工具」可能作用在
         // 一份残缺快照上（进程重启后的空 session）。读库失败说明两边都不可信 → 放弃持久化。
         if (!ensureHydrated(conversationId)) {
@@ -6803,7 +6831,7 @@ class ChatService(
                 TAG,
                 "finishInterruptedPendingTools: hydrate failed for $conversationId; skip persistence",
             )
-            return
+            return false
         }
         // 节点级写入（B03 / R2）：以**库里的图**为骨架，只替换本次清理动过的节点。
         // 246/247 留下的整图回写在这里退场——那份内存快照只要比库里旧或短，就会把别人
@@ -6835,41 +6863,80 @@ class ChatService(
                 "finishInterruptedPendingTools: node-level write failed for $conversationId",
                 error,
             )
-            return
-        } ?: return
+            return false
+        } ?: return false
         // 把库里落定的节点回灌内存态：只按 id 覆盖，内存里更新的节点不受影响。
         updateConversationState(conversationId) { current ->
             val committedById = committed.messageNodes.associateBy { it.id }
             current.copy(messageNodes = current.messageNodes.map { committedById[it.id] ?: it })
         }
-        // 停止/打断收尾后把内存权威图整图落库一次（仅 repair 路径，发送开头的
-        // 无参调用不带本标志——那时 admission 刚把锚点节点写入 DB，不能用此刻的
-        // 内存图覆盖它）。
+        if (!flushGraphAfterCleanup) return true
+        // 停止/打断收尾后把内存权威图整图落库一次（只在 REPAIR 路径、且调用方按 reason
+        // 判定过是 USER_STOPPED/USER_INTERRUPTED 时启用——STEERING_OVERRIDE 发生在 run
+        // 仍活着时，绝不能把流式中途图整图写库，见 2026-10-28 审计第 1 条）。
         //
         // 背景：发送命令的 admission（runtimeAdmissionGraphProvider）从 DB 构图并追加
         // 锚点节点落库，而执行端 executeSendMessageScoped 在内存图上另行追加同一条
         // 用户消息的锚点节点——两个 node id 各生一份：DB 持 admission 节点，内存持
         // 执行端节点（updateConversation 只写内存）。run 正常完成时
         // authority.finish(内存图, GENERATION_FINAL_SAVED) 会以内存图覆盖 DB 完成对齐；
-        // 被停止/打断的 run 只走 finishFallback（DB 图原样回写），对齐不会发生，两图
-        // 从此分叉。此后 editMessage 从 DB 取节点 id，MutateMessageCommand 执行端在
-        // 内存图上找不到该节点 → Conflict("Message target missing")（2026-10-24 工单）。
-        // 此处把收尾后的内存图落库恢复一致；saveConversation 自带 unhydrated/空图
-        // 守卫，进程重启后的未水合 session 不会污染库。
-        if (flushGraphAfterCleanup) {
-            runCatching {
-                val session = sessions[conversationId]
-                if (session != null && session.isHydrated) {
-                    saveConversation(conversationId, session.state.value)
-                }
-            }.onFailure { error ->
-                if (error is CancellationException) throw error
-                Log.w(
-                    TAG,
-                    "finishInterruptedPendingTools: post-cleanup graph flush failed for $conversationId",
-                    error,
-                )
-            }
+        // 被停止的 run 只走 finishFallback（DB 图原样回写），对齐不会发生，两图从此
+        // 分叉。此后编辑链路读库取节点 id、执行端读内存图找不到该节点 →
+        // Conflict("Message target missing")（2026-10-24 工单）。
+        val session = sessions[conversationId] ?: return true
+        if (!session.isHydrated) return true
+        val snapshot = session.state.value
+        if (snapshot.newConversation || snapshot.messageNodes.isEmpty()) return true
+        // 落库前先按库侧同构的规则收尾**内存图**：取消未终局的工具、闭合仍开着的思考块、
+        // 末条助手标 INTERRUPTED。库里最后一条是用户锚点节点时，库侧收尾根本碰不到内存
+        // 里那条流式助手消息；不收尾就落库 = 把半终局状态持久化成「可重放的历史」
+        // （2026-10-28 审计第 3 条、GenerationHandler 取消路径注释）。
+        val lastMessageId = snapshot.messageNodes.lastOrNull()?.currentMessage?.id
+        val cleaned = snapshot.copy(
+            updateAt = java.time.Instant.now(),
+            messageNodes = snapshot.messageNodes.map { node ->
+                node.copy(messages = node.messages.map { message ->
+                    var updated = message.finishPendingTools {
+                        cancelToolByUser(it, cancellationResults)
+                    }
+                    updated = updated.copy(parts = updated.parts.map { part ->
+                        if (part is UIMessagePart.Reasoning && part.finishedAt == null) {
+                            part.copy(finishedAt = kotlin.time.Clock.System.now())
+                        } else {
+                            part
+                        }
+                    })
+                    if (
+                        message.id == lastMessageId &&
+                        message.role == MessageRole.ASSISTANT &&
+                        (message.state != UIMessageState.COMPLETED || message.finishedAt == null) &&
+                        message.state != UIMessageState.FAILED
+                    ) {
+                        updated = updated.copy(state = UIMessageState.INTERRUPTED)
+                    }
+                    updated
+                })
+            },
+        )
+        updateConversationState(conversationId) { cleaned }
+        // 直接用仓库写入、**不把返回值回写内存**：updateRuntimeConversation 被 R3 判 stale
+        // 时会返回库里的图，走 saveConversation 的话会用库图整段替换内存图，把刚收尾的
+        // 内容（以及流式残留）从内存抹掉（2026-10-28 审计第 2 条）。这里把 updateAt 抬到
+        // now，「入参更旧」不成立即放行；即便仍被拒，内存图保持不动，只记日志。
+        return runCatching {
+            conversationRepo.updateRuntimeConversation(
+                incoming = cleaned,
+                sourceInvalidationMode = ConversationSourceInvalidationMode.APPLY,
+                sourceInvalidationNowMs = System.currentTimeMillis(),
+            ) != null
+        }.getOrElse { error ->
+            if (error is CancellationException) throw error
+            Log.w(
+                TAG,
+                "finishInterruptedPendingTools: post-cleanup graph flush failed for $conversationId",
+                error,
+            )
+            false
         }
     }
 

@@ -60,7 +60,15 @@ internal fun applyMessageMutation(
     current: Conversation,
     command: me.rerere.rikkahub.service.chat.MutateMessageCommand,
 ): Conversation? {
-    val node = current.messageNodes.find { it.id == command.nodeId } ?: return null
+    // 2026-10-28（工单 CB 编辑消息冲突）：命令里的 node id 可能属于**另一份图**——
+    // 发送命令的 admission 与执行端各生成一个随机锚点节点，库与内存各持一份；编辑入口
+    // 在等待 FIFO 期间图也可能被重建。消息 id 两侧始终同源（branchAnchorMessageId），
+    // 因此按 nodeId 找不到时回退按 messageId 定位，避免同一条消息因节点副本不同被判
+    // Conflict("Message target missing")。这是纵深防御：即便将来再出现图分叉，编辑也能
+    // 落在当前图里真实存在的节点上。
+    val node = current.messageNodes.find { it.id == command.nodeId }
+        ?: current.messageNodes.find { node -> node.messages.any { it.id == command.messageId } }
+        ?: return null
     val index = node.messages.indexOfFirst { it.id == command.messageId }
     if (index < 0) return null
     val next = if (command.replacementParts == null) node.copy(selectIndex = index)

@@ -14,6 +14,13 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
+        ndk {
+            // 单 ABI 发布线：app 的 splits 只在 APK 任务生效；bundleRelease 关闭 splits 后
+            // 库模块若不过滤会按 NDK 默认集编出 armeabi-v7a/x86，AAB 体积与构建时间白涨，
+            // 且 32 位路径从未在 CI 验证过（2026-10-28 审计第 7 条）。库模块自带过滤不
+            // 与 app 的 splits 冲突。
+            abiFilters += listOf("arm64-v8a")
+        }
         externalNativeBuild {
             cmake {
                 cppFlags += ""
