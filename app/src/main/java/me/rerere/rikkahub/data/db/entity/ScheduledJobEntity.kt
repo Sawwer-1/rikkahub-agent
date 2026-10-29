@@ -28,6 +28,10 @@ data class ScheduledJobEntity(
     /** v20→v21 migrated to cron_expression='@every Ns'. Read-only history; never written. */
     val intervalSeconds: Int? = null,
     val enabled: Boolean = true,
+    @ColumnInfo(defaultValue = "0")
+    val enabledUpdatedAtMs: Long = 0,               // 工单 T-11：enabled 最近一次变更时刻（留痕）
+    @ColumnInfo(defaultValue = "''")
+    val enabledReason: String = "",                 // 工单 T-11：变更来源 created/tool:pause_job/tool:resume_job/user
     val createdAtMs: Long,
     val lastRunAtMs: Long? = null,
     val nextRunAtMs: Long? = null,

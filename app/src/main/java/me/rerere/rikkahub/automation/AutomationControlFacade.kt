@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.automation
 
+import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import me.rerere.rikkahub.data.alarm.AlarmRepository
 import me.rerere.rikkahub.data.alarm.AlarmScheduler
@@ -38,7 +39,15 @@ class AutomationControlFacade(
 
     suspend fun setScheduledJobEnabled(id: String, enabled: Boolean): ScheduledJobEntity? {
         val current = scheduledJobs.getById(id) ?: return null
-        return saveScheduledJob(current.copy(enabled = enabled))
+        // 工单 T-11 §5.1：UI 手动启停也要留痕（reason=user），不再静默。
+        Log.i("SCHED", "enabled ${current.enabled}->$enabled job=${current.id} name=${current.name} reason=user")
+        return saveScheduledJob(
+            current.copy(
+                enabled = enabled,
+                enabledUpdatedAtMs = System.currentTimeMillis(),
+                enabledReason = "user",
+            ),
+        )
     }
 
     suspend fun deleteScheduledJob(id: String): Boolean {

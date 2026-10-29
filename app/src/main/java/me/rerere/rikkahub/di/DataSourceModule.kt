@@ -75,6 +75,7 @@ import me.rerere.rikkahub.data.db.migrations.MIGRATION_51_52
 import me.rerere.rikkahub.data.db.migrations.MIGRATION_52_53
 import me.rerere.rikkahub.data.db.migrations.MIGRATION_53_54
 import me.rerere.rikkahub.data.db.migrations.MIGRATION_54_55
+import me.rerere.rikkahub.data.db.migrations.MIGRATION_55_56
 import me.rerere.rikkahub.data.repository.MemorySearchIndex
 import me.rerere.rikkahub.data.repository.MemoryRetriever
 import me.rerere.rikkahub.memory.AndroidMemoryWorkScheduler
@@ -222,6 +223,7 @@ val dataSourceModule = module {
                 MIGRATION_52_53,
                 MIGRATION_53_54,
                 MIGRATION_54_55,
+                MIGRATION_55_56,
             )
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {

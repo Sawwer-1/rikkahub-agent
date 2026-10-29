@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.data.ai.tools.local
 
+import android.util.Log
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -29,6 +30,8 @@ import me.rerere.rikkahub.data.repository.ScheduledJobRunRepository
 import me.rerere.rikkahub.service.CronExpressionParser
 import me.rerere.rikkahub.service.CronJobScheduler
 import java.time.ZoneId
+
+private const val TAG = "SCHED"
 
 private fun textPart(s: String) = listOf(UIMessagePart.Text(s))
 private fun errEnvelope(code: String, detail: String, extra: JsonObject? = null): String =
@@ -332,9 +335,12 @@ fun scheduleJobTool(
             tags = tagsCsv,
             targetConversationId = targetConversationId,
             enabled = true,
+            enabledUpdatedAtMs = nowMs,
+            enabledReason = "created",
             createdAtMs = nowMs,
         )
         repo.upsert(job)
+        Log.i(TAG, "enabled ->true job=${job.id} name=${job.name} reason=created")
         scheduler.schedule(job)
         textPart(buildJsonObject { put("success", true); put("job", jobToJson(job)) }.toString())
     },
@@ -397,11 +403,16 @@ fun deleteJobTool(
         scheduler.cancel(id)
         runRepo.deleteAllForJob(id)
         repo.deleteById(id)
+        Log.i(TAG, "deleted job=$id name=${job.name} reason=tool:delete_job caller=$callerAssistantId")
         textPart(buildJsonObject { put("success", true); put("id", id) }.toString())
     },
 )
 
-fun pauseJobTool(repo: ScheduledJobRepository, scheduler: CronJobScheduler): Tool = Tool(
+fun pauseJobTool(
+    repo: ScheduledJobRepository,
+    scheduler: CronJobScheduler,
+    callerAssistantId: String? = null,
+): Tool = Tool(
     name = "pause_job",
     description = "Pause a job — keeps the row but stops future fires until resume_job.".trimIndent(),
     parameters = {
@@ -415,13 +426,34 @@ fun pauseJobTool(repo: ScheduledJobRepository, scheduler: CronJobScheduler): Too
             ?: return@Tool textPart(errEnvelope("missing_id", "id is required"))
         val job = repo.getById(id)
             ?: return@Tool textPart(errEnvelope("not_found", "no job with id '$id'"))
-        repo.update(job.copy(enabled = false))
+        // 所有权守卫（与 delete_job 一致）：防止跨助手误停（工单 T-11 的整组静默停用）。
+        if (callerAssistantId != null && job.assistantId.isNotBlank() &&
+            job.assistantId != callerAssistantId
+        ) {
+            return@Tool textPart(errEnvelope(
+                "forbidden",
+                "job '$id' belongs to a different assistant; only its owner can pause it",
+            ))
+        }
+        val updated = job.copy(
+            enabled = false,
+            enabledUpdatedAtMs = System.currentTimeMillis(),
+            enabledReason = "tool:pause_job",
+        )
+        repo.update(updated)
         scheduler.cancel(id)
+        // 工单 T-11 §5.1：状态变更留一行日志（reason=tool:pause_job），不再静默。
+        Log.i(TAG, "enabled ${job.enabled}->false job=${job.id} name=${job.name} " +
+            "reason=tool:pause_job caller=$callerAssistantId")
         textPart(buildJsonObject { put("success", true); put("id", id) }.toString())
     },
 )
 
-fun resumeJobTool(repo: ScheduledJobRepository, scheduler: CronJobScheduler): Tool = Tool(
+fun resumeJobTool(
+    repo: ScheduledJobRepository,
+    scheduler: CronJobScheduler,
+    callerAssistantId: String? = null,
+): Tool = Tool(
     name = "resume_job",
     description = "Resume a paused job — re-enables future fires.".trimIndent(),
     parameters = {
@@ -435,9 +467,23 @@ fun resumeJobTool(repo: ScheduledJobRepository, scheduler: CronJobScheduler): To
             ?: return@Tool textPart(errEnvelope("missing_id", "id is required"))
         val job = repo.getById(id)
             ?: return@Tool textPart(errEnvelope("not_found", "no job with id '$id'"))
-        val updated = job.copy(enabled = true)
+        if (callerAssistantId != null && job.assistantId.isNotBlank() &&
+            job.assistantId != callerAssistantId
+        ) {
+            return@Tool textPart(errEnvelope(
+                "forbidden",
+                "job '$id' belongs to a different assistant; only its owner can resume it",
+            ))
+        }
+        val updated = job.copy(
+            enabled = true,
+            enabledUpdatedAtMs = System.currentTimeMillis(),
+            enabledReason = "tool:resume_job",
+        )
         repo.update(updated)
         scheduler.schedule(updated)
+        Log.i(TAG, "enabled ${job.enabled}->true job=${job.id} name=${job.name} " +
+            "reason=tool:resume_job caller=$callerAssistantId")
         textPart(buildJsonObject { put("success", true); put("id", id) }.toString())
     },
 )

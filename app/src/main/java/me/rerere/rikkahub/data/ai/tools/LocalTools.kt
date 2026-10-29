@@ -1897,8 +1897,12 @@ class LocalTools(
             tools.add(me.rerere.rikkahub.data.ai.tools.local.deleteJobTool(
                 scheduledJobRepository, scheduledJobRunRepository, cronJobScheduler,
                 callerAssistantId = invocationContext.callerAssistantId))
-            tools.add(me.rerere.rikkahub.data.ai.tools.local.pauseJobTool(scheduledJobRepository, cronJobScheduler))
-            tools.add(me.rerere.rikkahub.data.ai.tools.local.resumeJobTool(scheduledJobRepository, cronJobScheduler))
+            tools.add(me.rerere.rikkahub.data.ai.tools.local.pauseJobTool(
+                scheduledJobRepository, cronJobScheduler,
+                callerAssistantId = invocationContext.callerAssistantId))
+            tools.add(me.rerere.rikkahub.data.ai.tools.local.resumeJobTool(
+                scheduledJobRepository, cronJobScheduler,
+                callerAssistantId = invocationContext.callerAssistantId))
             tools.add(me.rerere.rikkahub.data.ai.tools.local.triggerJobNowTool(scheduledJobRepository, cronJobScheduler))
             tools.add(me.rerere.rikkahub.data.ai.tools.local.getJobHistoryTool(scheduledJobRepository, scheduledJobRunRepository))
         }
